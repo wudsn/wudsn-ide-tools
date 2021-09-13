@@ -1,0 +1,2927 @@
+'\" t
+.\"     Title: xasm
+.\"    Author: [see the "AUTHOR" section]
+.\" Generator: DocBook XSL Stylesheets v1.78.1 <http://docbook.sf.net/>
+.\"      Date: 07/20/2014
+.\"    Manual: \ \&
+.\"    Source: \ \&
+.\"  Language: English
+.\"
+.TH "XASM" "1" "07/20/2014" "\ \&" "\ \&"
+.\" -----------------------------------------------------------------
+.\" * Define some portability stuff
+.\" -----------------------------------------------------------------
+.\" ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+.\" http://bugs.debian.org/507673
+.\" http://lists.gnu.org/archive/html/groff/2009-02/msg00013.html
+.\" ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+.ie \n(.g .ds Aq \(aq
+.el       .ds Aq '
+.\" -----------------------------------------------------------------
+.\" * set default formatting
+.\" -----------------------------------------------------------------
+.\" disable hyphenation
+.nh
+.\" disable justification (adjust text to left margin only)
+.ad l
+.\" -----------------------------------------------------------------
+.\" * MAIN CONTENT STARTS HERE *
+.\" -----------------------------------------------------------------
+.SH "NAME"
+xasm \- 6502 cross\-assembler
+.SH "SYNOPSIS"
+.sp
+\fBxasm\fR \fI[OPTIONS] SOURCE_FILE\fR
+.SH "DESCRIPTION"
+.sp
+\fBxasm\fR is a cross\-assembler for the 6502 family processors\&.
+.sp
+\fISOURCE_FILE\fR is the name of the source file (you may omit the default \&.asx extension)\&. When invoked without any options, \fBxasm\fR assembles \fISOURCE_FILE\fR and writes the result to an object file named \fISOURCE_FILE\fR with the extension changed to \&.obx\&.
+.SH "OPTIONS"
+.PP
+\fB/c\fR
+.RS 4
+Specifies that lines skipped due to a false condition should be included in the listing file\&.
+.RE
+.PP
+\fB/d:\fR\fILABEL\fR=\fIVALUE\fR
+.RS 4
+Defines a label\&.
+\fILABEL\fR
+should be a valid label name\&.
+\fIVALUE\fR
+may be any expression (may reference to labels defined in source files)\&. You may use several
+\fB/d\fR
+options to define many labels from the command line\&.
+.RE
+.PP
+\fB/i\fR
+.RS 4
+Excludes included files from the listing file\&.
+.RE
+.PP
+\fB/l\fR\fI[:LISTING_FILE]\fR
+.RS 4
+Generates listing file\&. If
+\fILISTING_FILE\fR
+is omitted, the listing filename is
+\fISOURCE_FILE\fR
+with the extension changed to
+\&.lst\&.
+.RE
+.PP
+\fB/M\fR
+.RS 4
+Prints a rule for use in a
+Makefile\&. First line of the rule lists
+\fIOBJECT_FILE\fR
+as the target of the rule and all source files (including the ones specified with
+icl
+and
+ins
+directives) as dependencies\&. The second line contains the command line with
+OBJECT_FILE
+replaced by the
+\fBmake\fR
+macro
+$@
+and
+SOURCE_FILE
+replaced by the macro
+$<\&. Dollars in the command line are doubled\&. Your
+make
+or shell may require further escaping\&.
+.RE
+.PP
+\fB/o\fR\fI:OBJECT_FILE\fR
+.RS 4
+Sets output file name\&. The default is
+\fISOURCE_FILE\fR
+with the extension changed to
+\&.obx\&.
+.RE
+.PP
+\fB/p\fR
+.RS 4
+Prints absolute paths in listing and error messages\&.
+.RE
+.PP
+\fB/q\fR
+.RS 4
+Quiet mode\&. Prevents
+\fBxasm\fR
+from printing its banner and compilation summary\&.
+.RE
+.PP
+\fB/t\fR\fI[:LABEL_FILE]\fR
+.RS 4
+Generates label table\&. If
+\fILABEL_FILE\fR
+is omitted then the table is appended at the end of the listing\&.
+.RE
+.PP
+\fB/u\fR
+.RS 4
+Issues a warning message for each label whose value is unused\&.
+.RE
+.sp
+Alternatively, you may use Unix\-style options, for example:
+.sp
+.if n \{\
+.RS 4
+.\}
+.nf
+xasm \-i \-d DEBUG=1 \-l listing\&.lst source\&.asx
+.fi
+.if n \{\
+.RE
+.\}
+.SH "SYNTAX"
+.sp
+Source files should be plain ASCII files\&. LF, CR, CR/LF and Atari ($9b) line terminators are supported\&. Labels and instructions are case\-insensitive\&.
+.sp
+\fBxasm\fR is backward compatible with Quick Assembler\&. To compile QA sources with \fBxasm\fR, simply replace ATASCII\-specific characters with their integer codes\&. You also have to update all OPT directives, but usually you can simply remove them\&.
+.sp
+\fILabel\fR is a symbol that represents a signed 32\-bit integer\&. You define a label by putting its name at the beginning of a line (with no spaces before)\&. The label will be assigned the current value of the \fIorigin counter\fR (i\&.e\&. the address of the compiled instruction), unless you use it with the EQU directive where it is assigned the value of the EQU argument\&.
+.sp
+Instructions and directives must be preceded with some whitespace\&. Without leading whitespace they are treated as label names\&. For example:
+.sp
+.if n \{\
+.RS 4
+.\}
+.nf
+ nop
+.fi
+.if n \{\
+.RE
+.\}
+.sp
+is a 6502 instruction, whereas
+.sp
+.if n \{\
+.RS 4
+.\}
+.nf
+nop
+.fi
+.if n \{\
+.RE
+.\}
+.sp
+(without leading space) defines a label called nop\&.
+.sp
+Whole\-line comments must start with a semicolon, an asterisk or a pipe, with optional label definition and spaces before\&. Here are examples of whole\-line comments:
+.sp
+.if n \{\
+.RS 4
+.\}
+.nf
+; this is a comment
+ * so it is
+label | and this too
+.fi
+.if n \{\
+.RE
+.\}
+.sp
+Lines with instructions (and selected directives) may be \fIrepeated\fR\&. To assemble a single line several times, precede the repeat count with a colon, for example:
+.sp
+.if n \{\
+.RS 4
+.\}
+.nf
+:4 asl @
+mask_lookup :32 dta $80,$40,$20,$10,8,4,2,1
+.fi
+.if n \{\
+.RE
+.\}
+.sp
+In lines with instructions or directives, a comment starts immediately after the instruction/directive has been successfully parsed\&. That is, in such lines \fBxasm\fR does not require a special character to start a comment\&.
+.sp
+.if n \{\
+.RS 4
+.\}
+.nf
+ lda foo ; this is a comment
+ sta bar this too
+ tax #0  tax has no operand, therefore #0 starts this comment
+.fi
+.if n \{\
+.RE
+.\}
+.sp
+You may put two instructions in one line so they share their operand\&. For example:
+.sp
+.if n \{\
+.RS 4
+.\}
+.nf
+ eor:sta foo
+.fi
+.if n \{\
+.RE
+.\}
+.sp
+is equivalent to
+.sp
+.if n \{\
+.RS 4
+.\}
+.nf
+ eor foo
+ sta foo
+.fi
+.if n \{\
+.RE
+.\}
+.sp
+Note that
+.sp
+.if n \{\
+.RS 4
+.\}
+.nf
+ lda:tax #0
+.fi
+.if n \{\
+.RE
+.\}
+.sp
+is allowed because #0 is treated as a comment for tax\&.
+.SH "EXPRESSIONS"
+.sp
+Expressions are numbers combined with operators and brackets\&. You should use square brackets, because parentheses are reserved for 6502 indirect addressing\&.
+.sp
+A number is:
+.sp
+.RS 4
+.ie n \{\
+\h'-04'\(bu\h'+03'\c
+.\}
+.el \{\
+.sp -1
+.IP \(bu 2.3
+.\}
+a 32\-bit decimal integer, e\&.g\&.
+\-12345
+.RE
+.sp
+.RS 4
+.ie n \{\
+\h'-04'\(bu\h'+03'\c
+.\}
+.el \{\
+.sp -1
+.IP \(bu 2.3
+.\}
+a 32\-bit hexadecimal integer, e\&.g\&.
+$abcd
+.RE
+.sp
+.RS 4
+.ie n \{\
+\h'-04'\(bu\h'+03'\c
+.\}
+.el \{\
+.sp -1
+.IP \(bu 2.3
+.\}
+a 32\-bit binary integer, e\&.g\&.
+%10100101
+.RE
+.sp
+.RS 4
+.ie n \{\
+\h'-04'\(bu\h'+03'\c
+.\}
+.el \{\
+.sp -1
+.IP \(bu 2.3
+.\}
+an ASCII character, e\&.g\&.
+\*(Aqa\*(Aq
+or
+"a"
+.RE
+.sp
+.RS 4
+.ie n \{\
+\h'-04'\(bu\h'+03'\c
+.\}
+.el \{\
+.sp -1
+.IP \(bu 2.3
+.\}
+origin counter:
+*
+.RE
+.sp
+.RS 4
+.ie n \{\
+\h'-04'\(bu\h'+03'\c
+.\}
+.el \{\
+.sp -1
+.IP \(bu 2.3
+.\}
+a hardware register (see below), e\&.g\&.
+^4e
+.RE
+.sp
+.RS 4
+.ie n \{\
+\h'-04'\(bu\h'+03'\c
+.\}
+.el \{\
+.sp -1
+.IP \(bu 2.3
+.\}
+an opcode (see below), e\&.g\&.
+{lda #0}
+is
+$a9
+.RE
+.sp
+.RS 4
+.ie n \{\
+\h'-04'\(bu\h'+03'\c
+.\}
+.el \{\
+.sp -1
+.IP \(bu 2.3
+.\}
+the line repeat counter (see below):
+#
+.RE
+.sp
+Abbreviations of Atari hardware registers are provided to save two characters ($d40e vs ^4e) and to facilitate porting software between Atari 8\-bit computers and the Atari 5200 console\&. These are very similar machines, one of the biggest differences is the location of hardware registers\&.
+.TS
+allbox tab(:);
+ctB ctB ctB ctB.
+T{
+Syntax
+T}:T{
+Chip
+T}:T{
+Value
+T}:T{
+Value in Atari 5200 mode (opt g+)
+T}
+.T&
+ct ct ct ct
+ct ct ct ct
+ct ct ct ct
+ct ct ct ct
+ct ct ct ct.
+T{
+.sp
+^0x
+T}:T{
+.sp
+GTIA
+T}:T{
+.sp
+$D00x
+T}:T{
+.sp
+$C00x
+T}
+T{
+.sp
+^1x
+T}:T{
+.sp
+GTIA
+T}:T{
+.sp
+$D01x
+T}:T{
+.sp
+$C01x
+T}
+T{
+.sp
+^2x
+T}:T{
+.sp
+POKEY
+T}:T{
+.sp
+$D20x
+T}:T{
+.sp
+$E80x
+T}
+T{
+.sp
+^3x
+T}:T{
+.sp
+PIA
+T}:T{
+.sp
+$D30x
+T}:T{
+.sp
+\fIerror (there\(cqs no PIA chip)\fR
+T}
+T{
+.sp
+^4x
+T}:T{
+.sp
+ANTIC
+T}:T{
+.sp
+$D40x
+T}:T{
+.sp
+$D40x
+T}
+.TE
+.sp 1
+.sp
+The opcode syntax represents the opcode byte of the instruction inside braces\&. The operand of the instruction is discarded and is needed only to recognize the addressing mode\&. The instruction should begin right after the left brace and the right brace should immediately follow the operand \fIor\fR the instruction\&. You can skip the operand if the addressing mode is fixed\&. Examples: {lda #}, {jsr}, {bne}, {jmp ()}, {sta a:,x}\&.
+.sp
+You can use the line repeat counter (#) in the repeated lines\&. It counts the iterations starting from zero\&. Examples:
+.sp
+.if n \{\
+.RS 4
+.\}
+.nf
+:3 dta # ; generates three bytes: 0, 1, 2\&.
+line_lo :192 dta l(screen+40*#)
+line_hi :192 dta h(screen+40*#)
+dl :59 dta $4f,a(screen+40*#),0,$4f,a(screen+40*#),0
+.fi
+.if n \{\
+.RE
+.\}
+.sp
+The following \fIbinary operators\fR are supported:
+.sp
+.RS 4
+.ie n \{\
+\h'-04'\(bu\h'+03'\c
+.\}
+.el \{\
+.sp -1
+.IP \(bu 2.3
+.\}
++
+Addition
+.RE
+.sp
+.RS 4
+.ie n \{\
+\h'-04'\(bu\h'+03'\c
+.\}
+.el \{\
+.sp -1
+.IP \(bu 2.3
+.\}
+\-
+Subtraction
+.RE
+.sp
+.RS 4
+.ie n \{\
+\h'-04'\(bu\h'+03'\c
+.\}
+.el \{\
+.sp -1
+.IP \(bu 2.3
+.\}
+*
+Multiplication
+.RE
+.sp
+.RS 4
+.ie n \{\
+\h'-04'\(bu\h'+03'\c
+.\}
+.el \{\
+.sp -1
+.IP \(bu 2.3
+.\}
+/
+Division
+.RE
+.sp
+.RS 4
+.ie n \{\
+\h'-04'\(bu\h'+03'\c
+.\}
+.el \{\
+.sp -1
+.IP \(bu 2.3
+.\}
+%
+Remainder
+.RE
+.sp
+.RS 4
+.ie n \{\
+\h'-04'\(bu\h'+03'\c
+.\}
+.el \{\
+.sp -1
+.IP \(bu 2.3
+.\}
+&
+Bitwise AND
+.RE
+.sp
+.RS 4
+.ie n \{\
+\h'-04'\(bu\h'+03'\c
+.\}
+.el \{\
+.sp -1
+.IP \(bu 2.3
+.\}
+|
+Bitwise OR
+.RE
+.sp
+.RS 4
+.ie n \{\
+\h'-04'\(bu\h'+03'\c
+.\}
+.el \{\
+.sp -1
+.IP \(bu 2.3
+.\}
+^
+Bitwise XOR
+.RE
+.sp
+.RS 4
+.ie n \{\
+\h'-04'\(bu\h'+03'\c
+.\}
+.el \{\
+.sp -1
+.IP \(bu 2.3
+.\}
+<<
+Arithmetic shift left
+.RE
+.sp
+.RS 4
+.ie n \{\
+\h'-04'\(bu\h'+03'\c
+.\}
+.el \{\
+.sp -1
+.IP \(bu 2.3
+.\}
+>>
+Arithmetic shift right
+.RE
+.sp
+.RS 4
+.ie n \{\
+\h'-04'\(bu\h'+03'\c
+.\}
+.el \{\
+.sp -1
+.IP \(bu 2.3
+.\}
+==
+Equal
+.RE
+.sp
+.RS 4
+.ie n \{\
+\h'-04'\(bu\h'+03'\c
+.\}
+.el \{\
+.sp -1
+.IP \(bu 2.3
+.\}
+=
+Equal (same as
+==)
+.RE
+.sp
+.RS 4
+.ie n \{\
+\h'-04'\(bu\h'+03'\c
+.\}
+.el \{\
+.sp -1
+.IP \(bu 2.3
+.\}
+!=
+Not equal
+.RE
+.sp
+.RS 4
+.ie n \{\
+\h'-04'\(bu\h'+03'\c
+.\}
+.el \{\
+.sp -1
+.IP \(bu 2.3
+.\}
+<>
+Not equal (same as
+!=)
+.RE
+.sp
+.RS 4
+.ie n \{\
+\h'-04'\(bu\h'+03'\c
+.\}
+.el \{\
+.sp -1
+.IP \(bu 2.3
+.\}
+<
+Less than
+.RE
+.sp
+.RS 4
+.ie n \{\
+\h'-04'\(bu\h'+03'\c
+.\}
+.el \{\
+.sp -1
+.IP \(bu 2.3
+.\}
+>
+Greater than
+.RE
+.sp
+.RS 4
+.ie n \{\
+\h'-04'\(bu\h'+03'\c
+.\}
+.el \{\
+.sp -1
+.IP \(bu 2.3
+.\}
+<=
+Less or equal
+.RE
+.sp
+.RS 4
+.ie n \{\
+\h'-04'\(bu\h'+03'\c
+.\}
+.el \{\
+.sp -1
+.IP \(bu 2.3
+.\}
+>=
+Greater or equal
+.RE
+.sp
+.RS 4
+.ie n \{\
+\h'-04'\(bu\h'+03'\c
+.\}
+.el \{\
+.sp -1
+.IP \(bu 2.3
+.\}
+&&
+Logical AND
+.RE
+.sp
+.RS 4
+.ie n \{\
+\h'-04'\(bu\h'+03'\c
+.\}
+.el \{\
+.sp -1
+.IP \(bu 2.3
+.\}
+||
+Logical OR
+.RE
+.sp
+The following \fIunary operators\fR are supported:
+.sp
+.RS 4
+.ie n \{\
+\h'-04'\(bu\h'+03'\c
+.\}
+.el \{\
+.sp -1
+.IP \(bu 2.3
+.\}
++
+Plus (no operation)
+.RE
+.sp
+.RS 4
+.ie n \{\
+\h'-04'\(bu\h'+03'\c
+.\}
+.el \{\
+.sp -1
+.IP \(bu 2.3
+.\}
+\-
+Minus (changes the sign)
+.RE
+.sp
+.RS 4
+.ie n \{\
+\h'-04'\(bu\h'+03'\c
+.\}
+.el \{\
+.sp -1
+.IP \(bu 2.3
+.\}
+~
+Bitwise NOT (complements all bits)
+.RE
+.sp
+.RS 4
+.ie n \{\
+\h'-04'\(bu\h'+03'\c
+.\}
+.el \{\
+.sp -1
+.IP \(bu 2.3
+.\}
+!
+Logical NOT (changes true to false and vice versa)
+.RE
+.sp
+.RS 4
+.ie n \{\
+\h'-04'\(bu\h'+03'\c
+.\}
+.el \{\
+.sp -1
+.IP \(bu 2.3
+.\}
+<
+Low (extracts the low byte)
+.RE
+.sp
+.RS 4
+.ie n \{\
+\h'-04'\(bu\h'+03'\c
+.\}
+.el \{\
+.sp -1
+.IP \(bu 2.3
+.\}
+>
+High (extracts the high byte)
+.RE
+.sp
+The operator precedence is following:
+.sp
+.RS 4
+.ie n \{\
+\h'-04'\(bu\h'+03'\c
+.\}
+.el \{\
+.sp -1
+.IP \(bu 2.3
+.\}
+first:
+[]
+(brackets)
+.RE
+.sp
+.RS 4
+.ie n \{\
+\h'-04'\(bu\h'+03'\c
+.\}
+.el \{\
+.sp -1
+.IP \(bu 2.3
+.\}
++ \- ~ < >
+(unary)
+.RE
+.sp
+.RS 4
+.ie n \{\
+\h'-04'\(bu\h'+03'\c
+.\}
+.el \{\
+.sp -1
+.IP \(bu 2.3
+.\}
+* / % & << >>
+(binary)
+.RE
+.sp
+.RS 4
+.ie n \{\
+\h'-04'\(bu\h'+03'\c
+.\}
+.el \{\
+.sp -1
+.IP \(bu 2.3
+.\}
++ \- | ^
+(binary)
+.RE
+.sp
+.RS 4
+.ie n \{\
+\h'-04'\(bu\h'+03'\c
+.\}
+.el \{\
+.sp -1
+.IP \(bu 2.3
+.\}
+= == <> != < > <= >=
+(binary)
+.RE
+.sp
+.RS 4
+.ie n \{\
+\h'-04'\(bu\h'+03'\c
+.\}
+.el \{\
+.sp -1
+.IP \(bu 2.3
+.\}
+!
+(unary)
+.RE
+.sp
+.RS 4
+.ie n \{\
+\h'-04'\(bu\h'+03'\c
+.\}
+.el \{\
+.sp -1
+.IP \(bu 2.3
+.\}
+&&
+(binary)
+.RE
+.sp
+.RS 4
+.ie n \{\
+\h'-04'\(bu\h'+03'\c
+.\}
+.el \{\
+.sp -1
+.IP \(bu 2.3
+.\}
+last:
+||
+(binary)
+.RE
+.if n \{\
+.sp
+.\}
+.RS 4
+.it 1 an-trap
+.nr an-no-space-flag 1
+.nr an-break-flag 1
+.br
+.ps +1
+\fBNote\fR
+.ps -1
+.br
+.sp
+Although the operators are similar to those used in C, C++ and Java, their priorities are different\&.
+.sp .5v
+.RE
+.sp
+Compare and logical operators assume that zero is false and a non\-zero is true\&. They return 1 for true\&.
+.sp
+Expressions are calculated in signed 32\-bit arithmetic\&. "Arithmetic overflow" error signals overflow of the 32\-bit range\&.
+.SH "DIRECTIVES"
+.PP
+\fBEQU\fR \- assign value of expression to label
+.RS 4
+Examples:
+.sp
+.if n \{\
+.RS 4
+.\}
+.nf
+five equ 5
+here equ *
+.fi
+.if n \{\
+.RE
+.\}
+.RE
+.PP
+\fBOPT\fR \- set assembler options
+.RS 4
+Six options are available:
+.sp
+.RS 4
+.ie n \{\
+\h'-04'\(bu\h'+03'\c
+.\}
+.el \{\
+.sp -1
+.IP \(bu 2.3
+.\}
+F
+\- fill the space between memory areas with
+$FF
+.RE
+.sp
+.RS 4
+.ie n \{\
+\h'-04'\(bu\h'+03'\c
+.\}
+.el \{\
+.sp -1
+.IP \(bu 2.3
+.\}
+G
+\- Atari 5200 mode for hardware register abbreviations
+.RE
+.sp
+.RS 4
+.ie n \{\
+\h'-04'\(bu\h'+03'\c
+.\}
+.el \{\
+.sp -1
+.IP \(bu 2.3
+.\}
+H
+\- generate Atari executable headers
+.RE
+.sp
+.RS 4
+.ie n \{\
+\h'-04'\(bu\h'+03'\c
+.\}
+.el \{\
+.sp -1
+.IP \(bu 2.3
+.\}
+L
+\- write to the listing
+.RE
+.sp
+.RS 4
+.ie n \{\
+\h'-04'\(bu\h'+03'\c
+.\}
+.el \{\
+.sp -1
+.IP \(bu 2.3
+.\}
+O
+\- write to the object file
+.RE
+.sp
+.RS 4
+.ie n \{\
+\h'-04'\(bu\h'+03'\c
+.\}
+.el \{\
+.sp -1
+.IP \(bu 2.3
+.\}
+U
+\- warn of unused labels
+.RE
+.sp
+You can turn any of these on or off\&. The default (if no
+OPT
+specified) is
+opt f\-g\-h+l+o+u+\&. Examples:
+.sp
+.if n \{\
+.RS 4
+.\}
+.nf
+ opt l\-     listing off
+ opt l+o\-   listing on, object file off
+ opt f+g+h\- useful for Atari 5200 cartridges \- raw output, 5200 hw regs
+.fi
+.if n \{\
+.RE
+.\}
+.RE
+.PP
+\fBORG\fR \- change value of the origin counter
+.RS 4
+If Atari executable headers are enabled, you can include an operand prefix:
+.sp
+.RS 4
+.ie n \{\
+\h'-04'\(bu\h'+03'\c
+.\}
+.el \{\
+.sp -1
+.IP \(bu 2.3
+.\}
+a:
+starts a new block even if it\(cqs superfluous because the new address equals the current address\&.
+.RE
+.sp
+.RS 4
+.ie n \{\
+\h'-04'\(bu\h'+03'\c
+.\}
+.el \{\
+.sp -1
+.IP \(bu 2.3
+.\}
+f:
+is same as
+a:, but additionally generates a double\-$FF
+prefix before the new header\&. This prefix is automatically generated at the beginning of the file (no need to include
+f:
+in the first
+ORG)\&.
+.RE
+.sp
+Examples:
+.sp
+.if n \{\
+.RS 4
+.\}
+.nf
+ org $600
+ org f:$700
+table org *+100
+.fi
+.if n \{\
+.RE
+.\}
+.sp
+In the latter example
+table
+points to 100 bytes of uninitialized data (label is assigned with
+*
+before the
+ORG
+directive is executed)\&.
+.sp
+Starting with version 2\&.6\&.0,
+\fBxasm\fR
+supports code that is relocated at run time\&. Let\(cqs say you want your code to be located on page zero\&. You can\(cqt normally load it directly into this place, so you load it at a different address and then move in your program\&.
+org r:
+changes the address that it used for code generation but not the address used for generating Atari executable headers\&. Example:
+.sp
+.if n \{\
+.RS 4
+.\}
+.nf
+ org $8000
+ ldx #code_length\-1
+ mva:rpl code_loaded,x z:code_zpage,x\-
+ jmp code_zpage
+
+code_loaded
+ org r:$30
+code_zpage
+ jmp * ; \&.\&.\&. or something more sensible
+code_length equ *\-code_zpage
+.fi
+.if n \{\
+.RE
+.\}
+.sp
+Note that both
+*
+and label definitions use the counter used for code generation\&. There is no direct access to the other counter\&. You can only calculate it:
+.sp
+.if n \{\
+.RS 4
+.\}
+.nf
+where_am_i equ *\-code_zpage+code_loaded
+.fi
+.if n \{\
+.RE
+.\}
+.RE
+.PP
+\fBDTA\fR \- define data
+.RS 4
+.sp
+.RS 4
+.ie n \{\
+\h'-04'\(bu\h'+03'\c
+.\}
+.el \{\
+.sp -1
+.IP \(bu 2.3
+.\}
+integers
+.sp
+.RS 4
+.ie n \{\
+\h'-04'\(bu\h'+03'\c
+.\}
+.el \{\
+.sp -1
+.IP \(bu 2.3
+.\}
+bytes:
+b(200)
+or simply
+200
+.RE
+.sp
+.RS 4
+.ie n \{\
+\h'-04'\(bu\h'+03'\c
+.\}
+.el \{\
+.sp -1
+.IP \(bu 2.3
+.\}
+words:
+a(10000)
+.RE
+.sp
+.RS 4
+.ie n \{\
+\h'-04'\(bu\h'+03'\c
+.\}
+.el \{\
+.sp -1
+.IP \(bu 2.3
+.\}
+low bytes of words:
+l(511)
+(byte 255)
+.RE
+.sp
+.RS 4
+.ie n \{\
+\h'-04'\(bu\h'+03'\c
+.\}
+.el \{\
+.sp -1
+.IP \(bu 2.3
+.\}
+high bytes of words:
+h(511)
+(byte 1)
+.RE
+.sp
+You may enter many expressions in parentheses and combine different types of data in single line, separating things with commas\&.
+.sp
+You may also build a sine lookup table\&. The syntax is:
+.sp
+.if n \{\
+.RS 4
+.\}
+.nf
+sin(center,amp,period,first,last)
+.fi
+.if n \{\
+.RE
+.\}
+.sp
+where:
+.sp
+.RS 4
+.ie n \{\
+\h'-04'\(bu\h'+03'\c
+.\}
+.el \{\
+.sp -1
+.IP \(bu 2.3
+.\}
+center
+is an integer which is added to every sine value
+.RE
+.sp
+.RS 4
+.ie n \{\
+\h'-04'\(bu\h'+03'\c
+.\}
+.el \{\
+.sp -1
+.IP \(bu 2.3
+.\}
+amp
+is the sine amplitude
+.RE
+.sp
+.RS 4
+.ie n \{\
+\h'-04'\(bu\h'+03'\c
+.\}
+.el \{\
+.sp -1
+.IP \(bu 2.3
+.\}
+period
+is the number of values per sine period
+.RE
+.sp
+.RS 4
+.ie n \{\
+\h'-04'\(bu\h'+03'\c
+.\}
+.el \{\
+.sp -1
+.IP \(bu 2.3
+.\}
+first,last
+define the range of sine arguments\&. They are optional\&. The default are
+0,period\-1\&.
+.RE
+.sp
+Example:
+.sp
+.if n \{\
+.RS 4
+.\}
+.nf
+ dta a(sin(0,1000,256,0,63))
+.fi
+.if n \{\
+.RE
+.\}
+.sp
+defines a table of 64 words representing a quarter of sine with the amplitude of 1000\&.
+.RE
+.sp
+.RS 4
+.ie n \{\
+\h'-04'\(bu\h'+03'\c
+.\}
+.el \{\
+.sp -1
+.IP \(bu 2.3
+.\}
+real numbers:
+r(\-1\&.23456e12)
+.sp
+Real numbers are stored in the 6\-byte Atari Floating\-Point format\&.
+.RE
+.sp
+.RS 4
+.ie n \{\
+\h'-04'\(bu\h'+03'\c
+.\}
+.el \{\
+.sp -1
+.IP \(bu 2.3
+.\}
+text strings
+.sp
+.RS 4
+.ie n \{\
+\h'-04'\(bu\h'+03'\c
+.\}
+.el \{\
+.sp -1
+.IP \(bu 2.3
+.\}
+ASCII strings:
+c\*(AqText\*(Aq
+or
+c"Text"
+.RE
+.sp
+.RS 4
+.ie n \{\
+\h'-04'\(bu\h'+03'\c
+.\}
+.el \{\
+.sp -1
+.IP \(bu 2.3
+.\}
+ANTIC strings:
+d\*(AqText\*(Aq
+or
+d"Text"
+.RE
+.sp
+A character string consists of any number of characters surrounded by quotation marks\&. You can include the quotation marks in the string by doubling them\&. Placing a
+*
+character after a string inverts the highest bit in every byte of the string\&.
+.sp
+Examples of
+DTA:
+.sp
+.if n \{\
+.RS 4
+.\}
+.nf
+ dta b(1,2),3,a(1000,\-1),l(12345,sin(0,127,256))
+ dta d"ANTIC"*,c\*(AqIt\*(Aq\*(Aqs a string\*(Aq,$9b
+.fi
+.if n \{\
+.RE
+.\}
+.RE
+.RE
+.PP
+\fBICL\fR \- include another source file
+.RS 4
+Specifies another file to be included in the assembly as if the contents of the referenced file appeared in place of the
+ICL
+statement\&. The included file may contain other
+ICL
+statements\&. The
+\&.asx
+extension is added if none given\&. Examples:
+.sp
+.if n \{\
+.RS 4
+.\}
+.nf
+ icl \*(Aqmacros\&.asx\*(Aq
+ icl \*(Aqlib/fileio\*(Aq
+.fi
+.if n \{\
+.RE
+.\}
+.if n \{\
+.sp
+.\}
+.RS 4
+.it 1 an-trap
+.nr an-no-space-flag 1
+.nr an-break-flag 1
+.br
+.ps +1
+\fBNote\fR
+.ps -1
+.br
+for portability, use only relative paths and slash as the separator\&. This way your sources will compile under Windows and Linux\&.
+.sp .5v
+.RE
+.RE
+.PP
+\fBEND\fR \- end assembling file
+.RS 4
+May be used if the source file ends with something which shouldn\(cqt be read by
+\fBxasm\fR
+(e\&.g\&. your notes)\&.
+.RE
+.PP
+\fBINS\fR \- insert contents of file
+.RS 4
+Copies every byte of the specified file into the object file and updates the origin counter, as if these bytes were written using
+DTA\&. You may specify a range of the file to insert\&. The syntax is:
+.sp
+.if n \{\
+.RS 4
+.\}
+.nf
+ ins \*(Aqfile\*(Aq[,offset[,length]]
+.fi
+.if n \{\
+.RE
+.\}
+.sp
+The first byte in a file has the offset of zero\&. If the offset is negative, it counts from the end of the file\&. Examples:
+.sp
+.if n \{\
+.RS 4
+.\}
+.nf
+ ins \*(Aqpicture\&.raw\*(Aq
+ ins \*(Aqfile\*(Aq,\-256  insert last 256 bytes of file
+ ins \*(Aqfile\*(Aq,10,10 insert bytes 10\&.\&.19 of file
+.fi
+.if n \{\
+.RE
+.\}
+.RE
+.PP
+\fBRUN\fR \- set run address in the Atari executable format
+.RS 4
+.sp
+.if n \{\
+.RS 4
+.\}
+.nf
+ run main
+.fi
+.if n \{\
+.RE
+.\}
+.sp
+is equivalent to:
+.sp
+.if n \{\
+.RS 4
+.\}
+.nf
+ org $2e0
+ dta a(main)
+.fi
+.if n \{\
+.RE
+.\}
+.RE
+.PP
+\fBINI\fR \- set init address in the Atari executable format
+.RS 4
+Example:
+.sp
+.if n \{\
+.RS 4
+.\}
+.nf
+ ini showloadingpic
+.fi
+.if n \{\
+.RE
+.\}
+.RE
+.PP
+\fBERT\fR \- generate error if expression evaluates to true
+.RS 4
+Examples:
+.sp
+.if n \{\
+.RS 4
+.\}
+.nf
+ ert *>$c000
+ ert len1>$ff||len2>$ff
+.fi
+.if n \{\
+.RE
+.\}
+.RE
+.PP
+\fBIFT\fR \- assemble if expression is true, \fBELI\fR \- else if, \fBELS\fR \- else, \fBEIF\fR \- end if
+.RS 4
+With these directives you can construct fragments which are assembled only when a condition is met\&. Conditional constructions can be nested\&. Example:
+.sp
+.if n \{\
+.RS 4
+.\}
+.nf
+noscr equ 1
+widescr equ 1
+ ift noscr
+ lda #0
+ eli widescr
+ lda #$23
+ els
+ lda #$22
+ eif
+ sta $22f
+.fi
+.if n \{\
+.RE
+.\}
+.if n \{\
+.sp
+.\}
+.RS 4
+.it 1 an-trap
+.nr an-no-space-flag 1
+.nr an-break-flag 1
+.br
+.ps +1
+\fBNote\fR
+.ps -1
+.br
+The above example may be rewritten using the
+\fIrepeat line\fR
+feature:
+.sp .5v
+.RE
+.sp
+.if n \{\
+.RS 4
+.\}
+.nf
+noscr equ 1
+widescr equ 1
+:noscr lda #0
+:!noscr&&widescr lda #$23
+:!noscr&&!widescr lda #$22
+ sta $22f
+.fi
+.if n \{\
+.RE
+.\}
+.RE
+.SH "PSEUDO COMMANDS"
+.sp
+\fIPseudo commands\fR are built\-in macros\&. There are no user\-defined macros in \fBxasm\fR\&.
+.PP
+\fBADD\fR \- add without carry
+.RS 4
+If you have ever programmed a 6502, you must have noticed that you had to use a
+CLC
+before
+ADC
+for every simple addition\&.
+.sp
+\fBxasm\fR
+can do it for you\&.
+ADD
+replaces two instructions:
+CLC
+and
+ADC\&.
+.RE
+.PP
+\fBSUB\fR \- subtract
+.RS 4
+It is
+SEC
+and
+SBC\&.
+.RE
+.PP
+\fBRCC, RCS, REQ, RMI, RNE, RPL, RVC, RVS\fR \- conditional repeat
+.RS 4
+These are branches to the previous instruction\&. They take no operand, because the branch target is the address of the previously assembled instruction or pseudo command\&. Example:
+.sp
+.if n \{\
+.RS 4
+.\}
+.nf
+ ldx #0
+ mva:rne $500,x $600,x+
+.fi
+.if n \{\
+.RE
+.\}
+.sp
+The above code copies a 256\-byte memory block from $500 to $600\&. Here is the same written with standard 6502 commands only:
+.sp
+.if n \{\
+.RS 4
+.\}
+.nf
+ ldx #0
+copy_loop lda $500,x
+ sta $600,x
+ inx
+ bne copy_loop
+.fi
+.if n \{\
+.RE
+.\}
+.RE
+.PP
+\fBSCC, SCS, SEQ, SMI, SNE, SPL, SVC, SVS\fR \- conditional skip
+.RS 4
+These are branches over the next instruction\&. No operand is required, because the target is the address of the instruction following the next instruction\&. Example:
+.sp
+.if n \{\
+.RS 4
+.\}
+.nf
+ lda #40
+ add:sta ptr
+ scc:inc ptr+1
+.fi
+.if n \{\
+.RE
+.\}
+.sp
+In the above example the 16\-bit variable
+ptr
+is incremented by 40\&.
+.RE
+.PP
+\fBJCC, JCS, JEQ, JMI, JNE, JPL, JVC, JVS\fR \- conditional jump
+.RS 4
+These are long branches\&. While standard branches (such as
+BNE) have range of \-128\&.\&.+127, these jumps have range of 64 kB\&. For example:
+.sp
+.if n \{\
+.RS 4
+.\}
+.nf
+ jne dest
+.fi
+.if n \{\
+.RE
+.\}
+.sp
+is equivalent to:
+.sp
+.if n \{\
+.RS 4
+.\}
+.nf
+ seq:jmp dest
+.fi
+.if n \{\
+.RE
+.\}
+.RE
+.PP
+\fBINW\fR \- increment word
+.RS 4
+Increments a 16\-bit word in the memory\&. Example:
+.sp
+.if n \{\
+.RS 4
+.\}
+.nf
+ inw dest
+.fi
+.if n \{\
+.RE
+.\}
+.sp
+is equivalent to:
+.sp
+.if n \{\
+.RS 4
+.\}
+.nf
+ inc dest
+ sne:inc dest+1
+.fi
+.if n \{\
+.RE
+.\}
+.RE
+.PP
+\fBMVA, MVX, MVY\fR \- move byte using accumulator, X or Y
+.RS 4
+Each of these pseudo commands requires two operands and substitutes two commands:
+.sp
+.if n \{\
+.RS 4
+.\}
+.nf
+ mva source dest = lda source : sta dest
+ mvx source dest = ldx source : stx dest
+ mvy source dest = ldy source : sty dest
+.fi
+.if n \{\
+.RE
+.\}
+.RE
+.PP
+\fBMWA, MWX, MWY\fR \- move word using accumulator, X or Y
+.RS 4
+These pseudo commands require two operands and are combinations of two
+MVA/MVX/MWY: one to move the low byte, and the other to move the high byte\&. You can\(cqt use indirect nor pseudo addressing mode with
+MWA/MWX/MWY\&. Destination must be an absolute or zeropage address, optionally indexed\&. When source is also an absolute or zeropage address, an
+mwa source dest
+expands to:
+.sp
+.if n \{\
+.RS 4
+.\}
+.nf
+ mva source  dest
+ mva source+1 dest+1
+.fi
+.if n \{\
+.RE
+.\}
+.sp
+When source is an immediate value, an
+mwa #immed dest
+expands to:
+.sp
+.if n \{\
+.RS 4
+.\}
+.nf
+ mva <immed dest
+ mva >immed dest+1
+.fi
+.if n \{\
+.RE
+.\}
+.sp
+When
+<immed
+equals
+>immed
+and
+immed
+is not forward\-referenced,
+\fBxasm\fR
+skips the second
+LDA, generating the following code:
+.sp
+.if n \{\
+.RS 4
+.\}
+.nf
+ mva <immed dest
+ sta dest+1
+.fi
+.if n \{\
+.RE
+.\}
+.sp
+If possible,
+MWX
+and
+MWY
+use increment/decrement commands\&. For example,
+mwx #1 dest
+expands to:
+.sp
+.if n \{\
+.RS 4
+.\}
+.nf
+ ldx #1
+ stx dest
+ dex
+ stx dest+1
+.fi
+.if n \{\
+.RE
+.\}
+.RE
+.SH "ADDRESSING MODES"
+.sp
+All addressing modes are entered in the standard 6502 convention except for the accumulator addressing mode, which should be marked with the @ character (as in Quick Assembler)\&.
+.sp
+For Quick Assembler compatibility, there are two extra immediate addressing modes: < and >, which use the low/high byte of a 16\-bit word constant\&. Unlike in Quick Assembler, you can alternatively use the more common syntax: #< and #>\&. Note the difference:
+.sp
+.if n \{\
+.RS 4
+.\}
+.nf
+ lda >$ff+5   ; loads 1 (>$104)
+ lda #>$ff+5  ; loads 5 (0+5)
+.fi
+.if n \{\
+.RE
+.\}
+.sp
+You can explicitly specify absolute (a:) and zero\-page (z:) addressing modes\&.
+.sp
+Examples:
+.sp
+.if n \{\
+.RS 4
+.\}
+.nf
+ nop
+ asl @
+ lda >$1234  assembles to lda #$12
+ lda $100,x
+ lda 0       zero\-page (8\-bit address)
+ lda a:0     absolute (16\-bit address)
+ jmp ($0a)
+ lda ($80),y
+.fi
+.if n \{\
+.RE
+.\}
+.sp
+There are \fIpseudo addressing modes\fR, which are similar to pseudo commands\&. You may use them just like standard addressing modes in all 6502 commands and pseudo commands, except for MWA, MWX and MWY:
+.sp
+.if n \{\
+.RS 4
+.\}
+.nf
+ cmd a,x+   =  cmd a,x   : inx
+ cmd a,x\-   =  cmd a,x   : dex
+ cmd a,y+   =  cmd a,y   : iny
+ cmd a,y\-   =  cmd a,y   : dey
+ cmd (z),y+ =  cmd (z),y : iny
+ cmd (z),y\- =  cmd (z),y : dey
+ cmd (z,0)  =  ldx #0    : cmd (z,x)
+ cmd (z),0  =  ldy #0    : cmd (z),y
+ cmd (z),0+ =  ldy #0    : cmd (z),y : iny
+ cmd (z),0\- =  ldy #0    : cmd (z),y : dey
+.fi
+.if n \{\
+.RE
+.\}
+.SH "HISTORY"
+.SS "Version 3\&.1\&.0 (2014\-07\-20)"
+.sp
+.RS 4
+.ie n \{\
+\h'-04'\(bu\h'+03'\c
+.\}
+.el \{\
+.sp -1
+.IP \(bu 2.3
+.\}
+OS X, Ubuntu and Fedora distributions
+.RE
+.sp
+.RS 4
+.ie n \{\
+\h'-04'\(bu\h'+03'\c
+.\}
+.el \{\
+.sp -1
+.IP \(bu 2.3
+.\}
+INS
+can be repeated (suggested by Marek Pavlik) and taken "opcode" of
+.RE
+.sp
+.RS 4
+.ie n \{\
+\h'-04'\(bu\h'+03'\c
+.\}
+.el \{\
+.sp -1
+.IP \(bu 2.3
+.\}
+OPT U\-
+disables
+\fB/u\fR
+unused label warnings (suggested by Marek Pavlik)
+.RE
+.sp
+.RS 4
+.ie n \{\
+\h'-04'\(bu\h'+03'\c
+.\}
+.el \{\
+.sp -1
+.IP \(bu 2.3
+.\}
+if the file to be included cannot be open, report error in the
+ICL
+line (suggested by Peter Dell)
+.RE
+.sp
+.RS 4
+.ie n \{\
+\h'-04'\(bu\h'+03'\c
+.\}
+.el \{\
+.sp -1
+.IP \(bu 2.3
+.\}
+removed duplicate filenames for
+\fB/M\fR
+.RE
+.sp
+.RS 4
+.ie n \{\
+\h'-04'\(bu\h'+03'\c
+.\}
+.el \{\
+.sp -1
+.IP \(bu 2.3
+.\}
+implemented
+\fB/p\fR
+outside Windows
+.RE
+.sp
+.RS 4
+.ie n \{\
+\h'-04'\(bu\h'+03'\c
+.\}
+.el \{\
+.sp -1
+.IP \(bu 2.3
+.\}
+source code updated from D1 to D2
+.RE
+.sp
+.RS 4
+.ie n \{\
+\h'-04'\(bu\h'+03'\c
+.\}
+.el \{\
+.sp -1
+.IP \(bu 2.3
+.\}
+project moved to GitHub
+.RE
+.SS "Version 3\&.0\&.2 (2009\-10\-17)"
+.sp
+.RS 4
+.ie n \{\
+\h'-04'\(bu\h'+03'\c
+.\}
+.el \{\
+.sp -1
+.IP \(bu 2.3
+.\}
+fixed "Branch out of range" error message \- was overstated by 256 bytes for backward branches
+.RE
+.sp
+.RS 4
+.ie n \{\
+\h'-04'\(bu\h'+03'\c
+.\}
+.el \{\
+.sp -1
+.IP \(bu 2.3
+.\}
+new command-line option \fB/M\fR prints a Makefile rule
+.RE
+.sp
+.RS 4
+.ie n \{\
+\h'-04'\(bu\h'+03'\c
+.\}
+.el \{\
+.sp -1
+.IP \(bu 2.3
+.\}
+command\-line options are now case\-insensitive
+.RE
+.sp
+.RS 4
+.ie n \{\
+\h'-04'\(bu\h'+03'\c
+.\}
+.el \{\
+.sp -1
+.IP \(bu 2.3
+.\}
+on Windows error messages are printed in red, warnings in yellow
+.RE
+.SS "Version 3\&.0\&.1 (2007\-04\-22)"
+.sp
+.RS 4
+.ie n \{\
+\h'-04'\(bu\h'+03'\c
+.\}
+.el \{\
+.sp -1
+.IP \(bu 2.3
+.\}
+fixed a bug in
+OPT H\-
+mode
+.RE
+.sp
+.RS 4
+.ie n \{\
+\h'-04'\(bu\h'+03'\c
+.\}
+.el \{\
+.sp -1
+.IP \(bu 2.3
+.\}
+made
+\fBxasm\fR
+compilable with the latest D compiler v1\&.010 (there were incompatible changes in the D language and library)
+.RE
+.SS "Version 3\&.0\&.0 (2005\-05\-22)"
+.sp
+.RS 4
+.ie n \{\
+\h'-04'\(bu\h'+03'\c
+.\}
+.el \{\
+.sp -1
+.IP \(bu 2.3
+.\}
+rewritten from the x86 assembly language to the
+D programming language
+\- Linux version is now available and DOS is no longer supported
+.RE
+.sp
+.RS 4
+.ie n \{\
+\h'-04'\(bu\h'+03'\c
+.\}
+.el \{\
+.sp -1
+.IP \(bu 2.3
+.\}
+no limits for line length, number of
+ICLs,
+ORGs,IFTs
+and labels
+.RE
+.sp
+.RS 4
+.ie n \{\
+\h'-04'\(bu\h'+03'\c
+.\}
+.el \{\
+.sp -1
+.IP \(bu 2.3
+.\}
+Unix\-style command\-line options are supported
+.RE
+.sp
+.RS 4
+.ie n \{\
+\h'-04'\(bu\h'+03'\c
+.\}
+.el \{\
+.sp -1
+.IP \(bu 2.3
+.\}
+\fB/e\fR
+option is no longer supported
+.RE
+.sp
+.RS 4
+.ie n \{\
+\h'-04'\(bu\h'+03'\c
+.\}
+.el \{\
+.sp -1
+.IP \(bu 2.3
+.\}
+the label table is now sorted alphabetically
+.RE
+.SS "Version 2\&.6\&.1 (2005\-05\-21)"
+.sp
+.RS 4
+.ie n \{\
+\h'-04'\(bu\h'+03'\c
+.\}
+.el \{\
+.sp -1
+.IP \(bu 2.3
+.\}
+no more "Arithmetic overflow" and "Division by zero" errors for correct use of forward\-referenced labels (bug found by Marcin Lewandowski)
+.RE
+.sp
+.RS 4
+.ie n \{\
+\h'-04'\(bu\h'+03'\c
+.\}
+.el \{\
+.sp -1
+.IP \(bu 2.3
+.\}
+an error was reported in the following correct code:
+.sp
+.if n \{\
+.RS 4
+.\}
+.nf
+ ift 0
+foo equ 1
+ ift foo
+ eif
+ eif
+.fi
+.if n \{\
+.RE
+.\}
+.sp
+(bug found by Adrian Matoga)
+.RE
+.sp
+.RS 4
+.ie n \{\
+\h'-04'\(bu\h'+03'\c
+.\}
+.el \{\
+.sp -1
+.IP \(bu 2.3
+.\}
+errors for non\-existing
+INC @
+and
+DEC @
+.RE
+.sp
+.RS 4
+.ie n \{\
+\h'-04'\(bu\h'+03'\c
+.\}
+.el \{\
+.sp -1
+.IP \(bu 2.3
+.\}
+negative numbers fixed in the listing
+.RE
+.SS "Version 2\&.6\&.0 (2005\-02\-07)"
+.sp
+.RS 4
+.ie n \{\
+\h'-04'\(bu\h'+03'\c
+.\}
+.el \{\
+.sp -1
+.IP \(bu 2.3
+.\}
+long file names are supported under Windows
+.RE
+.sp
+.RS 4
+.ie n \{\
+\h'-04'\(bu\h'+03'\c
+.\}
+.el \{\
+.sp -1
+.IP \(bu 2.3
+.\}
+support for code relocated at runtime
+.RE
+.sp
+.RS 4
+.ie n \{\
+\h'-04'\(bu\h'+03'\c
+.\}
+.el \{\
+.sp -1
+.IP \(bu 2.3
+.\}
+line repeat counter
+.RE
+.sp
+.RS 4
+.ie n \{\
+\h'-04'\(bu\h'+03'\c
+.\}
+.el \{\
+.sp -1
+.IP \(bu 2.3
+.\}
+label values are now 32\-bit, not just 17\-bit
+.RE
+.sp
+.RS 4
+.ie n \{\
+\h'-04'\(bu\h'+03'\c
+.\}
+.el \{\
+.sp -1
+.IP \(bu 2.3
+.\}
+command\-line options
+\fB/n\fR
+and
+\fB/s\fR
+are no longer supported
+.RE
+.sp
+.RS 4
+.ie n \{\
+\h'-04'\(bu\h'+03'\c
+.\}
+.el \{\
+.sp -1
+.IP \(bu 2.3
+.\}
+fatal I/O errors (such as floppy not ready) no longer print the annoying "Abort, Retry, Ignore" message
+.RE
+.SS "Version 2\&.5\&.2 (2002\-10\-03)"
+.sp
+.RS 4
+.ie n \{\
+\h'-04'\(bu\h'+03'\c
+.\}
+.el \{\
+.sp -1
+.IP \(bu 2.3
+.\}
+version 2\&.5\&.1 broke Unix EOLs \- fixed
+.RE
+.sp
+.RS 4
+.ie n \{\
+\h'-04'\(bu\h'+03'\c
+.\}
+.el \{\
+.sp -1
+.IP \(bu 2.3
+.\}
+version 2\&.5\&.1 omitted all blank/comment/label lines, unless
+\fB/c\fR
+was used
+.RE
+.SS "Version 2\&.5\&.1 (2002\-08\-21)"
+.sp
+.RS 4
+.ie n \{\
+\h'-04'\(bu\h'+03'\c
+.\}
+.el \{\
+.sp -1
+.IP \(bu 2.3
+.\}
+fixed assembling sources with Atari EOLs
+.RE
+.sp
+.RS 4
+.ie n \{\
+\h'-04'\(bu\h'+03'\c
+.\}
+.el \{\
+.sp -1
+.IP \(bu 2.3
+.\}
+blank/comment/label lines in false conditionals are now correctly omitted in listing
+.RE
+.SS "Version 2\&.5 (2002\-07\-08)"
+.sp
+.RS 4
+.ie n \{\
+\h'-04'\(bu\h'+03'\c
+.\}
+.el \{\
+.sp -1
+.IP \(bu 2.3
+.\}
+fixed another bug, very similar to the previous one, e\&.g\&.
+.sp
+.if n \{\
+.RS 4
+.\}
+.nf
+ ift 0
+:label nop
+ eif
+.fi
+.if n \{\
+.RE
+.\}
+.sp
+reported "Label not defined before" error for the repeat count
+.RE
+.sp
+.RS 4
+.ie n \{\
+\h'-04'\(bu\h'+03'\c
+.\}
+.el \{\
+.sp -1
+.IP \(bu 2.3
+.\}
+OPT F+ causes ORG to fill the space between the old and the new location with $FFs
+.RE
+.sp
+.RS 4
+.ie n \{\
+\h'-04'\(bu\h'+03'\c
+.\}
+.el \{\
+.sp -1
+.IP \(bu 2.3
+.\}
+OPT G+ enables Atari 5200 mode for hardware register abbreviations
+.RE
+.SS "Version 2\&.4\&.1 (2002\-06\-27)"
+.sp
+.RS 4
+.ie n \{\
+\h'-04'\(bu\h'+03'\c
+.\}
+.el \{\
+.sp -1
+.IP \(bu 2.3
+.\}
+fixed a bug related to label definitions in conditionally skipped code, e\&.g\&.
+.sp
+.if n \{\
+.RS 4
+.\}
+.nf
+ ift 0
+label
+ eif
+.fi
+.if n \{\
+.RE
+.\}
+.sp
+reported "No ORG specified" error for the label definition
+.RE
+.SS "Version 2\&.4 (2002\-05\-22)"
+.sp
+.RS 4
+.ie n \{\
+\h'-04'\(bu\h'+03'\c
+.\}
+.el \{\
+.sp -1
+.IP \(bu 2.3
+.\}
+fixed incorrect unary operator precedence
+.RE
+.sp
+.RS 4
+.ie n \{\
+\h'-04'\(bu\h'+03'\c
+.\}
+.el \{\
+.sp -1
+.IP \(bu 2.3
+.\}
+fixed wrong label value after a skip pseudo command
+.RE
+.sp
+.RS 4
+.ie n \{\
+\h'-04'\(bu\h'+03'\c
+.\}
+.el \{\
+.sp -1
+.IP \(bu 2.3
+.\}
+the assembler is \&.EXE (\&.COM caused problems with DJGPP
+\fBmake\fR
+due to a bug in the DJGPP runtime)
+.RE
+.sp
+.RS 4
+.ie n \{\
+\h'-04'\(bu\h'+03'\c
+.\}
+.el \{\
+.sp -1
+.IP \(bu 2.3
+.\}
+the assembler executable is not compressed (so it occupies less space in the ZIP)
+.RE
+.sp
+.RS 4
+.ie n \{\
+\h'-04'\(bu\h'+03'\c
+.\}
+.el \{\
+.sp -1
+.IP \(bu 2.3
+.\}
+improved command\-line parsing: options may be used before source file name, tab character is a valid separator, slash may be used as a directory separator
+.RE
+.sp
+.RS 4
+.ie n \{\
+\h'-04'\(bu\h'+03'\c
+.\}
+.el \{\
+.sp -1
+.IP \(bu 2.3
+.\}
+error and warning messages are written to stderr, not stdout
+.RE
+.sp
+.RS 4
+.ie n \{\
+\h'-04'\(bu\h'+03'\c
+.\}
+.el \{\
+.sp -1
+.IP \(bu 2.3
+.\}
+added
+==
+(equals) operator, which is equivalent to
+=, but more natural for C/C++/Java programmers
+.RE
+.sp
+.RS 4
+.ie n \{\
+\h'-04'\(bu\h'+03'\c
+.\}
+.el \{\
+.sp -1
+.IP \(bu 2.3
+.\}
+added /d:label=value option: define a label
+.RE
+.sp
+.RS 4
+.ie n \{\
+\h'-04'\(bu\h'+03'\c
+.\}
+.el \{\
+.sp -1
+.IP \(bu 2.3
+.\}
+added /p option: print full paths in listing and error messages
+.RE
+.sp
+.RS 4
+.ie n \{\
+\h'-04'\(bu\h'+03'\c
+.\}
+.el \{\
+.sp -1
+.IP \(bu 2.3
+.\}
+added /q option: quiet mode
+.RE
+.sp
+.RS 4
+.ie n \{\
+\h'-04'\(bu\h'+03'\c
+.\}
+.el \{\
+.sp -1
+.IP \(bu 2.3
+.\}
+added /u option: warn of unused labels
+.RE
+.sp
+.RS 4
+.ie n \{\
+\h'-04'\(bu\h'+03'\c
+.\}
+.el \{\
+.sp -1
+.IP \(bu 2.3
+.\}
+writing to the object file may be suppressed with OPT O\-
+.RE
+.sp
+.RS 4
+.ie n \{\
+\h'-04'\(bu\h'+03'\c
+.\}
+.el \{\
+.sp -1
+.IP \(bu 2.3
+.\}
+added ELI (else if) directive
+.RE
+.sp
+.RS 4
+.ie n \{\
+\h'-04'\(bu\h'+03'\c
+.\}
+.el \{\
+.sp -1
+.IP \(bu 2.3
+.\}
+MWX and MWY may use INX/DEX and INY/DEY
+.RE
+.SS "Version 2\&.3 (2002\-02\-10)"
+.sp
+.RS 4
+.ie n \{\
+\h'-04'\(bu\h'+03'\c
+.\}
+.el \{\
+.sp -1
+.IP \(bu 2.3
+.\}
+fixed double skip (e\&.g\&.
+SCC:SNE)
+.RE
+.sp
+.RS 4
+.ie n \{\
+\h'-04'\(bu\h'+03'\c
+.\}
+.el \{\
+.sp -1
+.IP \(bu 2.3
+.\}
+fixed real numbers with two\-digit exponent
+.RE
+.sp
+.RS 4
+.ie n \{\
+\h'-04'\(bu\h'+03'\c
+.\}
+.el \{\
+.sp -1
+.IP \(bu 2.3
+.\}
+trailing spaces are trimmed from listing lines
+.RE
+.sp
+.RS 4
+.ie n \{\
+\h'-04'\(bu\h'+03'\c
+.\}
+.el \{\
+.sp -1
+.IP \(bu 2.3
+.\}
+label definitions allowed in blank, comment and repeated lines
+.RE
+.sp
+.RS 4
+.ie n \{\
+\h'-04'\(bu\h'+03'\c
+.\}
+.el \{\
+.sp -1
+.IP \(bu 2.3
+.\}
+unary operators
+.RE
+.sp
+.RS 4
+.ie n \{\
+\h'-04'\(bu\h'+03'\c
+.\}
+.el \{\
+.sp -1
+.IP \(bu 2.3
+.\}
+DTA implied byte mode
+.RE
+.sp
+.RS 4
+.ie n \{\
+\h'-04'\(bu\h'+03'\c
+.\}
+.el \{\
+.sp -1
+.IP \(bu 2.3
+.\}
+operand can be skipped for some opcodes
+.RE
+.SS "Version 2\&.2 (1999\-09\-10)"
+.sp
+.RS 4
+.ie n \{\
+\h'-04'\(bu\h'+03'\c
+.\}
+.el \{\
+.sp -1
+.IP \(bu 2.3
+.\}
+fixed invalid opcodes of absolute
+CPX
+and
+CPY
+.RE
+.sp
+.RS 4
+.ie n \{\
+\h'-04'\(bu\h'+03'\c
+.\}
+.el \{\
+.sp -1
+.IP \(bu 2.3
+.\}
+fixed: addressing mode not checked for branch commands
+.RE
+.sp
+.RS 4
+.ie n \{\
+\h'-04'\(bu\h'+03'\c
+.\}
+.el \{\
+.sp -1
+.IP \(bu 2.3
+.\}
+fixed
+ICL
+in last line
+.RE
+.sp
+.RS 4
+.ie n \{\
+\h'-04'\(bu\h'+03'\c
+.\}
+.el \{\
+.sp -1
+.IP \(bu 2.3
+.\}
+fixed
+OPT H\-H+
+.RE
+.sp
+.RS 4
+.ie n \{\
+\h'-04'\(bu\h'+03'\c
+.\}
+.el \{\
+.sp -1
+.IP \(bu 2.3
+.\}
+fixed first
+ORG *
+.RE
+.sp
+.RS 4
+.ie n \{\
+\h'-04'\(bu\h'+03'\c
+.\}
+.el \{\
+.sp -1
+.IP \(bu 2.3
+.\}
+no need to set origin counter until it\(cqs used
+.RE
+.sp
+.RS 4
+.ie n \{\
+\h'-04'\(bu\h'+03'\c
+.\}
+.el \{\
+.sp -1
+.IP \(bu 2.3
+.\}
+allow Unix, Macintosh and Atari EOLs
+.RE
+.sp
+.RS 4
+.ie n \{\
+\h'-04'\(bu\h'+03'\c
+.\}
+.el \{\
+.sp -1
+.IP \(bu 2.3
+.\}
+value of
+\fItrue\fR
+changed to 1
+.RE
+.sp
+.RS 4
+.ie n \{\
+\h'-04'\(bu\h'+03'\c
+.\}
+.el \{\
+.sp -1
+.IP \(bu 2.3
+.\}
+command\-line option to set environment variables on error
+.RE
+.sp
+.RS 4
+.ie n \{\
+\h'-04'\(bu\h'+03'\c
+.\}
+.el \{\
+.sp -1
+.IP \(bu 2.3
+.\}
+commane\-line option to assemble only if source is newer than object file
+.RE
+.sp
+.RS 4
+.ie n \{\
+\h'-04'\(bu\h'+03'\c
+.\}
+.el \{\
+.sp -1
+.IP \(bu 2.3
+.\}
+opcode extracting
+.RE
+.sp
+.RS 4
+.ie n \{\
+\h'-04'\(bu\h'+03'\c
+.\}
+.el \{\
+.sp -1
+.IP \(bu 2.3
+.\}
+repeat line
+.RE
+.sp
+.RS 4
+.ie n \{\
+\h'-04'\(bu\h'+03'\c
+.\}
+.el \{\
+.sp -1
+.IP \(bu 2.3
+.\}
+two instructions in line
+.RE
+.sp
+.RS 4
+.ie n \{\
+\h'-04'\(bu\h'+03'\c
+.\}
+.el \{\
+.sp -1
+.IP \(bu 2.3
+.\}
+conditional repeat and skip pseudo commands
+.RE
+.sp
+.RS 4
+.ie n \{\
+\h'-04'\(bu\h'+03'\c
+.\}
+.el \{\
+.sp -1
+.IP \(bu 2.3
+.\}
+(),0+ and (),0\- pseudo addressing modes
+.RE
+.SS "Version 2\&.0 (1998\-11\-12)"
+.sp
+.RS 4
+.ie n \{\
+\h'-04'\(bu\h'+03'\c
+.\}
+.el \{\
+.sp -1
+.IP \(bu 2.3
+.\}
+fixed: name of object file was truncated
+.RE
+.sp
+.RS 4
+.ie n \{\
+\h'-04'\(bu\h'+03'\c
+.\}
+.el \{\
+.sp -1
+.IP \(bu 2.3
+.\}
+fixed forward references in
+EQU
+and
+DTA
+.RE
+.sp
+.RS 4
+.ie n \{\
+\h'-04'\(bu\h'+03'\c
+.\}
+.el \{\
+.sp -1
+.IP \(bu 2.3
+.\}
+fixed hex numbers
+.RE
+.sp
+.RS 4
+.ie n \{\
+\h'-04'\(bu\h'+03'\c
+.\}
+.el \{\
+.sp -1
+.IP \(bu 2.3
+.\}
+\&.OBX
+is now the default extension for the object file
+.RE
+.sp
+.RS 4
+.ie n \{\
+\h'-04'\(bu\h'+03'\c
+.\}
+.el \{\
+.sp -1
+.IP \(bu 2.3
+.\}
+options (command\-line switches and
+OPT)
+.RE
+.sp
+.RS 4
+.ie n \{\
+\h'-04'\(bu\h'+03'\c
+.\}
+.el \{\
+.sp -1
+.IP \(bu 2.3
+.\}
+listing
+.RE
+.sp
+.RS 4
+.ie n \{\
+\h'-04'\(bu\h'+03'\c
+.\}
+.el \{\
+.sp -1
+.IP \(bu 2.3
+.\}
+label table
+.RE
+.sp
+.RS 4
+.ie n \{\
+\h'-04'\(bu\h'+03'\c
+.\}
+.el \{\
+.sp -1
+.IP \(bu 2.3
+.\}
+conditional assembly
+.RE
+.sp
+.RS 4
+.ie n \{\
+\h'-04'\(bu\h'+03'\c
+.\}
+.el \{\
+.sp -1
+.IP \(bu 2.3
+.\}
+user errors (ERT)
+.RE
+.sp
+.RS 4
+.ie n \{\
+\h'-04'\(bu\h'+03'\c
+.\}
+.el \{\
+.sp -1
+.IP \(bu 2.3
+.\}
+warnings
+.RE
+.sp
+.RS 4
+.ie n \{\
+\h'-04'\(bu\h'+03'\c
+.\}
+.el \{\
+.sp -1
+.IP \(bu 2.3
+.\}
+6 new pseudo commands (memory\-to\-memory move)
+.RE
+.sp
+.RS 4
+.ie n \{\
+\h'-04'\(bu\h'+03'\c
+.\}
+.el \{\
+.sp -1
+.IP \(bu 2.3
+.\}
+8 pseudo addressing modes
+.RE
+.sp
+.RS 4
+.ie n \{\
+\h'-04'\(bu\h'+03'\c
+.\}
+.el \{\
+.sp -1
+.IP \(bu 2.3
+.\}
+indirect conditional jumps
+.RE
+.sp
+.RS 4
+.ie n \{\
+\h'-04'\(bu\h'+03'\c
+.\}
+.el \{\
+.sp -1
+.IP \(bu 2.3
+.\}
+Atari floating\-point numbers
+.RE
+.sp
+.RS 4
+.ie n \{\
+\h'-04'\(bu\h'+03'\c
+.\}
+.el \{\
+.sp -1
+.IP \(bu 2.3
+.\}
+object file headers optimization
+.RE
+.sp
+.RS 4
+.ie n \{\
+\h'-04'\(bu\h'+03'\c
+.\}
+.el \{\
+.sp -1
+.IP \(bu 2.3
+.\}
+improved expressions \- 19 operators and brackets, 32\-bit arithmetic
+.RE
+.sp
+.RS 4
+.ie n \{\
+\h'-04'\(bu\h'+03'\c
+.\}
+.el \{\
+.sp -1
+.IP \(bu 2.3
+.\}
+improved signed numbers
+.RE
+.sp
+.RS 4
+.ie n \{\
+\h'-04'\(bu\h'+03'\c
+.\}
+.el \{\
+.sp -1
+.IP \(bu 2.3
+.\}
+improved
+INS: inserting specified part of file
+.RE
+.SS "Version 1\&.2 (1998\-08\-14)"
+.sp
+.RS 4
+.ie n \{\
+\h'-04'\(bu\h'+03'\c
+.\}
+.el \{\
+.sp -1
+.IP \(bu 2.3
+.\}
+first release
+.RE
+.SH "AUTHOR"
+.sp
+Piotr Fusik <fox@scene\&.pl>
+.SH "SEE ALSO"
+.sp
+Website: https://github\&.com/pfusik/xasm
