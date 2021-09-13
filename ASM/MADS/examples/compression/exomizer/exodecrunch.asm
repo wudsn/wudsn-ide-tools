@@ -1,7 +1,8 @@
 
-// !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-// exomizer mem -l0xLOAD_ADDRESS <INPUT_FILENAME> -o <OUTPUT_FILENAME>
-// !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+// !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+// exomizer mem -P0 -l0xLOAD_ADDRESS -c <INPUT_FILENAME> -o <OUTPUT_FILENAME>
+// exomizer mem -P0 -l none -c <INPUT_FILENAME> -o <OUTPUT_FILENAME>
+// !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
 ;
 ; Copyright (c) 2002 - 2005 Magnus Lind.

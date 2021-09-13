@@ -1,6 +1,4 @@
 /*
-    $Id: exp.c 327 2014-02-09 13:06:55Z adavie $
-
     the DASM macro assembler (aka small systems cross assembler)
 
     Copyright (c) 1988-2002 by Matthew Dillon.
@@ -34,8 +32,6 @@
  */
 
 #include "asm.h"
-
-SVNTAG("$Id: exp.c 327 2014-02-09 13:06:55Z adavie $");
 
 #define UNION	0
 
@@ -108,9 +104,11 @@ int IsAlphaNum( int c );
 *    val	zero page or absolute
 *    val,x	zero,x or absolute,x
 *    val,y	zero,y or absolute,y
+*    val,sp	stack pointer indexed + offset
 *    (val)	indirect
 *    (val,x)	zero indirect x
 *    (val),y	zero indirect y
+*    val,val    zero page, relative
 *
 *    exp, exp,.. LIST of expressions
 *
@@ -135,6 +133,8 @@ opfunc_t Opdis[MAXOPS];
 
 int	Argi, Opi, Lastwasop;
 int	Argibase, Opibase;
+
+char ucasm_indexed_notation = false;
 
 SYMBOL *eval(const char *str, int wantmode)
 {
@@ -334,20 +334,46 @@ SYMBOL *eval(const char *str, int wantmode)
             /* fall thru OK */
             
         case '[':   /*  eventually an argument      */
+	    ucasm_indexed_notation = false;
             
+	    if ((((((str[1]|0x20) == 'x') || ((str[1]|0x20) == 'y')) && (str[2] == '+')) ||     // X- or Y-indexed address mode
+	        (((str[1]|0x20) == 's') && ((str[2]|0x20) == 'p') && (str[3] == '+'))) &&	// SP-indexed address mode
+		((Processor == 68705) || (Processor == 6811) || (Processor == 68908)))
+	    {
+		ucasm_indexed_notation = true;
+		// UCASM compatibility, allow notations [X+255], [Y+3], [SP+5]
+		switch(str[1]|0x20) {
+		    case 'x': 
+			cur->addrmode = AM_BYTEADRX; 
+			//FIX: OPCODE.FORCE / Mnext adaption moved to ops.c
+			break;
+
+		    case 'y': cur->addrmode = AM_BYTEADRY; break;
+
+		    case 's': 
+			cur->addrmode = AM_BYTEADR_SP;
+			//FIX: OPCODE.FORCE / Mnext adaption moved to ops.c
+			break;
+		}
+		str += 3;	/* skip '[',{x,y,s},'+' */
+		if ((cur->addrmode == AM_BYTEADR_SP) || (cur->addrmode == AM_WORDADR_SP)) {
+		    ++str;	/* skip also 'p' */
+		}
+	    } else {
+		ucasm_indexed_notation = false;
             if (Opi == MAXOPS)
                 puts("too many ops");
             else
                 Oppri[Opi++] = 0;
             ++str;
+	    }
             break;
             
         case ')':
             
             if (wantmode)
             {
-                if (cur->addrmode == AM_INDWORD &&
-                    str[1] == ',' && (str[2]|0x20) == 'y')
+                if (cur->addrmode == AM_INDWORD && str[1] == ',' && (str[2]|0x20) == 'y')
                 {
                     cur->addrmode = AM_INDBYTEY;
                     str += 2;
@@ -365,6 +391,11 @@ SYMBOL *eval(const char *str, int wantmode)
                    //allow other errors (like phase errros) to resolve before our "++Redo"
                    //ultimately forces a failure.
                 }
+
+                if ((cur->addrmode == AM_INDWORD) && (str[1] == '\0') && (Processor == 16502))
+                {
+                    cur->addrmode = AM_INDBYTE;
+                }
                 ++str;
                 break;
             }
@@ -378,10 +409,15 @@ SYMBOL *eval(const char *str, int wantmode)
             if (Opi != Opibase)
                 --Opi;
             ++str;
+
+	    if (ucasm_indexed_notation) {
+		ucasm_indexed_notation = false;
+	    } else {
             if (Argi == Argibase)
             {
                 puts("']' error, no arg on stack");
                 break;
+            }
             }
             
             if (*str == 'd')
@@ -394,6 +430,7 @@ SYMBOL *eval(const char *str, int wantmode)
                     Argstring[Argi-1] = strcpy(ckmalloc(strlen(buf)+1),buf);
                 }
             }
+	    Lastwasop = 0;
             break;
 
         case '#':
@@ -419,6 +456,26 @@ SYMBOL *eval(const char *str, int wantmode)
                 cur->addrmode = AM_INDBYTEX;
                 ++str;
             }
+            else if (cur->addrmode != AM_INDWORD && scr != 'x' && scr != 'y' && (Processor == 16502))
+            {
+                cur->addrmode = AM_BYTEREL;
+                SYMBOL *pNewSymbol = allocsymbol();
+                cur->next = pNewSymbol;
+                --Argi;
+                cur->value = Argstack[Argi];
+                cur->flags = Argflags[Argi];
+
+                if ((cur->string = (void *)Argstring[Argi]) != NULL)
+                {
+                    cur->flags |= SYM_STRING;
+                    if (Xdebug)
+                        printf("STRING: %s\n", cur->string);
+                }
+                cur = pNewSymbol;
+
+                // Seems like this is not needed - not sure why
+                // ++str;
+            }
             //FIX: detect illegal opc (zp,y) syntax...
             else if ((cur->addrmode == AM_INDWORD && scr == 'y' && str[2]==')')&&(wantmode))
             {
@@ -439,27 +496,20 @@ SYMBOL *eval(const char *str, int wantmode)
             {
                 cur->addrmode = AM_0X;
                 ++str;
-
-                //FIX: OPCODE.FORCE needs to be adjusted for x indexing...
-                if(Mnext==AM_WORDADR)
-                     Mnext=AM_WORDADRX;
-                if(Mnext==AM_BYTEADR)
-                     Mnext=AM_BYTEADRX;
-                if(Mnext==AM_INDWORD)
-                     Mnext=AM_0X;
+                //FIX: OPCODE.FORCE / Mnext adaption moved to ops.c
             }
             else if (scr == 'y' && !IsAlphaNum(str[2]))
             {
                 cur->addrmode = AM_0Y;
                 ++str;
-
-                //FIX: OPCODE.FORCE needs to be adjusted for x indexing...
-                if(Mnext==AM_WORDADR)
-                     Mnext=AM_WORDADRY;
-                if(Mnext==AM_BYTEADR)
-                     Mnext=AM_BYTEADRY;
-                if(Mnext==AM_INDWORD)
-                     Mnext=AM_0Y;
+                //FIX: OPCODE.FORCE / Mnext adaption moved to ops.c
+            }
+            else if ((scr == 's') && ((str[2]|0x20) == 'p') && !IsAlphaNum(str[3]))      // stack pointer indexed address mode
+            {
+                cur->addrmode = AM_BYTEADR_SP;
+                ++str;
+                ++str;
+                //FIX: OPCODE.FORCE / Mnext adaption moved to ops.c
             }
             else
             {
@@ -509,7 +559,14 @@ SYMBOL *eval(const char *str, int wantmode)
             }
 
             if (*str == '0')
+            {
+                if (str[1] == 'x') {                   // allow also '0xAA' notation for '$AA'
+                    ++str;
+                    str = (char *)pushhex(str+1);
+                } else {
                 str = pushoct(str);
+                }
+            }
             else
             {
                 if (*str > '0' && *str <= '9')
@@ -535,8 +592,11 @@ SYMBOL *eval(const char *str, int wantmode)
             if (Xdebug)
                 printf("STRING: %s\n", cur->string);
         }
-        if (base->addrmode == 0)
+        if ((base->addrmode == 0) && (cur->addrmode != AM_BYTEREL))
             base->addrmode = AM_BYTEADR;
+
+        if ((base->addrmode == 0) && (cur->addrmode == AM_BYTEREL))
+            base->addrmode = AM_BYTEREL;
     }
 
     if (Argi != Argibase || Opi != Opibase)
@@ -569,6 +629,12 @@ void evaltop(void)
         return;
     }
     --Opi;
+
+    if (Opdis[Opi] == NULL) {
+    	asmerr( ERROR_AVOID_SEGFAULT, true, "operator function table" );
+    	return;
+    }
+
     if (Oppri[Opi] == 128) {
         if (Argi < Argibase + 1) {
             asmerr( ERROR_SYNTAX_ERROR, false, NULL );
@@ -645,6 +711,12 @@ void doop(opfunc_t func, int pri)
     {
         if (Xdebug)
             printf("doop @ %d unary\n", Opi);
+
+	if (Opi >= MAXOPS) {
+		fprintf(stderr,"doop: error: operator index(%d) > MAXOPS(%d), probably too deep recursion", Opi, MAXOPS);
+		asmerr(ERROR_RECURSION_TOO_DEEP, true, "doop()");
+		return;
+	}
         Opdis[Opi] = func;
         Oppri[Opi] = pri;
         ++Opi;
@@ -697,10 +769,12 @@ void op_not(long v1, int f1)
 void op_mult(long v1, long v2, int f1, int f2)
 {
     stackarg(v1 * v2, f1|f2, NULL);
+    Lastwasop = 1;
 }
 
 void op_div(long v1, long v2, int f1, int f2)
 {
+    Lastwasop = 1;
     if (f1|f2) {
         stackarg(0L, f1|f2, NULL);
         return;
@@ -726,6 +800,7 @@ void op_mod(long v1, long v2, int f1, int f2)
         stackarg(v1, 0, NULL);
     else
         stackarg(v1 % v2, 0, NULL);
+    Lastwasop = 1;
 }
 
 void op_question(long v1, long v2, int f1, int f2)
@@ -739,11 +814,13 @@ void op_question(long v1, long v2, int f1, int f2)
 void op_add(long v1, long v2, int f1, int f2)
 {
     stackarg(v1 + v2, f1|f2, NULL);
+    Lastwasop = 1;
 }
 
 void op_sub(long v1, long v2, int f1, int f2)
 {
     stackarg(v1 - v2, f1|f2, NULL);
+    Lastwasop = 1;
 }
 
 void op_shiftright(long v1, long v2, int f1, int f2)
@@ -897,16 +974,26 @@ const char *pushstr(const char *str)
     return str;
 }
 
+static int symbolRecursionCount = 0;
+
 const char *pushsymbol(const char *str)
 {
     SYMBOL *sym;
     const char *ptr;
     unsigned char macro = 0;
-    
+
+    symbolRecursionCount++;
+
+    if (symbolRecursionCount > 1000) {
+    	fprintf(stderr, "error: %s:%d: recursion > 1000, too deep, aborting\n",__FILE__,__LINE__);
+    	asmerr(ERROR_RECURSION_TOO_DEEP, true, "pushsymbol()");
+    }
+
     for (ptr = str;
     *ptr == '_' ||
         *ptr == '.' ||
         (*ptr >= 'a' && *ptr <= 'z') ||
+        (*ptr == '@') ||                         // UCASM compatibility, allow at-sign to apear in label names
         (*ptr >= 'A' && *ptr <= 'Z') ||
         (*ptr >= '0' && *ptr <= '9');
     ++ptr
@@ -951,6 +1038,7 @@ const char *pushsymbol(const char *str)
         sym->flags = SYM_REF|SYM_MASREF|SYM_UNKNOWN;
         ++Redo_eval;
     }
+    symbolRecursionCount--;
     return ptr;
 }
 

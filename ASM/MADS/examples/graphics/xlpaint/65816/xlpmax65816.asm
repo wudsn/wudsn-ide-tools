@@ -44,7 +44,7 @@ Bufor2	equ $6780		;$0780	$6780-$6EFF	bufor2 przechowuje wartosci kolorow
 DIREC	equ Bufor1		;$0300	oryginalnie bylo $0400-$06ff	bufor na katalog dyskietki
 
 kol1	equ $6f00		;$C4	$6f00-$6fc3	kolory dla $d016
-*.klawsk2=$6fc1		$6FC4-$70AF		
+*.klawsk2=$6fc1		$6FC4-$70AF
 Ekran10 equ $70B0		;$1E00	$70B0-$8EAF\	ekran #1
 Ekran11 equ $8000		;$0EB0	$8000-$8EAF/
 
@@ -247,7 +247,7 @@ KlawSk01 equ *
  dta b($37) ;Sh+.	;normalna wysokosc kursora
  dta b($36) ;Sh+,	;podwojna wysokosc kursora
  dta b($0b) ;U
- dta b($11) ;HELP  
+ dta b($11) ;HELP
  dta b($0c) ;RETURN
  dta b($76) ;Sh+CLR
  dta b($74) ;Sh+DEL
@@ -331,7 +331,7 @@ KlawSk02 equ *
  dta a(SetCurNorm)	;Sh+.
  dta a(SetCur2Y)	;Sh+,
  dta a(UNDOmax)		;U
- dta a(HELP)		;HELP  
+ dta a(HELP)		;HELP
  dta a(PutFire)		;RETURN
  dta a(CLSScreen)	;Sh+CLR
  dta a(CLSColor)	;Sh+DEL
@@ -494,7 +494,7 @@ t3	lda #0
 ;	ldx #192	;ustawienia dla normal screen i zoom screen
 ;	stx lin1+1
 ;	inx
-;	stx lin2+1	
+;	stx lin2+1
 ;	lda #0
 ;	sta tryb+1
 
@@ -518,7 +518,7 @@ set_col	regA	16
 	jmp	color
 
 normal	regA	16
-	mva	TDL1,X	DL0Ek1+1	
+	mva	TDL1,X	DL0Ek1+1
 	mva	TDL2,X	DL0Ek2+1
 
 	mva	tdl_dll0,x	dll0+2
@@ -631,7 +631,7 @@ nn_	lda kol1,x
 	sta $d017
 	lda jas3,x
 	sta $d018
-;	lda jas0,x	
+;	lda jas0,x
 ;	sta $d01a
 
 	inx
@@ -668,7 +668,7 @@ col4	lda #0
 
 	jmp	ExitDLI
 
-*-----------------------------   
+*-----------------------------
 * DLIV dla wybieranie z palety kolorow
 * dzieli ekran na polowe
 * w dolnej wybieranie kolorow
@@ -717,7 +717,7 @@ r_dlv5	sta $d40a	;kolory palety - normal
 	lda #2
 	sta $d016
 	lda #4
-	sta $d017	
+	sta $d017
 	lda #6
 	sta $d018
 ;	lda #10
@@ -755,7 +755,7 @@ color3	ldx	#0
 	ldx #15
 	sta $d40a
 	dex
-	bne *-4	
+	bne *-4
 
 	ldx #8
 tt_
@@ -808,7 +808,7 @@ STY1	lda AdYLo,y
 *-----------------------------
 SetCol  sta Nrcol0
 	tax
-	
+
 	ldy #5
 sc_	lda KolMask1,x
 	sta panel2+34,y
@@ -1002,11 +1002,11 @@ sc_k	JSR Wait
 
 	jsr sbar
 
-	lda $2fc	klawisze
+	lda $2fc	; klawisze
 	cmp #$ff
 	beq _j1_
 
-	cmp #6		left
+	cmp #6		; left
 	bne _j2_
 	ldx sbar+1
 	beq _j1_
@@ -1014,9 +1014,9 @@ sc_k	JSR Wait
 	dex
 	stx sbar+1
 	jsr sbar
-	jmp _j1_	
+	jmp _j1_
 
-_j2_	cmp #7		right
+_j2_	cmp #7		; right
 	bne _j3_
 	ldx sbar+1
 	cpx #7
@@ -1025,19 +1025,19 @@ _j2_	cmp #7		right
 	inx
 	stx sbar+1
 	jsr sbar
-	jmp _j1_	
+	jmp _j1_
 
-_j3_	cmp #14		up2
+_j3_	cmp #14		; up2
 	bne _j4_
 	ldx sbar+1
 	ldy kol,x
-	iny	
+	iny
 	iny
 	tya
 	sta kol,x
 	jmp _j1_
 
-_j4_	cmp #15		down2
+_j4_	cmp #15		; down2
 	bne _j5_
 	ldx sbar+1
 	ldy kol,x
@@ -1047,7 +1047,7 @@ _j4_	cmp #15		down2
 	sta kol,x
 	jmp _j1_
 
-_j5_	cmp #$8e	up16
+_j5_	cmp #$8e	; up16
 	bne _j6_
 	ldx sbar+1
 	ldy kol,x
@@ -1055,12 +1055,12 @@ _j5_	cmp #$8e	up16
 	clc
 	adc #16
 	sta kol,x
-	jmp _j1_	
+	jmp _j1_
 
 _j6_	cmp #$1c
 	beq set_off
 
-	cmp #$8f	down16
+	cmp #$8f	; down16
 	bne _j1_
 	ldx sbar+1
 	ldy kol,x
@@ -1291,7 +1291,7 @@ Sts	ora #0
 	bne TK1
 TK2	JSR KEY
 	bcc TK0
-	
+
 	cmp #28
 	bne skIp
 Ust	lda #0		; undo on/off
@@ -1308,7 +1308,7 @@ sk__	jsr WndEx2
 	sta WskSh+1
 	sta Ust+1
 	beq TK0
-	
+
 skIp	CMP #$ef dC		;Shift+CTRL+Q	-exit
 	BEQ END
 	jsr TK00
@@ -1395,7 +1395,7 @@ TK4	cmp KlawSk1,y
 	cpy #KlawSk3-KlawSk1
 	bcc TK4
 	RTS
-TK41	jmp TK8	
+TK41	jmp TK8
 
 TK22	ldy #KlawSk21-KlawSk2	;czy wybral funkcje
 	cmp KlawSk2,y
@@ -1478,7 +1478,7 @@ mvp00	lda #0		;wskocz do wyboru koloru - gorne menu
 mvp01	lda <PMG+$41c-16
 	sta kursor+1
 	jsr CLSPMG
-	jmp MVP11	
+	jmp MVP11
 
 JoyKey1 lda $d300	;ruch joya
 	and #$f
@@ -1510,7 +1510,7 @@ MVP11	lda #0
 	lda <PMG+$41c
 	sta kursor+1
 	jsr CLSPMG
-	
+
 MVP22	lda #0
 	lsr @		;w lewo
 	bcs MVP33
@@ -1860,7 +1860,7 @@ CLSColor
 	ldy PMGY
 	jsr Locate
 	sta NrCol
-	
+
 CLC0	ldy #0
 	sty YAct
 CLC1	ldx #0		;przegladamy 160 pixli w poziomie
@@ -1870,7 +1870,7 @@ CLC1	ldx #0		;przegladamy 160 pixli w poziomie
 	jsr Locate
 	cmp NrCol
 	bne CLC2
-	
+
 	ldx NrCol0
 	lda YAct
 	lsr @
@@ -1899,7 +1899,7 @@ CLC2	ldx XAct
 ;	bne CLC4
 
 ;	ldx NrCol0
-	
+
 ;	ldy KolMask1,x
 ;	lda KolMask2,x
 ;	ldx XAct
@@ -2070,7 +2070,7 @@ LMic	lda $359	;czy = 7684 ?
 	cmp #5
 ;	bne LInp
 	bcs LInp
-	
+
 ladujMIC
 	mva	#0	block+1
 
@@ -2169,7 +2169,7 @@ Lbmp2	jsr Read1
 	JSR Read1
 ;	STA $2C4
 	sta kol+1
-	sta jas+1	
+	sta jas+1
 	JSR Read1
 ;	STA $2C5
 	sta kol+2
@@ -2213,7 +2213,7 @@ LCrunchM
 	sty Ust+1	; blokada UNDO
 	jsr read2
 	mva Ek01 kol0
-	
+
 	ldx <kol1
 	ldy >kol1
 	jsr read2
@@ -2223,7 +2223,7 @@ LCrunchM
 	ldx <kol3
 	ldy >kol3
 	jsr read2
-	
+
 	ldx <Ek01	; puszczamy w maliny :)
 	ldy >Ek01	; tylko pierwszy bajt nas interesuje
 	jsr read2
@@ -2385,7 +2385,7 @@ TAK_	DEC ILE
 *-------------------
 *odczyt 1 bajtu z bufora
 
-Read1	LDA $ffff 
+Read1	LDA $ffff
 	php
 ;	INC Read1+1
 ;	BNE *+5
@@ -2401,7 +2401,7 @@ PUT	TAX
 	LDA WYS
 	AND #1
 	BEQ PUT2
-PUT1	STX $ffff 
+PUT1	STX $ffff
 	LDA PUT1+1
 	CLC
 	ADC #80
@@ -2409,7 +2409,7 @@ PUT1	STX $ffff
 	BCC *+5
 	INC PUT1+2
 	RTS
-PUT2	STX $ffff 
+PUT2	STX $ffff
 	LDA PUT2+1
 	CLC
 	ADC #80
@@ -2497,10 +2497,10 @@ SaveCrunch ldy #0
 	sta bufor2+192*2,y
 	lda kol3,y
 	sta bufor2+192*3,y
-	
+
 	iny
 	cpy #192
-	bne SaveCrunch+2	
+	bne SaveCrunch+2
 
 	LDA <plik1
 	LDX >plik1
@@ -2561,7 +2561,7 @@ sav	lda #0
 
 	lda <tabk
 	ldx >tabk
-	jsr write2	
+	jsr write2
 	jmp cru2
 
 XLP	ldx LFTxt+4
@@ -2718,7 +2718,7 @@ TAK__2 LDA BYT
 	STX ILE
 	RTS
 
-GET1	LDX $ffff 
+GET1	LDX $ffff
 	LDA GET1+1
 	CLC
 	ADC #80
@@ -2728,7 +2728,7 @@ GET1	LDX $ffff
 	DEC WYS
 	RTS
 
-GET2	LDX $ffff 
+GET2	LDX $ffff
 	LDA GET2+1
 	CLC
 	ADC #80
@@ -3162,7 +3162,7 @@ new_col	lda pmgy
 moz_	sta tabk,y	;ustaw nastepna palete
 	iny
 	cpy #192
-	bne moz_	
+	bne moz_
 new_	jmp SetColor
 
 *-----------------------------
@@ -3170,7 +3170,7 @@ ZOOM	lda #$0
 	sta WskZoom
 ;	lda #$ff
 ;	sta TK0+1
-	
+
 	lda PMGY
 	cmp #192
 	bcc Zommm
@@ -3237,10 +3237,10 @@ Zom0	jsr wait
 	ldx #0
 	stx tim+1
 	stx col4+1
-	stx color+1	
+	stx color+1
 	inx
 	stx _zoom_+1
-	
+
 	JSR	PUTZOOM
 
 Zom	jsr PutPMG
@@ -3275,7 +3275,7 @@ Zom11	JSR KEY
 ;	cmp #183		;Insert pod Zoomem
 ;	beq GetColJmp
 
-oldKey	lda #0	
+oldKey	lda #0
 skp	cmp #12			;return
 	bne Zom2
 	jsr wait
@@ -3583,7 +3583,7 @@ ZmUp
 	mva	#Bufor1+$728	ZmU3+1
 
 	mva	#Bufor2+$700	ZmU4+1
-	mva	#Bufor2+$728	ZmU5+1	
+	mva	#Bufor2+$728	ZmU5+1
 
 	LDX #8
 	LDY #$57-1
@@ -3674,7 +3674,7 @@ _lp
 	sta	(Pom1),y
 	sta	(Pom2),y
 
-/*	
+/*
 
 	ldy	#20
 _cp2	mva	dpanel,y	(Pom1),y
@@ -3803,7 +3803,7 @@ tst_gw	lda filename,y	;jesli nie ma to wczytaj plik o podanej nazwie
 	dey
 	bpl tst_gw
 	jmp czyta
-	
+
 _cont	lda pom1
 	CMP #$1B	;Esc
 	BEQ DRCO
@@ -4302,7 +4302,7 @@ PPG41	lda DatPMG0,x
 	sta PMG+$410,y
 	iny
 	rts
-;---	
+;---
 PutPMG	lda WskZoom
 	bmi PtPMG1
 
@@ -4327,7 +4327,7 @@ Pt4	:4 jsr PPG41
 ;	iny
 	dex
 	bpl Pt4
-	
+
 	lda #3
 	sta $d008
 	lda PMGX
@@ -4608,7 +4608,7 @@ NieWP	lda kolmask1,x
 	ldy kolmask2,x
 WP2	ldx #0
 	jmp Plot_2
-	
+
 GPlot	LDX PMGX
 	LDY PMGY
 Plot	jsr AdrPt
@@ -4696,7 +4696,7 @@ AdrPt
 ;	mwa	#Ekran10	PomADR1
 ;	mwa	#Ekran20	PomADR2
 ;	RTS
-	
+
 	LDA AdYLo,Y
 	STA POM1
 	STA POM2
@@ -4714,7 +4714,7 @@ AdrPt
 Plot4	regA	16
 	mva #Bufor1 Pom1
 	mva #Bufor2 Pom2
-	regA	8	
+	regA	8
 
 	lda #0
 	sta BYT
@@ -4772,7 +4772,7 @@ Plot4	regA	16
 	lda KolMask0,x
 	sta (pom2),y
 ;	jmp Plt42
-	
+
 ;Plt41	lda Kolor1
 ;	and #3
 ;	tax
@@ -4920,7 +4920,7 @@ Lines	lda #0
 ;	beq *-3
 	jsr wait
 	jmp PutCur
-	
+
 Lines2  jsr Line3
 	lda PMGX
 	sta OldPMGX
@@ -5178,7 +5178,7 @@ PutOld	lda OldPMGX
 	lda PMGY
 	sta SqRY+1
 	rts
-	
+
 *-------------------
 Rays	lda #0
 	bne Rays2
@@ -5422,7 +5422,7 @@ Crr2	sta CrX
 	ldy #0
 	jsr PtCr
 	jmp GetOld
-*--	
+*--
 PtCr	stx CrF
 	sty CrF+1
 	lda CrY
@@ -5433,7 +5433,7 @@ CrSk1	jsr PlotyC
 	lda CrX
 	asl @
 	sta BYT
-	
+
 	lda CrY
 	asl @
 	sec
@@ -5604,7 +5604,7 @@ Disc	lda #0
 	inc Disc+1
 	jmp CirJ
 ;	jmp UstCur
-	
+
 Disc2	lda #0
 	sta Disc+1
 	sta DsLin+1
@@ -5769,12 +5769,12 @@ WMove	lda #0		;musi byc lda #0, nastepuje modyfikacja
 ;	stx PMGX
 ;	ldy CrY
 ;	sty PMGY
-	
+
 	ldx oldPMGX
 	stx oldX+1
 	ldy oldPMGY
 	sty oldY+1
-	
+
 	lda Kolor1
 	sta oldKol1+1
 	lda Kolor2
@@ -5791,7 +5791,7 @@ WMove	lda #0		;musi byc lda #0, nastepuje modyfikacja
 	sta Kolor1
 	sta Kolor2
 	jsr Box3
-	
+
 ;	lda #$ff
 ;	sta KolWC+1
 oldX	lda #0
@@ -6059,7 +6059,7 @@ WLight	lda <Light0
 	stx WinSk+2
 	jmp Window
 
-Light0	cmp #15		#6
+Light0	cmp #15		; #6
 	beq *+5
 	clc
 	adc #1
@@ -6085,7 +6085,7 @@ WNeg	lda <Negat0
 	stx WinSk+2
 	jmp Window
 
-Negat0	eor #15		7
+Negat0	eor #15		; 7
 	sec
 	sbc #1
 	RTS
@@ -6170,7 +6170,7 @@ Antiq0	sta NrCol
 	jsr Locate2
 	cmp NrCol
 	bne Antiq1
-	lda #15-4	3
+	lda #15-4	; 3
 	RTS
 Antiq1	bcc Antiq2
 	lda NrCol
@@ -6180,7 +6180,7 @@ Antiq1	bcc Antiq2
 	lsr @
 	RTS
 Antiq2	lda NrCol
-	eor #15		7
+	eor #15		; 7
 	sec
 	sbc #1
 	lsr @
@@ -6473,7 +6473,7 @@ PWTxt0	lda RamkaTxt+1
 	clc
 	adc #8
 	sta CrY0
-	
+
 PWTxt1	ldx CrX0
 	ldy CrY0
 	jsr PutLinTxt
@@ -6682,7 +6682,7 @@ Locate2 sty _py+1
 	jsr SetPomAdr2
 	jsr AdrPt
 	jmp Loc_skp
-	
+
 GetCol
 ;	lda WskZoom
 ;	bmi GetColN
@@ -6779,7 +6779,7 @@ Loc4	sta byt_+1
 	:2 asl @
 ;	asl @
 ;	asl @
-byt_	ora #0	
+byt_	ora #0
 	RTS
 
 	.endpg
@@ -6830,7 +6830,7 @@ lz1m	cpx #192
 *----
 *- linie nieparzyste
 *-
-dliv0z_	
+dliv0z_
 
 	ldy kol0
 
@@ -6857,7 +6857,7 @@ zz2_	lda kol1,x
 	sta $d017
 	lda jas3,x
 	sta $d018
-;	lda jas0,x	
+;	lda jas0,x
 ;	sta $d01a
 
 	dec petla
@@ -6886,7 +6886,7 @@ mouse	jsr TstMouse
 	sta Fire+1
 	tya
 mousQ_	rts
-	
+
 UpMenu	lda mvp00+1
 	cmp #6
 	beq mousQ_
@@ -7004,7 +7004,7 @@ UstalKier6	cmp #$30
 *-------------------
 Panel1	Ins '..\PANEL.DAT'
 
-	align
+	.align
 
 div6	.ds	256
 div4	.ds	256
@@ -7197,7 +7197,7 @@ loop    jsr get
         beq stop
         lsr @
         tax
-        
+
 q0      jsr get
 q1      sta FONTY
 
@@ -7297,7 +7297,7 @@ WskZoom		dta b($80)
 
 	org $0400
 
-kol3	:$c4 brk		;na poczatku strony pamieci	
+kol3	:$c4 brk		;na poczatku strony pamieci
 
 panel2	dta $00,$00,$00,$00,$00,$00,$00,$00,$55,$55,$55,$55,$55,$55,$55,$55,$aa,$aa,$aa,$aa,$aa,$aa,$aa,$aa,$ff,$ff,$ff,$ff,$ff,$ff,$ff,$ff,d'        '
 	dta $00,$00,$55,$55,$aa,$aa,$ff,$ff,$00,$00,$55,$55,$aa,$aa,$ff,$ff,$00,$00,$55,$55,$aa,$aa,$ff,$ff,$00,$00,$55,$55,$aa,$aa,$ff,$ff,d'        '
@@ -7322,5 +7322,4 @@ jas	dta $00,$02,$04,$06
 	run INIT
 
 	opt l-
-	icl	'align.mac'
 	icl	'65816.mac'

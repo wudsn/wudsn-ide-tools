@@ -6,7 +6,7 @@
   oraz playera MPT (MPT_PLAYER.ASM)
 
   Makro MPT_RELOCATOR.MAC odczytuje z pliku informacje na temat dlugosci
-  patternow (etykieta globalna LENPAT) i tempa gry (etykieta globalna SPEED)  
+  patternow (etykieta globalna LENPAT) i tempa gry (etykieta globalna SPEED)
 
   Nowy adres dla modulu MPT definiuje etykieta MSX
 */
@@ -20,7 +20,7 @@ msx	equ $4123
 	.sav [6] ?length
 
 main
-;	lda:cmp:req 20
+	lda:cmp:req 20
 
 @	lda $d40b
 	cmp #16
@@ -31,7 +31,7 @@ main
         jsr mpt_player.play
 
 	mva #$00 $d01a
-	
+
         jmp main
 
         icl '..\mpt_player.asm'

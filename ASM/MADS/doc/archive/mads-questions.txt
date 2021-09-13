@@ -1,6 +1,0 @@
-Include changes:
-mads.html          : 1.9.8
-mads-en.html	   : 1.9.5, continue after <!-- TODO .. in line 2734
-mads.1.9.5-pl-html : 1.9.5 backup
-
-Clarify SIZEOF??

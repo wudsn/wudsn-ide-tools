@@ -1,4 +1,3 @@
-# $Id: Makefile 327 2014-02-09 13:06:55Z adavie $
 #
 # the DASM macro assembler (aka small systems cross assembler)
 #
@@ -48,19 +47,29 @@ GWARN= -ansi -std=c99 -pedantic -Wall \
 #CFLAGS= $(GOPTI) $(GWARN) $(GDEBG)
 #LDFLAGS= -m32 -L/usr/lib32
 
+ifeq ($(OS),Windows_NT)
+      detected_OS := Windows
+else
+      detected_OS := $(shell uname -s)
+ifeq ($(detected_OS),Darwin)
+      CFLAGS = -mmacosx-version-min=10.5
+endif
+endif
+
 #CC= gcc
 
 OBJS= main.o ops.o globals.o exp.o symbols.o \
-      mne6303.o mne6502.o mne68705.o mne6811.o mnef8.o
+      mne6303.o mne6502.o mne65c02.o mne68705.o mne6811.o mnef8.o mne68908.o
 SRCS= main.c ops.c globals.c exp.c symbols.c \
-      mne6303.c mne6502.c mne68705.c mne6811.c mnef8.c
+      mne6303.c mne6502.c mne65c02.c mne68705.c mne6811.c mnef8.c mne68908.c
 
 ALL= dasm ftohex
 
-all: $(ALL)
+all:  $(info    detected_OS is $(detected_OS)) \
+      $(ALL)
 
 dasm: $(OBJS)
-	$(CC) $(OBJS) -o dasm $(LDFLAGS)
+	$(CC) $(CFLAGS) $(OBJS) -o dasm $(LDFLAGS)
 
 ftohex: ftohex.o
 
@@ -82,6 +91,5 @@ alpha:
 	echo "The purpose is to identify build problems, nothing more." >>README.ALPHA
 	echo "Please do *not* re-distribute this release in any form!" >>README.ALPHA
 	echo "Please do *not* distribute binaries derived from it either!" >>README.ALPHA
-	echo "See http://dasm-dillon.sf.net/ for details on DASM." >>README.ALPHA
 	tar zcvf dasm-alpha-`date +%F`.tar.gz README.ALPHA Makefile *.h *.c
 	rm -rf README.ALPHA

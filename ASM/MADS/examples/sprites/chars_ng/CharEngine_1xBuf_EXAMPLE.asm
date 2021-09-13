@@ -37,7 +37,7 @@ dlist0	@DLIST PlayfieldBuf+4*PlayfieldWidth+4, dlist0
 
 	.align
 
-	:4 brk
+	:4 brk			; minimalna liczba zestawow znakowych = 4
 Charsets
 	dta	>Charset0	; row #0
 	dta	>Charset1	; row #1
@@ -89,13 +89,13 @@ tColor3Addr	.word tColor3		; mo¿liwoœæ przemieszczania adresu w przypadku scroll
 main	lda:cmp:req 20
 
 	sei
-	mva #0 $d40e
-	sta $d400
+	mva #0 nmien
+	sta dmactl
 
-	mva #$fe $d301
+	mva #$fe portb
 
-	mva #3 $d01d
-	mva >pmg $d407
+	mva #3 pmcntl
+	mva >pmg pmbase
 
 	ldy #0
 	lda #$ff
@@ -137,9 +137,9 @@ chr	lda #$ff	;$d20a
 	dey
 	bpl chr
 
-	mwa #nmi $fffa
+	mwa #nmi nmivec
 
-	mva #$c0 $d40e
+	mva #$c0 nmien
 
 
 	ldx #8
@@ -150,7 +150,8 @@ a0	sta PlayfieldBuf,y
 	lda #2+$80
 a1	sta PlayfieldBuf,y
 	iny
-	lda #3
+	lda $d20a
+	and #$3f
 a2	sta PlayfieldBuf,y
 	iny
 	bne f0
@@ -188,7 +189,7 @@ loop	lda $d20f
 	jsr Engine
 
 	mva cloc $100
-	mva $d40b $101
+	mva vcount $101
 
 	.rept 6,#
 	lda Sprite:1.x
@@ -221,7 +222,7 @@ spr2	.word b0,b1,b2,b3,b4,b5,b6,b7
 //---------------------------------------------------------------------
 
 .local	NMI
-	bit $d40f
+	bit nmist
 	bpl vbl
 
 DLI	sta regA		; DLI
@@ -231,7 +232,7 @@ DLI	sta regA		; DLI
 iCh	lda Charsets
 iC1	ldx tColor1
 iC2	ldy tColor2
-	sta $d40a
+	sta wsync
 
 	sta chbase
 	stx color1
@@ -251,7 +252,7 @@ iC3	lda tColor3
 	rti	
 
 vbl	phr
-	sta $d40f
+	sta nmist
 
 	inc cloc
 
@@ -265,7 +266,7 @@ vbl	phr
 	ert 1=1
 	eif
 
-	sta $d400
+	sta dmactl
 
 	mva #4 gtictl
 

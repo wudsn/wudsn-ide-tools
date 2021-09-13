@@ -10,13 +10,13 @@
 
 	.get [$100] :1,0,6				// wczytujemy plik do bufora MADS'a
 
-	ert (.get[$100] + .get[$101]<<8) <> $FFFF , 'Bad file format'
+	ert .wget[$100] <> $FFFF , 'Bad file format'
 
 new_add = :2						// nowy adres dla modulu RMT
 
-old_add	= .get[$102] + .get[$103]<<8			// stary adres modulu RMT
+old_add	= .wget[$102]					// stary adres modulu RMT
 
-length	= .get[$104] + .get[$105]<<8 - old_add + 1	// dlugosc pliku RMT bez naglowka DOS'u
+length	= .wget[$104] - old_add + 1			// dlugosc pliku RMT bez naglowka DOS'u
 
 ofset	= new_add-old_add
 
@@ -30,10 +30,10 @@ ofset	= new_add-old_add
 
 type	= .get[old_add+3]
 
-pinst	= .get[old_add+8] + .get[old_add+9]<<8
-pltrc	= .get[old_add+10] + .get[old_add+11]<<8
-phtrc	= .get[old_add+12] + .get[old_add+13]<<8
-ptlst	= .get[old_add+14] + .get[old_add+15]<<8
+pinst	= .wget[old_add+8]
+pltrc	= .wget[old_add+10]
+phtrc	= .wget[old_add+12]
+ptlst	= .wget[old_add+14]
 
 	.put[old_add+8] = .lo(pinst+ofset)
 	.put[old_add+9] = .hi(pinst+ofset)
@@ -49,7 +49,7 @@ ptlst	= .get[old_add+14] + .get[old_add+15]<<8
 
 //	ISTRUMENTS
 	.rept (pltrc-pinst)/2
-	?tmp = .get[pinst+#*2] + .get[pinst+#*2+1]<<8
+	?tmp = .wget[pinst+#*2]
 
 	.put[pinst+#*2] = .lo(?tmp+ofset)
 	.put[pinst+#*2+1] = .hi(?tmp+ofset)

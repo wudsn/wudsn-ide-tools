@@ -1,17 +1,14 @@
 ; inflate - uncompress data stored in the DEFLATE format
 ; by Piotr Fusik <fox@scene.pl>
-; Last modified: 2007-06-17
+; Last modified: 2017-02-12
 
-; Compile with xasm (http://xasm.atari.org/), mads (http://mads.atari8.info) for example:
+; Compile with xasm (http://xasm.atari.org/), for example:
 ; xasm inflate.asm /l /d:inflate=$b700 /d:inflate_data=$b900 /d:inflate_zp=$f0
 ; mads inflate.asm /l /d:inflate=$b700 /d:inflate_data=$b900 /d:inflate_zp=$f0
-; inflate is 509 bytes of code and initialized data
+; inflate is 499 bytes of code and constants
 ; inflate_data is 764 bytes of uninitialized data
 ; inflate_zp is 10 bytes on page zero
 
-;inflate	= $b700
-;inflate_zp	= $f0
-;inflate_data	= $b900
 
 ; Pointer to compressed data
 inputPointer                    equ	inflate_zp    ; 2 bytes
@@ -24,17 +21,17 @@ outputPointer                   equ	inflate_zp+2  ; 2 bytes
 getBit_buffer                   equ	inflate_zp+4  ; 1 byte
 
 getBits_base                    equ	inflate_zp+5  ; 1 byte
-inflateStoredBlock_pageCounter  equ	inflate_zp+5  ; 1 byte
+inflateStored_pageCounter       equ	inflate_zp+5  ; 1 byte
 
 inflateCodes_sourcePointer      equ	inflate_zp+6  ; 2 bytes
-inflateDynamicBlock_lengthIndex equ	inflate_zp+6  ; 1 byte
-inflateDynamicBlock_lastLength	equ	inflate_zp+7  ; 1 byte
-inflateDynamicBlock_tempCodes   equ	inflate_zp+7  ; 1 byte
+inflateDynamic_symbol           equ	inflate_zp+6  ; 1 byte
+inflateDynamic_lastLength       equ	inflate_zp+7  ; 1 byte
+inflateDynamic_tempCodes        equ	inflate_zp+7  ; 1 byte
 
 inflateCodes_lengthMinus2       equ	inflate_zp+8  ; 1 byte
-inflateDynamicBlock_allCodes    equ	inflate_zp+8  ; 1 byte
+inflateDynamic_allCodes         equ	inflate_zp+8  ; 1 byte
 
-inflateCodes_primaryCodes       equ	inflate_zp+9  ; 1 byte
+inflateDynamic_primaryCodes     equ	inflate_zp+9  ; 1 byte
 
 
 ; Argument values for getBits
@@ -46,11 +43,8 @@ GET_5_BITS                      equ	$90
 GET_6_BITS                      equ	$a0
 GET_7_BITS                      equ	$c0
 
-; Maximum length of a Huffman code
-MAX_CODE_LENGTH                 equ	15
-
 ; Huffman trees
-TREE_SIZE                       equ	MAX_CODE_LENGTH+1
+TREE_SIZE                       equ	16
 PRIMARY_TREE                    equ	0
 DISTANCE_TREE                   equ	TREE_SIZE
 
@@ -58,7 +52,6 @@ DISTANCE_TREE                   equ	TREE_SIZE
 LENGTH_SYMBOLS                  equ	1+29+2
 DISTANCE_SYMBOLS                equ	30
 CONTROL_SYMBOLS                 equ	LENGTH_SYMBOLS+DISTANCE_SYMBOLS
-TOTAL_SYMBOLS                   equ	256+CONTROL_SYMBOLS
 
 
 ; Uncompress DEFLATE stream starting from the address stored in inputPointer
@@ -75,64 +68,67 @@ inflate_blockLoop
 	jsr	getBits
 	lsr	@
 	php
-	tax
-	bne	inflateCompressedBlock
+	bne	inflateCompressed
 
 ; Copy uncompressed block
 ;	ldy	#0
-	sty	getBit_buffer
-	jsr	getWord
-	jsr	getWord
-	sta	inflateStoredBlock_pageCounter
-;	jmp	inflateStoredBlock_firstByte
-	bcs	inflateStoredBlock_firstByte
-inflateStoredBlock_copyByte
+	sty	getBit_buffer  ; ignore bits until byte boundary
+	jsr	getWord        ; skip the length we don't need
+	jsr	getWord        ; get the two's complement length
+	sta	inflateStored_pageCounter
+;	jmp	inflateStored_firstByte
+	bcs	inflateStored_firstByte
+inflateStored_copyByte
 	jsr	getByte
-inflateStoreByte
 	jsr	storeByte
-	bcc	inflateCodes_loop
-inflateStoredBlock_firstByte
+inflateStored_firstByte
 	inx
-	bne	inflateStoredBlock_copyByte
-	inc	inflateStoredBlock_pageCounter
-	bne	inflateStoredBlock_copyByte
+	bne	inflateStored_copyByte
+	inc	inflateStored_pageCounter
+	bne	inflateStored_copyByte
 
 inflate_nextBlock
 	plp
 	bcc	inflate_blockLoop
 	rts
 
-inflateCompressedBlock
+inflateCompressed
+; A=1: fixed block, initialize with fixed codes
+; A=2: dynamic block, start by clearing all code lengths
+; A=3: invalid compressed data, not handled in this routine
+	eor	#2
 
-; Decompress a block with fixed Huffman trees:
+;	ldy	#0
+inflateCompressed_setCodeLengths
+	tax
+	beq	inflateCompressed_setLiteralCodeLength
+; fixed Huffman literal codes:
 ; :144 dta 8
 ; :112 dta 9
-; :24  dta 7
-; :6   dta 8
-; :2   dta 8 ; codes with no meaning
-; :30  dta 5+DISTANCE_TREE
-;	ldy	#0
-inflateFixedBlock_setCodeLengths
 	lda	#4
 	cpy	#144
 	rol	@
+inflateCompressed_setLiteralCodeLength
 	sta	literalSymbolCodeLength,y
-	cpy	#CONTROL_SYMBOLS
-	bcs	inflateFixedBlock_noControlSymbol
+	beq	inflateCompressed_setControlCodeLength
+; fixed Huffman control codes:
+; :24  dta 7
+; :6   dta 8
+; :2   dta 8 ; meaningless codes
+; :30  dta 5+DISTANCE_TREE
 	lda	#5+DISTANCE_TREE
 	cpy	#LENGTH_SYMBOLS
-	bcs	inflateFixedBlock_setControlCodeLength
+	bcs	inflateCompressed_setControlCodeLength
 	cpy	#24
 	adc	#2-DISTANCE_TREE
-inflateFixedBlock_setControlCodeLength
-	sta	controlSymbolCodeLength,y
-inflateFixedBlock_noControlSymbol
+inflateCompressed_setControlCodeLength
+	cpy	#CONTROL_SYMBOLS
+	scs:sta	controlSymbolCodeLength,y
 	iny
-	bne	inflateFixedBlock_setCodeLengths
-	mva	#LENGTH_SYMBOLS	inflateCodes_primaryCodes
+	bne	inflateCompressed_setCodeLengths
 
-	dex
-	beq	inflateCodes
+	tax
+	bne	inflateCodes
 
 ; Decompress a block reading Huffman trees first
 
@@ -140,59 +136,69 @@ inflateFixedBlock_noControlSymbol
 	jsr	buildTempHuffmanTree
 
 ; Use temporary codes to get lengths of literal/length and distance codes
-	ldx	#0
+;	ldx	#0
 ;	sec
-inflateDynamicBlock_decodeLength
+inflateDynamic_decodeLength
+; C=1: literal codes
+; C=0: control codes
+	stx	inflateDynamic_symbol
 	php
-	stx	inflateDynamicBlock_lengthIndex
 ; Fetch a temporary code
 	jsr	fetchPrimaryCode
 ; Temporary code 0..15: put this length
-	tax
-	bpl	inflateDynamicBlock_verbatimLength
+	bpl	inflateDynamic_verbatimLength
 ; Temporary code 16: repeat last length 3 + getBits(2) times
 ; Temporary code 17: put zero length 3 + getBits(3) times
 ; Temporary code 18: put zero length 11 + getBits(7) times
+	tax
 	jsr	getBits
-;	sec
-	adc	#1
-	cpx	#GET_7_BITS
-	scc:adc	#7
-	tay
-	lda	#0
 	cpx	#GET_3_BITS
-	scs:lda	inflateDynamicBlock_lastLength
-inflateDynamicBlock_verbatimLength
+	bcc	inflateDynamic_repeatLast
+	seq:adc	#7
+;	ldy	#0
+	sty	inflateDynamic_lastLength
+inflateDynamic_repeatLast
+	tay
+	lda	inflateDynamic_lastLength
+	iny:iny
+inflateDynamic_verbatimLength
 	iny
-	ldx	inflateDynamicBlock_lengthIndex
 	plp
-inflateDynamicBlock_storeLength
-	bcc	inflateDynamicBlock_controlSymbolCodeLength
+	ldx	inflateDynamic_symbol
+inflateDynamic_storeLength
+	bcc	inflateDynamic_controlSymbolCodeLength
 	sta	literalSymbolCodeLength,x+
 	cpx	#1
-inflateDynamicBlock_storeNext
+inflateDynamic_storeNext
 	dey
-	bne	inflateDynamicBlock_storeLength
-	sta	inflateDynamicBlock_lastLength
-;	jmp	inflateDynamicBlock_decodeLength
-	beq	inflateDynamicBlock_decodeLength
-inflateDynamicBlock_controlSymbolCodeLength
-	cpx	inflateCodes_primaryCodes
-	scc:ora	#DISTANCE_TREE
+	bne	inflateDynamic_storeLength
+	sta	inflateDynamic_lastLength
+;	jmp	inflateDynamic_decodeLength
+	beq	inflateDynamic_decodeLength
+inflateDynamic_controlSymbolCodeLength
+	cpx	inflateDynamic_primaryCodes
+	bcc	inflateDynamic_storeControl
+; the code lengths we skip here were zero-initialized
+; in inflateCompressed_setControlCodeLength
+	sne:ldx	#LENGTH_SYMBOLS
+	ora	#DISTANCE_TREE
+inflateDynamic_storeControl
 	sta	controlSymbolCodeLength,x+
-	cpx	inflateDynamicBlock_allCodes
-	bcc	inflateDynamicBlock_storeNext
+	cpx	inflateDynamic_allCodes
+	bcc	inflateDynamic_storeNext
 	dey
 ;	ldy	#0
-;	jmp	inflateCodes
 
 ; Decompress a block
 inflateCodes
 	jsr	buildHuffmanTree
+;	jmp	inflateCodes_loop
+	beq	inflateCodes_loop
+inflateCodes_literal
+	jsr	storeByte
 inflateCodes_loop
 	jsr	fetchPrimaryCode
-	bcc	inflateStoreByte
-	tax
+	bcc	inflateCodes_literal
 	beq	inflate_nextBlock
 ; Copy sequence from look-behind buffer
 ;	ldy	#0
@@ -217,9 +223,6 @@ inflateCodes_setSequenceLength
 	sta	inflateCodes_lengthMinus2
 	ldx	#DISTANCE_TREE
 	jsr	fetchCode
-;	sec
-	sbc	inflateCodes_primaryCodes
-	tax
 	cmp	#4
 	bcc	inflateCodes_setOffsetLowByte
 	inc	getBits_base
@@ -248,39 +251,33 @@ inflateCodes_copyByte
 ;	jmp	inflateCodes_loop
 	beq	inflateCodes_loop
 
+; Get dynamic block header and use it to build the temporary tree
 buildTempHuffmanTree
 ;	ldy	#0
-	tya
-inflateDynamicBlock_clearCodeLengths
-	sta	literalSymbolCodeLength,y
-	sta	literalSymbolCodeLength+TOTAL_SYMBOLS-256,y
-	iny
-	bne	inflateDynamicBlock_clearCodeLengths
 ; numberOfPrimaryCodes = 257 + getBits(5)
 ; numberOfDistanceCodes = 1 + getBits(5)
 ; numberOfTemporaryCodes = 4 + getBits(4)
 	ldx	#3
-inflateDynamicBlock_getHeader
-	lda	inflateDynamicBlock_headerBits-1,x
+inflateDynamic_getHeader
+	lda	inflateDynamic_headerBits-1,x
 	jsr	getBits
 ;	sec
-	adc	inflateDynamicBlock_headerBase-1,x
-	sta	inflateDynamicBlock_tempCodes-1,x
-	sta	inflateDynamicBlock_headerBase+1
+	adc	inflateDynamic_headerBase-1,x
+	sta	inflateDynamic_tempCodes-1,x
 	dex
-	bne	inflateDynamicBlock_getHeader
+	bne	inflateDynamic_getHeader
 
-; Get lengths of temporary codes in the order stored in tempCodeLengthOrder
+; Get lengths of temporary codes in the order stored in inflateDynamic_tempSymbols
 ;	ldx	#0
-inflateDynamicBlock_getTempCodeLengths
+inflateDynamic_getTempCodeLengths
 	lda	#GET_3_BITS
 	jsr	getBits
-	ldy	tempCodeLengthOrder,x
+	ldy	inflateDynamic_tempSymbols,x
 	sta	literalSymbolCodeLength,y
 	ldy	#0
 	inx
-	cpx	inflateDynamicBlock_tempCodes
-	bcc	inflateDynamicBlock_getTempCodeLengths
+	cpx	inflateDynamic_tempCodes
+	bcc	inflateDynamic_getTempCodeLengths
 
 ; Build Huffman trees basing on code lengths (in bits)
 ; stored in the *SymbolCodeLength arrays
@@ -333,7 +330,7 @@ buildHuffmanTree_noControlSymbol2
 ; Read Huffman code using the primary tree
 fetchPrimaryCode
 	ldx	#PRIMARY_TREE
-; Read a code from input basing on the tree specified in X,
+; Read a code from input using the tree specified in X,
 ; return low byte of this code in A,
 ; return C flag reset for literal code, set for length code
 fetchCode
@@ -355,9 +352,12 @@ fetchCode_nextBit
 	clc
 	rts
 fetchCode_control
-	add	nBitCode_controlOffset-1,x
+;	sec
+	adc	nBitCode_controlOffset-1,x
 	tax
-	lda	codeToControlSymbol,x
+	lda	codeToControlSymbol-1,x
+	and	#$1f	; make distance symbols zero-based
+	tax
 	sec
 	rts
 
@@ -411,6 +411,7 @@ copyByte
 	ldy	#0
 ; Write a byte
 storeByte
+;	ldy	#0
 	sta	(outputPointer),y
 	inc	outputPointer
 	bne	storeByte_return
@@ -422,12 +423,13 @@ storeByte_return
 getNPlus1Bits_mask
 	dta	GET_1_BIT,GET_2_BITS,GET_3_BITS,GET_4_BITS,GET_5_BITS,GET_6_BITS,GET_7_BITS
 
-tempCodeLengthOrder
+inflateDynamic_tempSymbols
 	dta	GET_2_BITS,GET_3_BITS,GET_7_BITS,0,8,7,9,6,10,5,11,4,12,3,13,2,14,1,15
 
-inflateDynamicBlock_headerBits	dta	GET_4_BITS,GET_5_BITS,GET_5_BITS
-inflateDynamicBlock_headerBase	dta	3,0,0  ; second byte is modified at runtime!
-
+inflateDynamic_headerBits
+	dta	GET_4_BITS,GET_5_BITS,GET_5_BITS
+inflateDynamic_headerBase
+	dta	3,LENGTH_SYMBOLS,0
 
 ; Data for building trees
 

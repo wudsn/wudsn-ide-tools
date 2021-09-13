@@ -1,6 +1,4 @@
 /*
-    $Id: main.c 327 2014-02-09 13:06:55Z adavie $
-
     the DASM macro assembler (aka small systems cross assembler)
 
     Copyright (c) 1988-2002 by Matthew Dillon.
@@ -30,14 +28,13 @@
  */
 
 #include <strings.h>
+#include <unistd.h>
 
+#include "version.h"
 #include "asm.h"
 
-SVNTAG("$Id: main.c 327 2014-02-09 13:06:55Z adavie $");
+static const char dasm_id[] = DASM_ID;
 
-static const char dasm_id[] = "DASM 2.20.11 20140304";
-
-#define MAXLINE 1024
 #define ISEGNAME    "INITIAL CODE SEGMENT"
 
 /*
@@ -56,18 +53,23 @@ MNEMONIC *findmne(char *str);
 void clearsegs(void);
 void clearrefs(void);
 
-
 static unsigned int hash1(const char *str);
 static void outlistfile(const char *);
 
-void addmsg(char *message); // add to message buffer (FXQ)
+// buffers to supress errors and messages until last pass
+char *passbuffer [2] = { NULL, NULL};
+#define ERRORBUF 0
+#define MSGBUF 1
+void passbuffer_clear(int);
+void passbuffer_update(int,char *);
+void passbuffer_output(int);
+void passbuffer_cleanup(void);
 
-// buffers to supress errors and messages until last pass - FXQ
-static char errorbuffer[1000000]; // per-pass error buffer
+int mlflag = 0; // multi-line comments 
+
 static char erroradd1[500]; // temp error holders
 static char erroradd2[500];
 static char erroradd3[500];
-static char msgbuffer[10000]; // user echo buffer
 
 /* Table encapsulates errors, descriptions, and fatality flags. */
 
@@ -80,6 +82,7 @@ ERROR_DEFINITION sErrorDef[] = {
     { ERROR_FILE_ERROR,                             true,   "Unable to open file."   },
     { ERROR_NOT_RESOLVABLE,                         true,   "Source is not resolvable."   },
     { ERROR_TOO_MANY_PASSES,                        true,   "Too many passes (%s)."   },
+    { ERROR_NON_ABORT,                              true,   "See previous output"   },
     { ERROR_SYNTAX_ERROR,                           true,   "Syntax Error '%s'."   },
     { ERROR_EXPRESSION_TABLE_OVERFLOW,              true,   "Expression table overflow."   },
     { ERROR_UNBALANCED_BRACES,                      true,   "Unbalanced Braces []."   },
@@ -95,9 +98,11 @@ ERROR_DEFINITION sErrorDef[] = {
     { ERROR_ORIGIN_REVERSE_INDEXED,                 false,  "Origin Reverse-indexed."   },
     { ERROR_EQU_VALUE_MISMATCH,                     false,  "EQU: Value mismatch."   },
     { ERROR_ADDRESS_MUST_BE_LT_100,                 true,   "Value in '%s' must be <$100."  },
+    { ERROR_ADDRESS_MUST_BE_LT_10000,               true,   "Value in '%s' must be <$10000."  },
     { ERROR_ILLEGAL_BIT_SPECIFICATION,              true,   "Illegal bit specification."   },
     { ERROR_NOT_ENOUGH_ARGS,                        true,   "Not enough arguments."   },
-    { ERROR_LABEL_MISMATCH,                         true,   "Label mismatch...\n --> %s"  },
+    { ERROR_LABEL_MISMATCH,                         false,   "Label mismatch...\n --> %s"  },
+    { ERROR_MACRO_REPEATED,                         true,   "Macro \"%s\" definition is repeated."  },
     { ERROR_VALUE_UNDEFINED,                        true,   "Value Undefined."   },
     { ERROR_PROCESSOR_NOT_SUPPORTED,                true,   "Processor '%s' not supported."  },
     { ERROR_REPEAT_NEGATIVE,                        false,  "REPEAT parameter < 0 (ignored)."   },
@@ -110,12 +115,18 @@ ERROR_DEFINITION sErrorDef[] = {
 	{ ERROR_VALUE_MUST_BE_LT_F,						true,	"Value in '%s' must be <$f." },
 	{ ERROR_VALUE_MUST_BE_LT_10000,					true,	"Value in '%s' must be <$10000." },
 	{ ERROR_ILLEGAL_OPERAND_COMBINATION,			true,	"Illegal combination of operands '%s'" },
+	{ ERROR_RECURSION_TOO_DEEP,                     true, "Recursion too deep in %s" },
+	{ ERROR_AVOID_SEGFAULT,				true, "Internal error in %s" },
+	{ ERROR_MISSING_ENDM,				true, "Unbalanced macro %s" },
+	{ ERROR_MISSING_COMMENT_END,			true, "Multi-line comment not closed." },
+	{ ERROR_SPURIOUS_COMMENT_CLOSE,			true, "Multi-line comment closed without open." },
     {-1, true, "Doh! Internal end-of-table marker, report the bug!"}
 };
 
 #define MAX_ERROR (( sizeof( sErrorDef ) / sizeof( ERROR_DEFINITION )))
 
-bool bStopAtEnd = false;
+bool *bStopAtEnd;
+bool bRemoveOutBin  = false;
 
 int nMaxPasses = 10;
 
@@ -125,11 +136,6 @@ char     *Extstr;
 int     pass;
 
 unsigned char     F_ListAllPasses = 0;
-
-
-
-
-
 
 static int CountUnresolvedSymbols(void)
 {
@@ -143,7 +149,7 @@ static int CountUnresolvedSymbols(void)
             if ( sym->flags & SYM_UNKNOWN )
                 nUnresolved++;
             
-	return nUnresolved;
+    return nUnresolved;
 }
 
 
@@ -163,7 +169,7 @@ static int ShowUnresolvedSymbols(void)
                 if ( sym->flags & SYM_UNKNOWN )
                     printf( "%-24s %s\n", sym->name, sftos( sym->value, sym->flags ) );
                 
-                printf( "--- %d Unresolved Symbol%c\n\n", nUnresolved, ( nUnresolved == 1 ) ? ' ' : 's' );
+        printf( "--- %d Unresolved Symbol%c\n\n", nUnresolved, ( nUnresolved == 1 ) ? ' ' : 's' );
     }
     
     return nUnresolved;
@@ -220,55 +226,55 @@ static void ShowSymbols( FILE *file, bool bTableSort )
         for (sym = SHash[i]; sym; sym = sym->next)
             nSymbols++;
         
-        /* Malloc an array of pointers to data */
+    /* Malloc an array of pointers to data */
         
-        symArray = (SYMBOL **)ckmalloc( sizeof( SYMBOL * ) * nSymbols );
-        if ( !symArray )
-        {
-            fprintf( file, " (unsorted - not enough memory to sort!)\n" );
+    symArray = (SYMBOL **)ckmalloc( sizeof( SYMBOL * ) * nSymbols );
+    if ( !symArray )
+    {
+        fprintf( file, " (unsorted - not enough memory to sort!)\n" );
             
-            /* Display complete symbol table */
-            for (i = 0; i < SHASHSIZE; ++i)
-                for (sym = SHash[i]; sym; sym = sym->next)
-                    fprintf( file, "%-24s %s\n", sym->name, sftos( sym->value, sym->flags ) );
-        }
-        else
-        {
-            /* Copy the element pointers into the symbol array */
+        /* Display complete symbol table */
+        for (i = 0; i < SHASHSIZE; ++i)
+            for (sym = SHash[i]; sym; sym = sym->next)
+                fprintf( file, "%-24s %s\n", sym->name, sftos( sym->value, sym->flags ) );
+    }
+    else
+    {
+         /* Copy the element pointers into the symbol array */
             
-            int nPtr = 0;
+         int nPtr = 0;
             
-            for (i = 0; i < SHASHSIZE; ++i)
-                for (sym = SHash[i]; sym; sym = sym->next)
-                    symArray[ nPtr++ ] = sym;
+         for (i = 0; i < SHASHSIZE; ++i)
+             for (sym = SHash[i]; sym; sym = sym->next)
+                 symArray[ nPtr++ ] = sym;
                 
-                if ( bTableSort )
-                {
-                    fprintf( file, " (sorted by address)\n" );
-                    qsort( symArray, nPtr, sizeof( SYMBOL * ), CompareAddress );           /* Sort via address */
-                }
-                else
-                {
-                    fprintf( file, " (sorted by symbol)\n" );
-                    qsort( symArray, nPtr, sizeof( SYMBOL * ), CompareAlpha );              /* Sort via name */
-                }
+         if ( bTableSort )
+         {
+             fprintf( file, " (sorted by address)\n" );
+             qsort( symArray, nPtr, sizeof( SYMBOL * ), CompareAddress );           /* Sort via address */
+         }
+         else
+         {
+             fprintf( file, " (sorted by symbol)\n" );
+             qsort( symArray, nPtr, sizeof( SYMBOL * ), CompareAlpha );              /* Sort via name */
+         }
                 
                 
-                /* now display sorted list */
+         /* now display sorted list */
                 
-                for ( i = 0; i < nPtr; i++ )
-                {
-                    fprintf( file, "%-24s %-12s", symArray[ i ]->name,
-                        sftos( symArray[ i ]->value, symArray[ i ]->flags ) );
-                    if ( symArray[ i ]->flags & SYM_STRING )
-                        fprintf( file, " \"%s\"", symArray[ i ]->string );                  /* If a string, display actual string */
-                    fprintf( file, "\n" );
-                }
+         for ( i = 0; i < nPtr; i++ )
+         {
+             fprintf( file, "%-24s %-12s", symArray[ i ]->name,
+                 sftos( symArray[ i ]->value, symArray[ i ]->flags ) );
+             if ( symArray[ i ]->flags & SYM_STRING )
+                 fprintf( file, " \"%s\"", symArray[ i ]->string );                  /* If a string, display actual string */
+             fprintf( file, "\n" );
+         }
                 
-                free( symArray );
-        }
+         free( symArray );
+    }
         
-        fputs( "--- End of Symbol List.\n", file );
+    fputs( "--- End of Symbol List.\n", file );
         
 }
 
@@ -384,6 +390,7 @@ static int MainShadow(int ac, char **av, bool *pbTableSort )
     
     char buf[MAXLINE];
     int i;
+    int argVal;
     MNEMONIC *mne;
     
     int oldredo = -1;
@@ -398,8 +405,8 @@ static int MainShadow(int ac, char **av, bool *pbTableSort )
 
 fail:
     puts(dasm_id);
-    puts("Copyright (c) 1988-2008 by various authors (see file AUTHORS).");
-    puts("License GPLv2+: GNU GPL version 2 or later (see file COPYING).");
+    puts("Copyright (c) 1988-2020 by the DASM team.");
+    puts("License GPLv2+: GNU GPL version 2 or later (see file LICENSE).");
     puts("DASM is free software: you are free to change and redistribute it.");
     puts("There is ABSOLUTELY NO WARRANTY, to the extent permitted by law.");
     puts("");
@@ -420,8 +427,11 @@ fail:
     puts("-P#      maximum number of passes, with fewer checks");
     puts("-T#      symbol table sorting (default 0 = alphabetical, 1 = address/value)");
     puts("-E#      error format (default 0 = MS, 1 = Dillon, 2 = GNU)");
+    puts("-S       strict syntax checking");
+    puts("-R       remove binary output-file in case of errors");
+    puts("-m#      safety barrier to abort on recursions, max. allowed file-size in kB");
     puts("");
-    puts("Report bugs to dasm-dillon-discuss@lists.sf.net please!");
+    puts("Report bugs on https://github.com/dasm-assembler/dasm please!");
 
     return ERROR_COMMAND_LINE;
     }
@@ -519,7 +529,24 @@ nofile:
             case 'I':
                 v_incdir(str, NULL);
                 break;
+
+            case 'S':
+                bStrictMode = true;
+                break;
+
+            case 'R':
+            	bRemoveOutBin = true;
+                break;
                 
+            case 'm':   /*  F_passes   */
+            	argVal = atol(str);
+            	if (argVal <= 64) {
+            		panic("-m Switch invalid argument, should be > 64");
+            	} else {
+            		maxFileSize = argVal;
+            	}
+                break;
+
             default:
                 goto fail;
             }
@@ -527,7 +554,10 @@ nofile:
         }
         goto fail;
     }
-    
+     
+    bStopAtEnd = malloc((nMaxPasses+1) * sizeof(bool));
+    memset(bStopAtEnd, 0, nMaxPasses+1);	// we dont count from zero ! (for fewer code changes)
+
     /*    INITIAL SEGMENT */
     
     {
@@ -547,8 +577,9 @@ nofile:
     }
     
     // ready error and message buffer...
-    errorbuffer[0]='\0';
-    msgbuffer[0]='\0';
+    passbuffer_clear(ERRORBUF);
+    passbuffer_clear(MSGBUF);
+    
     
 nextpass:
     
@@ -575,7 +606,7 @@ nextpass:
     if (F_listfile) {
 
         FI_listfile = fopen(F_listfile,
-            F_ListAllPasses && (pass > 1)? "a" : "w");
+            F_ListAllPasses && (pass > 1)? "ab" : "wb");
 
         if (FI_listfile == NULL) {
             printf("Warning: Unable to [re]open '%s'\n", F_listfile);
@@ -647,10 +678,9 @@ nextpass:
         
         if ( pIncfile )
         {
-        /*
-        if (F_verbose > 1)
-        printf("back to: %s\n", Incfile->name);
-            */
+        	if (F_verbose > 3)
+        		printf("back to: %s\n", pIncfile->name);
+
             if (F_listfile)
                 fprintf(FI_listfile, "------- FILE %s\n", pIncfile->name);
         }
@@ -673,6 +703,9 @@ nextpass:
     fclose(FI_temp);
     if (FI_listfile)
         fclose(FI_listfile);
+
+    if (mlflag) // check if a multi-line comment is missing a terminator
+        return ERROR_MISSING_COMMENT_END;
     
     if (Redo)
     {
@@ -683,56 +716,65 @@ nextpass:
                 return ERROR_NOT_RESOLVABLE;
             }
             
-            oldredo = Redo;
-            oldwhy = Redo_why;
-            oldeval = Redo_eval;
-            Redo = 0;
-            Redo_why = 0;
-            Redo_eval = 0;
+        oldredo = Redo;
+        oldwhy = Redo_why;
+        oldeval = Redo_eval;
+        Redo = 0;
+        Redo_why = 0;
+        Redo_eval = 0;
 
-            Redo_if <<= 1;
-            ++pass;
+        Redo_if <<= 1;
+        ++pass;
 
             
-            if ( bStopAtEnd )
-            {
-                // Only print errors if assembly is unsuccessful!!!!!
-                // by FXQ
-                printf("%s\n",errorbuffer);
-                printf("Unrecoverable error(s) in pass, aborting assembly!\n");
-            }
-            else if ( pass > nMaxPasses )
-            {
-                char sBuffer[64];
-                sprintf( sBuffer, "%d", pass );
-                return asmerr( ERROR_TOO_MANY_PASSES, false, sBuffer );
+        if ( pass > nMaxPasses )
+        {
+            char sBuffer[64];
+            sprintf( sBuffer, "%d", pass );
+            return asmerr( ERROR_TOO_MANY_PASSES, false, sBuffer );
                 
-            }
-            else
-            {
-                // flush error and message buffer after each pass. -FXQ
-                errorbuffer[0]='\0';
-                msgbuffer[0]='\0';
+        }
+        else
+        {
+            passbuffer_clear(ERRORBUF);
+            passbuffer_clear(MSGBUF);
 
-                clearrefs();
-                clearsegs();
-                goto nextpass;
-            }
+            clearrefs();
+            clearsegs();
+            goto nextpass;
+        }
     }
     // Do not print any errors if assembly is successful!!!!! -FXQ
     // only print messages from last pass and if there's no errors
-    if (!bStopAtEnd)
+    if (!bStopAtEnd[pass])
     {
-        msgbuffer[0]=' ';
-        printf("%s\n",msgbuffer);
+        passbuffer_output(MSGBUF);
     }
-    printf( "Complete.\n" );
+    else
+    {
+        // Only print errors if assembly is unsuccessful!!!!!
+        // by FXQ
+	passbuffer_output(ERRORBUF);
+        printf("Unrecoverable error(s) in pass, aborting assembly!\n");
+	nError = ERROR_NON_ABORT;
+    }
+
+    if (nMacroClosings != nMacroDeclarations) {
+        /* determine the file pointer to use */
+        FILE *error_file = (F_listfile != NULL) ? FI_listfile : stdout;
+
+    	fprintf(error_file, "premature end of file, macros opened:%d  closed:%d", nMacroDeclarations, nMacroClosings);
+        fprintf(error_file, "Aborting assembly\n");
+
+        exit(ERROR_MISSING_ENDM);
+    }
+    printf( "Complete. (%d)\n", nError);
     return nError;
 }
 
 void addmsg(char *message) // add to message buffer (FXQ)
 {
-  strcat(msgbuffer,message);
+  passbuffer_update(MSGBUF,message);
 }
 
 
@@ -899,7 +941,67 @@ static const char *cleanup(char *buf, bool bDisable)
     STRLIST *strlist;
     int arg, add;
     const char *comment = "";
-    
+
+    char *mlstart, *mlend, *semistart;
+    mlstart=strstr(buf,"/*");
+    mlend=strstr(buf,"*/");
+    semistart=strstr(buf,";");
+
+    if (mlflag) // a previous multi-line comment is in progress...
+    {
+        if ( mlend )
+        {
+            mlflag=0; // turn off multiline comments
+	    char tempbuf[MAXLINE];
+            char *tmpc;
+            *mlend = 0;
+            tmpc = mlend+1;
+            while(*tmpc!=0) // we need to purge any newlines before we reorder the parts of the line
+            {
+                if((*tmpc == '\r')||(*tmpc == '\n'))
+                    *tmpc=0;
+                tmpc++;
+            }
+	    snprintf(tempbuf,MAXLINE,"%s;*/%s",mlend+2,buf); // put the comment at the end of the line
+            strncpy(buf,tempbuf,MAXLINE);
+            return(cleanup(buf,bDisable)); // repeat for any single-line comments that may follow
+        }
+        else
+        {
+            memmove(buf+1,buf,strlen(buf)+1); // make room for the last comment
+            buf[0]=';';
+        }
+    }
+    else // we're not presently in the middle of a multi-line comment...
+    {
+        // check for spurious comment close
+        if (mlend && ( (!semistart) || (mlend < semistart) ) && ( (!mlstart) ||  (mlend < mlstart) ) )
+            asmerr( ERROR_SPURIOUS_COMMENT_CLOSE, false, NULL );
+        if (mlstart && ((!semistart) || (mlstart < semistart)))
+        {
+            if (mlend && (mlstart < mlend) && ((!semistart)||(mlend < semistart))) // single line /* */
+            {
+	        char tempbuf[MAXLINE];
+                char *tmpc;
+                *mlstart = 0; 
+                *(mlend+1)=0;
+                tmpc = mlend+2;
+                while(*tmpc!=0) // we need to purge any newlines before we reorder the parts of the line
+                {
+                    if((*tmpc == '\r')||(*tmpc == '\n'))
+                        *tmpc=0;
+                    tmpc++;
+                }
+	        snprintf(tempbuf,MAXLINE,"%s%s;/%s",buf,mlend+2,mlstart+1); // move the first comment to the end of the line
+                strcpy(buf,tempbuf);
+                return(cleanup(buf,bDisable)); // repeat for any single-line comments that may follow
+            }
+            mlflag=1; // turn on multiline comments
+            memmove(mlstart+1,mlstart,strlen(mlstart)+1); // make room for a comment
+            *mlstart=';';
+        }
+    }
+
     for (str = buf; *str; ++str)
     {
         switch(*str)
@@ -1030,6 +1132,7 @@ void panic(const char *str)
 *  .w                      x
 *  .l                      x
 *  .u                      x
+*  .s       swapped short, force other endian with DC
 */
 
 
@@ -1049,6 +1152,10 @@ void findext(char *str)
         ++str;
         Extstr = str;
         switch(str[0]|0x20) {
+	     case 's':
+                Mnext = AM_OTHER_ENDIAN;
+                return;
+
         case '0':
         case 'i':
             Mnext = AM_IMP;
@@ -1137,21 +1244,15 @@ MNEMONIC *parse(char *buf)
 {
     int i, j;
     MNEMONIC *mne = NULL;
+    int labelundefined = 0;
     
     i = 0;
     j = 1;
 
-#if OlafFreeFormat
-    /* Skip all initial spaces */
-    while (buf[i] == ' ')
-        ++i;
-#endif
-
-#if OlafHashFormat
-        /*
-        * If the first non-space is a ^, skip all further spaces too.
-        * This means what follows is a label.
-        * If the first non-space is a #, what follows is a directive/opcode.
+    /*
+        If the first non-space is a ^, skip all further spaces too.
+        This means what follows is a label.
+        If the first non-space is a #, what follows is a directive/opcode.
     */
     while (buf[i] == ' ')
         ++i;
@@ -1163,14 +1264,66 @@ MNEMONIC *parse(char *buf)
         buf[i] = ' ';   /* label separator */
     } else
         i = 0;
-#endif
 
     Av[0] = Avbuf + j;
-    while (buf[i] && buf[i] != ' ') {
+    while (buf[i] && buf[i] != ' ' && buf[i] != '=') {
 
         if (buf[i] == ':') {
             i++;
             break;
+        }
+
+        if (buf[i] == ',')  // we have label arguments
+        {
+            if(buf[i+1]=='"') // is it a string constant?
+            {
+                i=i+2; // advance to string contents
+                while (buf[i] && buf[i] != '"' && buf[i] != ' ' && buf[i] != ',' && buf[i] != ':')
+                {
+                    Avbuf[j++] = buf[i++];
+                }
+                if (buf[i] && buf[i]=='"') 
+                {
+                    i++;
+                    continue;
+                }
+                else 
+                {
+                    labelundefined++;
+                    asmerr( ERROR_SYNTAX_ERROR, false, buf );
+                    continue;
+                }
+            }
+            else // or else it's a symbol to be evaluated, and added to the label
+            {
+                int t;
+                char tempbuf[257];
+                char tempval[257];
+                SYMBOL *symarg;
+                strncpy(tempbuf,buf+i+1,256);
+                tempbuf[256]=0;
+                for(t=0;t<strlen(tempbuf);t++)
+                {
+                    if(tempbuf[t] == ',')
+                        tempbuf[t]=0;
+                }
+                symarg = eval(tempbuf,0);
+                if(symarg)
+                {
+                    if (symarg->flags & SYM_UNKNOWN) // one of the arguments isn't defined yet
+			labelundefined++; // ensure the label we're creating doesn't get used
+                    else
+                    {
+                        snprintf(tempval,256,"%d",(unsigned)symarg->value);
+                        strcpy(Avbuf+j,tempval);
+			j=j+strlen(tempval);
+                    }
+                }
+                i++;
+                while (buf[i] && buf[i] != ' ' && buf[i] != '=' && buf[i] != ','&& buf[i] != ':') 
+                    i++;
+            }
+            continue;
         }
 
         if ((unsigned char)buf[i] == 0x80)
@@ -1179,34 +1332,31 @@ MNEMONIC *parse(char *buf)
     }
     Avbuf[j++] = 0;
 
-#if OlafFreeFormat
-    /* Try if the first word is an opcode */
-    findext(Av[0]);
-    mne = findmne(Av[0]);
-    if (mne != NULL) {
-    /* Yes, it is. So there is no label, and the rest
-     * of the line is the argument
-        */
-        Avbuf[0] = 0;    /* Make an empty string */
-        Av[1] = Av[0];    /* The opcode is the previous first word */
-        Av[0] = Avbuf;    /* Point the label to the empty string */
-    } else
-#endif
-
-    {    /* Parse the second word of the line */
-        while (buf[i] == ' ')
-            ++i;
-        Av[1] = Avbuf + j;
-        while (buf[i] && buf[i] != ' ') {
-            if ((unsigned char)buf[i] == 0x80)
-                buf[i] = ' ';
-            Avbuf[j++] = buf[i++];
-        }
-        Avbuf[j++] = 0;
-        /* and analyse it as an opcode */
-        findext(Av[1]);
-        mne = findmne(Av[1]);
+    // if the label has arguments that aren't defined, we need to scuttle it
+    // to avoid a partial label being used.
+    if(labelundefined)
+    {
+      j=1;
+      Avbuf[j++] = 0;
     }
+
+    /* Parse the second word of the line */
+    while (buf[i] == ' ')
+        ++i;
+    Av[1] = Avbuf + j;
+    if (buf[i] == '=') {
+        /* '=' directly seperates Av[0] and Av[2] */
+        Avbuf[j++] = buf[i++];
+    } else while (buf[i] && buf[i] != ' ') {
+        if ((unsigned char)buf[i] == 0x80)
+            buf[i] = ' ';
+        Avbuf[j++] = buf[i++];
+    }
+    Avbuf[j++] = 0;
+    /* and analyse it as an opcode */
+    findext(Av[1]);
+    mne = findmne(Av[1]);
+
     /* Parse the rest of the line */
     while (buf[i] == ' ')
         ++i;
@@ -1222,6 +1372,14 @@ MNEMONIC *parse(char *buf)
     }
     Avbuf[j] = 0;
     
+    if (mne != NULL) {
+    	if (mne->flags & MF_BEGM) {
+    		nMacroDeclarations++;
+    	}
+    	if (mne->flags & MF_ENDM) {
+        	nMacroClosings++;
+    	}
+    }
     return mne;
 }
 
@@ -1229,6 +1387,7 @@ MNEMONIC *parse(char *buf)
 
 MNEMONIC *findmne(char *str)
 {
+	int h,k;
     int i;
     char c;
     MNEMONIC *mne;
@@ -1245,9 +1404,24 @@ MNEMONIC *findmne(char *str)
         buf[i] = c;
     }
     buf[i] = 0;
-    for (mne = MHash[hash1(buf)]; mne; mne = mne->next) {
+    h = hash1(buf);
+    mne = MHash[h];
+    k = 0;
+    while (mne != NULL) {
         if (strcmp(buf, mne->name) == 0)
             break;
+
+        k++;
+        mne = mne->next;
+        if (mne != NULL) {
+        	if ((mne == mne->next) && (k > 5)) { // any number bigger than 1 would do
+        		// should not happen at all, I'm not paranoid, I've had this problem really
+        		fprintf(stderr,"[%s] [%s] %08lx %08lx\n", buf, mne->name, (long)mne, (long)mne->next);
+        		fprintf(stderr,"BUG: %s:%d: chained list looped to itself and no match, would lock up endlessly\n", __FILE__, __LINE__);
+        		return NULL; // we need to return NULL here or the program will get stuck in an endless loop
+        					 // the BUG vanished with increased hashtable
+        	}
+        }
     }
     return mne;
 }
@@ -1262,12 +1436,14 @@ void v_macro(char *str, MNEMONIC *dummy)
     unsigned int i;
     char buf[MAXLINE];
     int skipit = !(Ifstack->xtrue && Ifstack->acctrue);
-    
+
     strlower(str);
+    mne = findmne(str);
+
     if (skipit) {
         defined = 1;
     } else {
-        defined = (findmne(str) != NULL);
+        defined = (mne != NULL);
         if (F_listfile && ListMode)
             outlistfile("");
     }
@@ -1280,7 +1456,17 @@ void v_macro(char *str, MNEMONIC *dummy)
         mac->vect = v_execmac;
         mac->name = strcpy(permalloc(strlen(str)+1), str);
         mac->flags = MF_MACRO;
+        mac->defpass = pass;
+        if (mac == mac->next) {
+        	// should not happen
+        	fprintf(stderr,"BUG: %s:%d: permalloc() returned the same value twice, expect severe problems\n", __FILE__, __LINE__);
+        }
         MHash[i] = (MNEMONIC *)mac;
+    }
+    else {
+        mac = (MACRO *)mne;
+        if( (bStrictMode) && (mac != NULL) && (mac->defpass == pass) )
+            asmerr( ERROR_MACRO_REPEATED, true, str );
     }
     while (fgets(buf, MAXLINE, pIncfile->fi)) {
         const char *comment;
@@ -1295,10 +1481,12 @@ void v_macro(char *str, MNEMONIC *dummy)
         
         mne = parse(buf);
         if (Av[1][0]) {
-            if (mne && mne->flags & MF_ENDM) {
+            if (mne != NULL) {	// for some reason I got a segfault while accessing mne->flags, should not happen but gdb said it was here
+            	if (mne->flags & MF_ENDM) {
                 if (!defined)
                     mac->strlist = base;
                 return;
+            	}
             }
         }
         if (!skipit && F_listfile && ListMode)
@@ -1335,11 +1523,13 @@ void addhashtable(MNEMONIC *mne)
 
 static unsigned int hash1(const char *str)
 {
-    unsigned int result = 0;
-    
-    while (*str)
-        result = (result << 2) ^ *str++;
-    return result & MHASHAND;
+    uint8_t a = 0;
+    uint8_t b = 0;
+    while (*str) {	// this is Fletcher's checksum, better distribution, faster
+    	a += *str++;
+    	b += a;
+    }
+    return ((((a << 8) & 0xFF00) | (b & 0xFF))  ) & MHASHAND;
 }
 
 void pushinclude(char *str)
@@ -1347,7 +1537,7 @@ void pushinclude(char *str)
     INCFILE *inf;
     FILE *fi;
     
-    if ((fi = pfopen(str, "r")) != NULL) {
+    if ((fi = pfopen(str, "rb")) != NULL) {
         if (F_verbose > 1 && F_verbose != 5 )
             printf("%.*s Including file \"%s\"\n", Inclevel*4, "", str);
         ++Inclevel;
@@ -1385,9 +1575,23 @@ int asmerr(int err, bool bAbort, const char *sText )
     {
         
         if (sErrorDef[err].bFatal)
-            bStopAtEnd = true;
+            bStopAtEnd[pass] = true;
         
-        for ( pincfile = pIncfile; pincfile->flags & INF_MACRO; pincfile=pincfile->next);
+	pincfile = pIncfile;
+	while(1) {
+		if (pincfile == NULL) {
+			fprintf(stderr, "%s:%d: error: pincfile is NULL, err:%d, [%s]: %s\n", __FILE__, __LINE__
+						, err, sText, sErrorDef[err].sDescription);
+			bAbort = true;
+			break;
+		}
+		if (pincfile->flags & INF_MACRO) {
+			pincfile = pincfile->next;
+			continue;
+		} else {
+			break;
+		}
+	}
         str = sErrorDef[err].sDescription;
 
         /*
@@ -1402,6 +1606,7 @@ int asmerr(int err, bool bAbort, const char *sText )
         error_file = (F_listfile != NULL) ? FI_listfile : stdout;
 
         /* print first part of message, different formats offered */
+	if (pincfile != NULL)
         switch (F_errorformat)
         {
             case ERRORFORMAT_WOE:
@@ -1457,17 +1662,16 @@ int asmerr(int err, bool bAbort, const char *sText )
         sprintf(erroradd2, str, sText ? sText : "");
         sprintf(erroradd3, "\n");
 
-        strcat(errorbuffer,erroradd1);
-        strcat(errorbuffer,erroradd2);
-        strcat(errorbuffer,erroradd3);
+	passbuffer_update(ERRORBUF,erroradd1);
+	passbuffer_update(ERRORBUF,erroradd2);
+	passbuffer_update(ERRORBUF,erroradd3);
         
         if ( bAbort )
         {
-            msgbuffer[0]=' ';
-            printf("%s\n",msgbuffer); // dump messages from this pass
+            passbuffer_output(MSGBUF); // dump messages from this pass
             fprintf(error_file, "Aborting assembly\n");
-            printf("%s\n",errorbuffer); // time to dump the errors from this pass!
-            exit(EXIT_FAILURE);
+            passbuffer_output(ERRORBUF); // time to dump the errors from this pass!
+            exit(err);
         }
     }
     
@@ -1542,20 +1746,88 @@ int main(int ac, char **av)
     bool bTableSort = false;
     int nError = MainShadow( ac, av, &bTableSort );
 
-    if ( nError )
+    if ( nError && (nError != ERROR_NON_ABORT) ) 
     {
 	// dump messages when aborting due to errors
-        msgbuffer[0]=' ';
-        printf("%s\n",msgbuffer); // dump messages from this pass
+        passbuffer_output(MSGBUF);
 
-        // Only print errors if assembly is unsuccessful!!!!! - FXQ
-        printf("%s\n",errorbuffer);
+        // Only print errors if assembly is unsuccessful
+        passbuffer_output(ERRORBUF);
 
         printf( "Fatal assembly error: %s\n", sErrorDef[nError].sDescription );
     }
     
     DumpSymbolTable( bTableSort );
+
+    passbuffer_cleanup();
     
+    if (nError != 0) {
+    	if (bRemoveOutBin) {
+    		unlink(F_outfile);
+    	}
+    }
     return nError;
 }
 
+void passbuffer_clear(int mbindex)
+{
+    // ensure the buffer is initialized before we attempt to clear it, 
+    // just in case no messages have been stored prior to this clear.
+    if(passbuffer[mbindex] == NULL)
+        passbuffer_update(mbindex,"");
+    // clear the requested guffer
+    passbuffer[mbindex][0] = 0;
+}
+
+void passbuffer_update(int mbindex,char *message)
+{
+    int newsizerequired;
+
+    // allocate 16k buffers to start...
+    static int passbuffersize[2] = {16384,16384}; 
+
+
+    // check if the buffer we're working with needs initialization
+    if(passbuffer[mbindex] == NULL)
+    {
+        passbuffer[mbindex] = malloc(passbuffersize[mbindex]);
+        if(passbuffer[mbindex] == NULL)
+            panic("couldn't allocate memory for message buffer.");
+        passbuffer[mbindex][0] = 0; // empty string
+    }
+
+    // check if we need to grow the buffer...
+    newsizerequired=strlen(passbuffer[mbindex])+strlen(message);
+    if( newsizerequired > passbuffersize[mbindex])
+    {
+        // double the current buffer size, if sufficient, so we don't continually reallocate memory...
+        newsizerequired = ( newsizerequired < (passbuffersize[mbindex]*2) ) ? passbuffersize[mbindex]*2 : newsizerequired;
+
+        //fprintf(stderr,"DEBUG: growing buffer %d to %d bytes\n", mbindex, newsizerequired);
+
+        passbuffer[mbindex] = realloc(passbuffer[mbindex], newsizerequired);
+        if(passbuffer[mbindex] == NULL)
+            panic("couldn't grow memory for message buffer.");
+        passbuffersize[mbindex]=newsizerequired;
+    }
+	
+    // update the buffer with the message...
+    strcat(passbuffer[mbindex],message);
+}
+
+void passbuffer_output(int mbindex)
+{
+    // ensure the buffer is initialized before we attempt to clear it, 
+    // just in case no messages have been stored yet.
+    if(passbuffer[mbindex] == NULL)
+        passbuffer_update(mbindex,"");
+    printf("%s\n",passbuffer[mbindex]); // ...do we really still need to put this through stdout, instead stderr?
+}
+
+void passbuffer_cleanup()
+{
+    int t;
+    for(t=0;t<2;t++)
+        if(passbuffer[t]!=NULL)
+            free(passbuffer[t]);
+}

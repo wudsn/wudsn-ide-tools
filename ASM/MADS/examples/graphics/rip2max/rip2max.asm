@@ -98,7 +98,7 @@ kol1	:256 brk
 kol2	:256 brk
 kol3	:256 brk
 tabk	:256 brk		;tablica lokalizacji palet kolorow
- 
+
 ;	org $2000
 
 start	equ *
@@ -156,7 +156,7 @@ lp_	sta $d40a    ; jasn
 ;	ldx #192	;ustawienia dla normal screen i zoom screen
 ;	stx lin1+1
 ;	inx
-;	stx lin2+1	
+;	stx lin2+1
 ;	lda #0
 ;	sta tryb+1
 
@@ -171,7 +171,7 @@ _zoom_	lda #0
 	cmp #1
 	beq zoom_ON
 
-set_col	LDA TDL1,X				*reszta wartosci
+set_col	LDA TDL1,X				; reszta wartosci
 ;	STA DL5Ek0+1
 ;	LDA TDL1+1,X
 ;	STA DL5Ek0+2
@@ -300,7 +300,7 @@ ex_dliv	ldx #4		;kolory
 	pla
 	rti
 
-*-----------------------------   
+*-----------------------------
 * DLIV dla wybieranie z palety kolorow
 * dzieli ekran na polowe
 * w dolnej wybieranie kolorow
@@ -457,15 +457,15 @@ SetInfo  ldy #0
 *------------------
 
 Koment1 equ *
- 
+
 Koment2 equ *
- 
+
 Koment3 equ *
- 
+
 Koment4 equ *
- 
+
 Koment5 equ *
- 
+
 *---------------------------------------
 RUN	JSR INIT
 	jsr ROMOFF
@@ -475,7 +475,7 @@ RUN	JSR INIT
 	jsr SetCol
 	JSR CLSScreen
 ;	jsr lrip
-	
+
 	jsr clswsk
 	lda #$ff
 	sta $2fc
@@ -499,7 +499,7 @@ TK1	JSR CLSPMG
 	bne TK1
 TK2	JSR KEY
 	bcc TK0
-	CMP #$ef dC		;Shift+CTRL+Q	-exit
+	CMP #$ef ;dC		;Shift+CTRL+Q	-exit
 	BEQ END
 	jsr TK00
 	jmp TK0
@@ -602,7 +602,7 @@ TK4	cmp KlawSk1,y
 	cpy #KlawSk3-KlawSk1
 	bcc TK4
 	RTS
-TK41	jmp TK8	
+TK41	jmp TK8
 
 TK22	ldy #KlawSk21-KlawSk2
 	cmp KlawSk2,y
@@ -895,7 +895,7 @@ no_	cpx #192
 	sta kol+3
 	sta kol+11
 	sta $2c6
-	
+
 	lda jas0,x
 	sta jas
 	lda jas1,x
@@ -1135,7 +1135,7 @@ LRip	jsr clscur
 	lda >ekran10+24
 	adc #0
 	sta pom+1
-	
+
 	ldy #7
 cc_	lda (pom),y
 	sta kol,y
@@ -1144,7 +1144,7 @@ cc_	lda (pom),y
 	jsr jascol
 
 	mwa #ekran10 pom
-	
+
 	lda <ekran10
 	clc
 	adc ekran10+11
@@ -1152,7 +1152,7 @@ cc_	lda (pom),y
 	lda >ekran10
 	adc ekran10+10
 	sta pom1+1
-	
+
 ; przepisz pamiec z rip'em o naglowek
 
 	ldx #64
@@ -1161,27 +1161,27 @@ mv0	lda (pom1),y
 	sta (pom),y
 	iny
 	bne mv0
-	
+
 	inc pom+1
 	inc pom1+1
 	dex
 	bne mv0
-	
+
 ; dekompresja pod $4100
 	jsr lzss
-	
+
 ;przepisz po 8000byte spod $4100 i $4100+8000
 	mwa #$4100+16000 pom
 
 	mwa #ekran20+7680 pom1
 
 	jsr move
-*-- drugi obraz	
+*-- drugi obraz
 	mwa #$4100+8000 pom
-	
+
 	mwa #ekran10+7680 pom1
 
-*--	
+*--
 move	ldx #31
 mv01	ldy #$ff
 mv02	lda (pom),y
@@ -1303,7 +1303,7 @@ Lbmp2	jsr Read1
 	JSR Read1
 ;	STA $2C4
 	sta kol+1
-	sta jas+1	
+	sta jas+1
 	JSR Read1
 ;	STA $2C5
 	sta kol+2
@@ -1351,7 +1351,7 @@ LCrunchM LDA #0		;load MAX
 	ldx <kol3
 	ldy >kol3
 	jsr read2
-	
+
 	ldx <jas0
 	ldy >jas0
 	jsr read2
@@ -1498,7 +1498,7 @@ TAK_	DEC ILE
 *-------------------
 *odczyt 1 bajtu z bufora
 
-Read1	LDA $ffff 
+Read1	LDA $ffff
 	php
 	INW Read1+1
 	plp
@@ -1510,11 +1510,11 @@ PUT	TAX
 	LDA WYS
 	AND #1
 	BEQ PUT2
-PUT1	STX $ffff 
+PUT1	STX $ffff
 	ADW PUT1+1 #80
 	RTS
 
-PUT2	STX $ffff 
+PUT2	STX $ffff
 	ADW PUT2+1 #80
 	RTS
 
@@ -1586,7 +1586,7 @@ SaveCrunch ldy #0
 	mva jas2,y	bufor1+$200,y
 	mva jas3,y	bufor1+$300,y
 	dey
-	bne SaveCrunch+2	
+	bne SaveCrunch+2
 
 	LDA <plik1
 	LDX >plik1
@@ -1633,7 +1633,7 @@ sav	lda #0
 
 	lda <tabk
 	ldx >tabk
-	jsr write2	
+	jsr write2
 	jmp cru2
 
 XLP	ldx LFTxt+4
@@ -1771,13 +1771,13 @@ TAK__2	LDA BYT
 	STX ILE
 	RTS
 
-GET1	LDX $ffff 
+GET1	LDX $ffff
 	ADW GET1+1 #80
 
 	DEC WYS
 	RTS
 
-GET2	LDX $ffff 
+GET2	LDX $ffff
 	ADW GET2+1 #80
 
 	DEC WYS
@@ -2025,7 +2025,7 @@ SkokiPZ0
 
 *--------------
 AddPom	ADW POM1 #40
-	
+
 	ADW POM2 #40
 	RTS
 *--------------
@@ -2069,7 +2069,7 @@ PUTZ1	STA $ffff
 	BNE *+5
 	INC *-6
 	RTS
-PUTZ2	STA $ffff 
+PUTZ2	STA $ffff
 	INC *-2
 	BNE *+5
 	INC *-6
@@ -2170,7 +2170,7 @@ new_col	lda pmgy
 moz_	sta tabk,y	;ustaw nastepna palete
 	iny
 	cpy #192
-	bne moz_	
+	bne moz_
 new_	jmp SetColor
 
 *-----------------------------
@@ -2267,7 +2267,7 @@ tst_gw	lda filename,y	;jesli nie ma to wczytaj plik o podanej nazwie
 	dey
 	bpl tst_gw
 	jmp czyta
-	
+
 _cont	lda pom1
 	CMP #$1B	;Esc
 	BEQ DRCO
@@ -3035,7 +3035,7 @@ DatPMG6
 *--------------
 * Pixel
 *-
-WPlot	rts	
+WPlot	rts
 GPlot	rts
 Plot	RTS
 plot_2	rts
@@ -3206,7 +3206,7 @@ PWTxt0	lda RamkaTxt+1
 	clc
 	adc #8
 	sta CrY0
-	
+
 PWTxt1	ldx CrX0
 	ldy CrY0
 	jsr PutLinTxt
@@ -3349,7 +3349,7 @@ _py	lda #0
 	lda (Pom1),y
 	and TbMs1,x
 	jmp nxt
-	
+
 _niepa	lda (Pom1),y	;linia nieparzysta
 	and TbMs1,x
 	sta BYT
@@ -3386,7 +3386,7 @@ Loc4	sta byt_+1
 	lda byt
 	asl @
 	asl @
-byt_	ora #0	
+byt_	ora #0
 	RTS
 
 *-------------------
@@ -3426,13 +3426,13 @@ UNDO	mwa #Ekran10 xPOMAdr1+1
 NAG	Dta d'                               X000 Y000'		;naglowek ukryty - leca smieci
 nag2	dta d'Rip2Max V1.0 (2002)  by TeBe+Stanley    '
 	dta d'File (Shift+F)                          '
-	
+
 defcol	dta b(6,10,14,0,0)
 
 kol	dta b($00),b($30),b($70),b($d2)
 jas	dta b($00),b($02),b($04),b($06)
 	dta b($00),b($30),b($70),b($d2)
-	
+
 KlawSk2
 	dta b($39) ;Hflip
 	dta b($10) ;Vflip
@@ -3478,7 +3478,7 @@ KlawSk01
 	dta b($37) ;Sh+.
 	dta b($36) ;Sh+,
 	dta b($0b) ;U
-	dta b($11) ;HELP  
+	dta b($11) ;HELP
 	dta b($0c) ;RETURN
 	dta b($76) ;Sh+CLR
 	dta b($74) ;Sh+DEL
@@ -3560,7 +3560,7 @@ KlawSk02
 	dta a(SetCurNorm)	;Sh+.
 	dta a(SetCur2Y)		;Sh+,
 	dta a(UNDO)		;U
-	dta a(HELP)		;HELP  
+	dta a(HELP)		;HELP
 	dta a(PutFire)		;RETURN
 	dta a(CLSScreen)	;Sh+CLR
 	dta a(CLSColor)		;Sh+DEL
@@ -3571,7 +3571,7 @@ KlawSk02
 *-----------------------------
 TDL2 dta a(Ekran11),a(Ekran21)
 *---------------------
-	
+
 *--
 meta equ *
 
@@ -3641,7 +3641,7 @@ ini2	sta jas0,y
 	LDA #$C0
 	STA $D40E
 	RTS
-	
+
 *----------------
 
 	org $0400	;od poczatku strony

@@ -1,14 +1,29 @@
-;	mwa #src+11 inputPointer
-;	mwa #dst outputPointer
-;	jsr unzl4
-;
-;src	ins 'file.lz4'	; cut 11 bytes from begining, 6 bytes from end
 
 
+dst	= $a010
+
+	
+	org $2000
+	
+dl	dta d'ppp'
+	dta $4e,a(dst)
+	:101 dta $e
+	dta $4e,0,h(dst+$1000)
+	:95 dta $e
+	dta $41,a(dl)
+	
+main	mwa #dl $230
+
+	mwa #src inputPointer
+	mwa #dst outputPointer
+	jsr unlz4
+	
+	jmp *
+
+src	ins 'koronis.lz4',11		; cut 11 bytes from begining, 6 bytes from end
 
 
-	org unlz4
-
+unlz4
                 jsr    xBIOS_GET_BYTE                  ; length of literals
                 sta    token
 		:4 lsr
@@ -84,3 +99,5 @@ xBIOS_GET_BYTE
 inputPointer	equ *-2
 		inw inputPointer
 		rts
+
+	run main

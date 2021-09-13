@@ -16,7 +16,7 @@ AUDC4 = $d207
 start	LDX #$00
 	STX SKCTL	; why turn of keyboard debounce here...
 	STX AUDCTL
-	LDA #$01		; when turning it on just two lines later again?
+	LDA #$01	; when turning it on just two lines later again?
 	STA SKCTL
 nextnote JSR loadnote	; loads X-indexed notes in Y and stores them
 	STY AUDF1	; to POKEY's frequence registers
@@ -25,9 +25,9 @@ nextnote JSR loadnote	; loads X-indexed notes in Y and stores them
 	JSR loadnote
 	STY AUDF3
 	JSR loadnote
-	LDA #$00		; reset the clock
+	LDA #$00	; reset the clock
 	STA RTCLOK+2
-	ORA #$CA		; LDA #$CA should work the same way, shouldn't it?
+	ORA #$CA	; LDA #$CA should work the same way, shouldn't it?
 	STA AUDC4	; because it basically always stores $CA in AUDC4, doesn't it?
 	STY AUDF4	; Y still set by loadnote routine
 incvol	LDA RTCLOK+2	; starts from zero
@@ -35,7 +35,7 @@ incvol	LDA RTCLOK+2	; starts from zero
 	LSR		; makes sure that high nibble is always zero
 	LSR		; and low nibble changes only every 8 increments of RTCLOK
 	LSR		; resulting in a volume change every 8/50 seconds (PAL)
-	EOR #$A3		; sets distortion nibble to $A, counts lowest two bits (0-1) from 3 down to 0 for four times (bits 2-3), thereby decreasing the volume in each cycle while increasing the base volume with each cycle
+	EOR #$A3	; sets distortion nibble to $A, counts lowest two bits (0-1) from 3 down to 0 for four times (bits 2-3), thereby decreasing the volume in each cycle while increasing the base volume with each cycle
 	STA AUDC1	; set distortions
 	STA AUDC2
 	STA AUDC3

@@ -7,7 +7,6 @@
 <BODY BACKGROUND="6502proc.gif">
 
 <style type="text/css">
-
 .duzy {
 	font-family: Tahoma, Verdana, Arial;
 	font-size: 24px;
@@ -47,8 +46,8 @@
 </head>
 
 <CENTER>
-<p class="duzy"><u>MAD-ASSEMBLER 1.9.8</u></p>
-<p class="stopka">Tebe/Madteam (11.01.2014)
+<p class="duzy"><u>MAD-ASSEMBLER 2.1.0</u></p>
+<p class="stopka">Tebe/Madteam (11.11.2019)
 
 <HR>
 
@@ -194,6 +193,7 @@
 <UL>
 <LI><A HREF="#_rept">Definiowanie powtórzeñ (.REPT)</A><br>
 <LI><A HREF="#_symbol">Definiowanie symbolu SDX (.SYMBOL)</A><br>
+<LI><A HREF="#arrays">Definiowanie tablic (.ARRAY)</A><br>
 <LI><A HREF="#_segment">Definiowanie segmentów (.SEGDEF)</A><br>
 </UL>
 
@@ -214,6 +214,8 @@
 <UL>
 <LI><A HREF="#makra">Deklaracja makra</A>
 <LI><A HREF="#makra_wy">Wywo³anie makra</A>
+<LI><A HREF="#_defi">Definiowanie makra</A>
+
 </UL>
 
 <b><LI><A HREF="#procs">Procedury</A></b>
@@ -278,9 +280,17 @@ Je¶li dla Twojego systemu istnieje odpowiednia wersja <tt>Free Pascala</tt>, tzn
 <p></p>
 
 <li>Strona domowa <tt>XASM-a</tt>: <a href="http://atariarea.histeria.pl/x-asm/">http://atariarea.krap.pl/x-asm/</a>
+
+
+<li>W±tki dotycz±ce <tt>MADS-a</tt>:
+<ul>
+<li><a href="http://www.atari.org.pl/forum/viewtopic.php?id=8450">http://www.atari.org.pl/</a>
+<li><a href="http://atariage.com/forums/topic/114443-mad-assembler-mads/">http://atariage.com/</a>
+<li><a href="http://www.atari.org.pl/forum/viewtopic.php?id=13407">Kolorowanie sk³adni MADS, XASM</a></li>
+</ul>
+
 <p></p>
 <br />
-
 
 
 <A NAME="komp">
@@ -382,18 +392,20 @@ Syntax: mads source [switches]
 -c              Label case sensitivity
 -d:label=value  Define a label
 -f              CPU command at first column
+-fv:value       Set raw binary fill byte to [value]
 -hc[:filename]  Header file for CC65
 -hm[:filename]  Header file for MADS
 -i:path         Additional include directories
 -l[:filename]   Generate listing
 -m:filename     File with macro definition
+-ml:value       margin-left property
 -o:filename     Set object file name
 -p              Print fully qualified file names in listing and error messages
 -s              Silent mode
 -t[:filename]   List label table
--x              Exclude unreferenced procedures
--vu             Verify code inside unreferenced procedures
 -u              Warn of unused labels
+-vu             Verify code inside unreferenced procedures
+-x              Exclude unreferenced procedures
 </pre>
 </span>
 
@@ -467,6 +479,13 @@ poleceñ. Prze³±cznika mo¿na u¿yæ wielokrotnie podczas jednego wywo³ania <tt>MADS
 <div style="font-weight: bold"  style="font-size: 18px">-f</div>
 <div align="justify">
 U¿ycie prze³±cznika <b><tt>-f</tt></b> umo¿liwia umieszczanie rozkazów CPU od pierwszej kolumny wiersza i ich poprawne rozpoznawanie przez asembler jako rozkazy a nie tylko jako etykiety.
+</p>
+
+
+<p>
+<div style="font-weight: bold"  style="font-size: 18px">-f</div>
+<div align="justify">
+U¿ycie prze³±cznika <b><tt>-fv:value</tt></b> pozwala ustaliæ warto¶æ wype³nienia pamiêci gdy u¿yjemy 'OPT F+'
 </p>
 
 
@@ -1012,7 +1031,8 @@ PSEUDO ROZKAZY
  <A HREF="#_org">ORG</A> [[expression]]address[,address2]
  <A HREF="#_ins">INS</A> 'filename'["filename"][*][+-value][,+-ofset[,length]]
  <A HREF="#_icl">ICL</A> 'filename'["filename"]
- <A HREF="#_dta">DTA</A> [abfghltv](value1,value2...)[(value1,value2...)]
+ <A HREF="#_dta">DTA</A> [abfghltvmer](value1,value2...)[(value1,value2...)]
+ 
  DTA [cd]'string'["string"]
  RUN expression
  INI expression
@@ -1315,10 +1335,12 @@ Pseudo rozkaz <tt><b>DTA</b></tt> s³u¿y do definicji danych okre¶lonego typu. Je
    v   warto¶æ typu WORD, relokowalna
    l   m³odszy bajt warto¶ci (BYTE)
    h   starszy bajt warto¶ci (BYTE)
+   m   najstarszy bajt warto¶ci LONG (24bit)
+   g   najstarszy bajt warto¶ci DWORD (32bit)     
    t   warto¶æ typu LONG (24bit)
    e   warto¶æ typu LONG (24bit)
    f   warto¶æ typu DWORD (32bit)
-   g   warto¶æ typu DWORD (32bit) w odwróconej kolejno¶ci     
+   r   warto¶æ typu DWORD w odróconej kolejno¶ci (32 bit)
    c   ci±g znaków ATASCII ograniczony apostrofami '' lub "", znak <b>*</b> na koñcu spowoduje
        invers warto¶ci ci±gu, np. dta c'abecadlo'*
    d   ci±g znaków INTERNAL ograniczony apostrofami '' lub "", znak <b>*</b> na koñcu spowoduje
@@ -1411,12 +1433,22 @@ DYREKTYWY
 
 <span style="color: #0000FF">
 <pre>
+
+ <A HREF="#_ai">.A8, .A16, .AI8, .AI16</a>
+ <A HREF="#_ia">.I8, .I16, .IA8, .IA16</a>
+
+ <A HREF="#_asize">.ASIZE</a>
+ <A HREF="#_isize">.ISIZE</a>
+  
  <A HREF="#_align">.ALIGN</a> N[,fill]
  
  <A HREF="#arrays">.ARRAY</A> label [elements0][elements1][...] .type [= init_value]
  <A HREF="#arrays">.ENDA, [.AEND]</A>
 
  <A HREF="#_def">.DEF</A> label [= expression]
+ 
+ <A HREF="#_defi">.DEFINE</A> macro_name expression
+ <A HREF="#_udef">.UNDEF</A> macro_name
 
  <A HREF="#enums">.ENUM</A> label
  <A HREF="#enums">.ENDE, [.EEND]</A>
@@ -1435,6 +1467,9 @@ DYREKTYWY
 
  <A HREF="#locals">.LOCAL</A> label
  <A HREF="#locals">.ENDL, [.LEND]</A>
+ 
+ <A HREF="#_longa">.LONGA ON|OFF</A>
+ <A HREF="#_longi">.LONGI ON|OFF</A>
 
  <A HREF="#_link">.LINK</A> 'filename'
  
@@ -1493,8 +1528,7 @@ DYREKTYWY
  <A HREF="#_lohi">.LO</A> (expression)
  <A HREF="#_lohi">.HI</A> (expression)
 
- <A HREF="#_db">.DB</A>
- <A HREF="#_dw">.DW</A>
+ <A HREF="#_dbyte">.DBYTE</A> words
  <A HREF="#_ds">.DS</A> expression
 
  <A HREF="#_by">.BY</A> [+byte] bytes and/or ASCII
@@ -1509,8 +1543,12 @@ DYREKTYWY
  
  <A HREF="#_len">.SIZEOF</A> label
  <A HREF="#_len">.FILESIZE</A> 'filename' 
+ <A HREF="#_fex">.FILEEXISTS</A> 'filename' 
 
  <A HREF="#_get">.GET</A> [index] 'filename'["filename"][*][+-value][,+-ofset[,length]]
+ <A HREF="#_get">.WGET</A> [index] 
+ <A HREF="#_get">.LGET</A> [index] 
+ <A HREF="#_get">.DGET</A> [index] 
  <A HREF="#_put">.PUT</A> [index] = value
  <A HREF="#_sav">.SAV</A> [index] ['filename',] length
 </pre>
@@ -1818,22 +1856,18 @@ Example:
 
 
 
-<A NAME="_db">
+<A NAME="_dbyte">
 <p>
-<u><tt><h3>.DB</h3></tt></u>
-Definicja danych typu <b><tt>BYTE</tt></b>, odpowiednik pseudo rozkazu <b><tt>DTA B</tt></b> lub dyrektywy <b><tt>.BYTE</tt></b>
-<p></p>
+<u><tt><h3>.DBYTE</h3></tt></u>
+Definicja danych typu <b><tt>WORD</tt></b> w odwrotnej kolejno¶ci tzn. najpierw starszy bajt, nastêpnie m³odszy bajt.
+<span style="color: #0000FF">
+<pre>
+Example:
+
+.DBYTE $1234,-1,1     ; 12 34 FF FF 00 01
+</pre>
+</span>
 <br />
-
-
-
-<A NAME="_dw">
-<p>
-<u><tt><h3>.DW</h3></tt></u>
-Definicja danych typu <b><tt>WORD</tt></b>, odpowiednik pseudo rozkazu <b><tt>DTA A</tt></b> lub dyrektywy <b><tt>.WORD</tt></b>
-<p></p>
-<br />
-
 
 
 <A NAME="_ds">
@@ -2024,8 +2058,64 @@ label .array [255] .dword
 <p>
 Dyrektywy .SIZEOF i .FILESIZE to alternatywne nazwy dla .LEN, mo¿na u¿ywaæ ich zamiennie zale¿nie od upodobañ programuj±cego.
 </p>
-
 <br />
+
+
+<A NAME="_fex">
+<p>
+<u><tt><h3>.FILEEXISTS 'filename'</h3></tt></u>
+Dyrektywa .FILEEXISTS zwraca '1' gdy plik 'filename' istnieje w przeciwnym wypadku zwraca warto¶æ '0'  np.:
+<span style="color: #0000FF">
+<pre>
+ ift .fileexists 'filename'
+ .print 'true'
+ els
+ .print 'false'
+ eif
+</pre>
+</span>
+<br />
+
+
+<A NAME="_defi">
+<p></p>
+<u><tt><h3>.DEFINE macro_name expression</h3></tt></u>
+Dyrektywa .DEFINE pozwala zdefiniowaæ jedno-liniowe makro MACRO_NAME. Dopuszczalnych jest dziewiêæ parametrów %%1.%%9 (:1..:9) reprezentowanych w ten sam sposób jak dla makr .MACRO, poprzez znaki '%%' lub znak ':'. Nazwy literowe parametrów nie s± akceptowane, nie ma mo¿liwo¶ci u¿ycia znaku podzia³u linii '\'. 
+<span style="color: #0000FF">
+<pre>
+ .define poke mva #%%2 %%1
+ 
+ poke(712, 100)
+</pre>
+</span>
+Makro jedno-liniowe .DEFINE mo¿na wielokrotnie definiowaæ w trakcie jednego przebiegu asemblacji.
+<span style="color: #0000FF">
+<pre>
+ .define pisz %%1+%%2
+ 
+ .print pisz(712, 100)
+ 
+ .define pisz %%1-%%2
+ 
+ .print pisz(712, 100)
+</pre>
+</span>
+<br />
+
+
+<A NAME="_undef">
+<p></p>
+<u><tt><h3>.UNDEF macro_name</h3></tt></u>
+Dyrektywa .UNDEF usuwa definicjê jedno-liniowego makra MACRO_NAME.
+<span style="color: #0000FF">
+<pre>
+ .define poke mva #%%2 %%1
+ 
+ .undef poke
+</pre>
+</span>
+<br />
+
 
 
 <A NAME="_def">
@@ -2052,8 +2142,6 @@ Definiowane etykiety s± zasiêgu aktualnego obszaru lokalnego, je¶li chcemy zdefi
 .endl
 </pre>
 </span>
-
-
 
 <span style="color: #0000FF">
 This unary operator tests whether the following label has been defined yet, returning TRUE or FALSE as appropriate.
@@ -2177,7 +2265,9 @@ hlp2   stx $b000
 <A NAME="_get">
 <p>
 <u><tt><h3>.GET [index] 'filename'... [.BYTE, .WORD, .LONG, .DWORD]</h3></tt></u>
-Jest to odpowiednik pseudo rozkazu <b><tt>INS</tt></b> (podobna sk³adnia), z t± ró¿nic± ¿e plik nie jest do³±czany do asemblowanego pliku tylko ³adowany do pamiêci <tt>MADS-a</tt>. Ta dyrektywa pozwala wczytaæ okre¶lony plik do pamiêci <tt>MADS-a</tt> i odwo³ywaæ siê do bajtów tego pliku jak do tablicy jednowymiarowej.
+<u><tt><h3>.WGET [index] | .LGET [index] | .DGET [index]</h3></tt></u>
+
+<b><tt>.GET</tt></b> jest odpowiednikiem pseudo rozkazu <b><tt>INS</tt></b> (podobna sk³adnia), z t± ró¿nic± ¿e plik nie jest do³±czany do asemblowanego pliku tylko ³adowany do pamiêci <tt>MADS-a</tt>. Ta dyrektywa pozwala wczytaæ okre¶lony plik do pamiêci <tt>MADS-a</tt> i odwo³ywaæ siê do bajtów tego pliku jak do tablicy jednowymiarowej.
 </p>
 <span style="color: #0000FF">
 <pre>
@@ -2190,11 +2280,15 @@ Example:
 
  lda #.get[7]                   ; odczytanie 7 bajtu z tablicy MADS-a
  adres = .get[2]+.get[3]&lt&lt8     ; 2 i 3 bajt w nag³ówku pliku DOS zawiera informacje o adresie ³adowania
+ 
+ adres = .wget[2]              ; word
+ tmp = .lget[5]                ; long
+ ?x = .dget[11]                ; dword
 </pre>
 </span>
 Przy pomocy dyrektyw <tt>.GET, .PUT</tt> mo¿na odczytaæ np modu³ <tt>Theta Music Composer (TMC)</tt> i dokonaæ jego relokacji. Realizuje to za³±czone do <tt>MADS-a</tt> makro z katalogu <tt>../EXAMPLES/MSX/TMC_PLAYER/tmc_relocator.mac</tt>.
 <p></p>
-Dopuszczalny zakres warto¶ci dla <tt>INDEX = &lt0..65535&gt</tt>. Warto¶ci odczytywane przez <tt>.GET</tt> s± typu <tt>BYTE</tt>.
+Dopuszczalny zakres warto¶ci dla <tt>INDEX = &lt0..65535&gt</tt>. Warto¶ci odczytywane przez <b><tt>.GET</tt></b> s± typu <tt>BYTE</tt>. Warto¶ci odczytywane przez <b><tt>.WGET</tt></b> s± typu <tt>WORD</tt>. Warto¶ci odczytywane przez <b><tt>.LGET</tt></b> s± typu <tt>LONG</tt>. Warto¶ci odczytywane przez <b><tt>.DGET</tt></b> s± typu <tt>DWORD</tt>.
 
 <p></p>
 <br />
@@ -2856,10 +2950,10 @@ label .ARRAY [elements0][elements1][...] [.type] [= init_value]
 </pre>
 </span>
 
-Dostêpne typy danych to <b><tt>.BYTE</tt></b>, <b><tt>.WORD</tt></b>, <b><tt>.LONG</tt></b>, <b><tt>.DWORD</tt></b>. W przypadku braku podania typu domy¶lnie przyjmowany jest typ .BYTE.
+Dostêpne typy danych to <b><tt>.BYTE</tt></b>, <b><tt>.WORD</tt></b>, <b><tt>.LONG</tt></b>, <b><tt>.DWORD</tt></b>. W przypadku braku podania typu domy¶lnie przyjmowany jest typ .BYTE. Definicja tablicy lokalizuje j± in-place (w miejscu definicji). 
 
 <p>
-<tt>ELEMENTS</tt> okre¶la liczbê elementów tablicy [0..ELEMENTS-1], warto¶æ ta mo¿e byæ sta³± lub wyra¿eniem, powinna byæ z przedzia³u <b><tt>&lt0..65535&gt</tt></b>. W przypadku braku podania liczby elementów zostanie ona ustalona na podstawie liczby wprowadzonych danych.
+<tt>ELEMENTS</tt> okre¶la liczbê elementów tablicy, które bêd± indeksowane od &lt0..ELEMENTS-1&gt. Warto¶æ ELEMENTS mo¿e byæ sta³± lub wyra¿eniem, powinna byæ z przedzia³u <b><tt>&lt0..65535&gt</tt></b>. W przypadku braku podania liczby elementów zostanie ona ustalona na podstawie liczby wprowadzonych danych. 
 </p>
 
 W obszarze ograniczonym dyrektywami .ARRAY i .ENDA nie ma mo¿liwo¶ci u¿ywania mnemoników CPU, je¶li je u¿yjemy lub u¿yjemy innych niedozwolonych znaków wówczas wyst±pi b³±d z komunikatem <b>Improper syntax</b>.
@@ -2882,7 +2976,7 @@ Dopuszczalne jest okre¶lenie indeksu od jakiego bêdziemy wpisywali warto¶ci dla 
 </span>
 
 <p>
-Ten twór mo¿e wydaæ siê dziwny, a jego zastosowanie ograniczone, jednak zdarzaj± siê sytuacje kiedy mo¿e siê przydaæ, np. tablica t³umacz±ca kod naci¶niêtego klawisza na kod <tt>ATASCII</tt> czy <tt>INTERNAL</tt>.
+Przyk³ad tablicy t³umacz±cej kod naci¶niêtego klawisza na kod <tt>INTERNAL</tt>.
 </p>
 
 <span style="color: #0000FF">
@@ -2930,6 +3024,65 @@ W w/w przyk³adzie stworzyli¶my tablicê <tt>TAB</tt> o rozmiarze 256 bajtów <tt>[
 
 Znak dwukropka <tt>':'</tt> rozdziela poszczególne indeksy tablicy.
 
+<p>
+Przyk³ad procedury detekcji ruchu joysticka, np.:
+</p>
+
+<span style="color: #0000FF">
+<pre>
+.local HERO
+
+  .pages
+  
+  lda $d300
+  and #$0f
+  tay
+  lda joy,y
+  sta _jmp
+
+  jmp null
+_jmp equ *-2
+
+left
+right
+up
+down  
+
+null
+
+  rts
+
+  .endpg
+
+  _none     = 15
+  _up       = 14
+  _down     = 13
+  _left     = 11
+  _left_up  = 10
+  _left_dw  = 9
+  _right    = 7
+  _right_up = 6
+  _right_dw = 5
+
+.array joy [16] .byte = .lo(null)
+
+	[_left]     = .lo(left)
+	[_left_up]  = .lo(left)
+	[_left_dw]  = .lo(left)
+
+	[_right     = .lo(right)
+	[_right_up] = .lo(right)
+	[_right_dw] = .lo(right)
+
+	[_up]       = .lo(up)
+	[_dw]       = .lo(down)
+.enda
+
+.endl
+</pre>
+</span>
+
+
 <p></p>
 Innym przyk³adem mo¿e byæ umieszczenie wycentrowanego napisu, np.:
 <span style="color: #0000FF">
@@ -2943,11 +3096,6 @@ Innym przyk³adem mo¿e byæ umieszczenie wycentrowanego napisu, np.:
 </span>
 
 
-
-<p>
-Podsumowuj±c, dyrektywa <b><tt>.ARRAY</tt></b> pozwala na stworzenie tablicy jednowymiarowej i wype³nienie jej warto¶ciami zadeklarowanego typu.
-</p>
-
 Do tak stworzonej tablicy odwo³ujemy siê nastêpuj±co:
 <span style="color: #0000FF">
 <pre>
@@ -2957,8 +3105,9 @@ Do tak stworzonej tablicy odwo³ujemy siê nastêpuj±co:
 </pre>
 </span>
 
-Je¶li w nawiasie kwadratowym podamy warto¶æ indeksu przekraczaj±c± zadeklarowan± dla danej tablicy, wówczas wyst±pi b³±d z komunikatem <b><tt>Constant expression violates subrange bounds</tt></b>.
+Je¶li w nawiasie kwadratowym podamy warto¶æ indeksu przekraczaj±c± zadeklarowan± dla danej tablicy, zostanie wygenerowany komunikat b³êdu <b><tt>Constant expression violates subrange bounds</tt></b>.
 </p>
+
 <br />
 
 
@@ -4311,7 +4460,7 @@ W/w operatory modyfikuj±ce dotycz± tylko etykiet tymczasowych, próba ich u¿ycia 
 <u><tt><h2>Etykiety lokalne w stylu MAE</h2></tt></u>
 
 <p>
-Opcja <b>OPT ?+</b> informuje MADS aby etykiety zaczynaj±ce siê znakiem <b>'?'</b> interpretowa³ jako etykiety lokalne tak jak robi to MAE. Domy¶lnie etykiety zaczynaj±ce siê znakiem <b>'?'</b> traktowane s± przez MADS jako etykiety tymczasowe <a href="#labels_set">Etykiety tymczasowe</a>.
+Opcja <b>OPT ?+</b> informuje MADS aby etykiety zaczynaj±ce siê znakiem <b>'?'</b> interpretowa³ jako etykiety lokalne tak jak robi to MAE. Domy¶lnie etykiety zaczynaj±ce siê znakiem <b>'?'</b> traktowane s± przez MADS jako <a href="#labels_set">Etykiety tymczasowe</a>.
 </p>
 
 <u>Przyk³ad u¿ycia etykiet lokalnych w stylu MAE:</u>
@@ -5050,6 +5199,30 @@ PARAM_NAME    ATASCII
 
 
 
+<A NAME="_longa">
+<u><tt><h2>.LONGA, .LONGI</h2></tt></u>
+
+<span style="color: #0000FF">
+<pre>
+ .LONGA ON|OFF
+ .LONGI ON|OFF
+</pre>
+</span>
+
+<p>
+Dyrektywa .LONGA informuje assembler o rozmiarze rejestru akumulatora, 16bit gdy ON, 8bit gdy OFF.
+</p>
+
+<p>
+Dyrektywa .LONGI informuje assembler o rozmiarze rejestrów indeksowych XY, 16bit gdy ON, 8bit gdy OFF.
+</p>
+
+Dyrektywy wp³ywaj± na rozmiar argumentu przy adresowaniu absolutnym CPU 65816.
+
+<p></p>
+<br />
+
+
 
 <A NAME="_link">
 <u><tt><h2>Linkowanie .LINK</h2></tt></u>
@@ -5522,6 +5695,109 @@ Przyk³adem wykorzystania tego trybu pracy <tt>MADS-a</tt> jest plik <tt>..\EXAMP
 
 <A NAME="zmiany">
 </tt><h2>HISTORIA</h2></tt>
+
+<p class="tekst-wiekszy">
+v2.1.0
+<p class="tekst">
+- dodany komunikat ostrze¿enia 'Buggy indirect jump' w przypadku u¿ycia rozkazu JMP(ABS)<br>
+- dodana dyrektywa .FILEEXISTS('filename') zwracajaca 1 gdy plik w podanej ¶cie¿ce istnije, 0 gdy nie istnieje<br>
+- rozszerzony komunikat  'Value out of range (VALUE must be between X and Y)'<br>
+
+
+<p class="tekst-wiekszy">
+v2.0.9
+<p class="tekst">
+- .cbm 'text' konwersja na znaki ekranowe Commodore C64<br>
+- usuniêty b³±d kiedy procedura .PROC znajduj±ca siê w bloku .LOCAL nie zosta³a oznaczona jako "do asemblacji" mimo tego ¿e by³o do niej odwo³anie z poziomu makra .MACRO w bloku .LOCAL<br>
+- usuniêty b³±d, etykiety tymczasowe ?label by³y oznaczane "do relokacji"<br>
+
+
+<p class="tekst-wiekszy">
+v2.0.8
+<p class="tekst">
+- krótszy kod dla #CYCLE<br>
+- poprawki dla .BY, .WO, .HE, .SB, .CB, .FL<br>
+- komunikat b³êdu 'Improper syntax' w przypadku u¿ycia .BY, .WO, .HE, .SB, .CB, .FL w bloku .STRUCT<br>
+- dodane nowe dyrektywy dla 65816 .LONGA ON|OFF, .LONGI ON|OFF<br>
+- poprawione dzia³anie ¶ledzenia rozmiaru rejestrów 65816 gdy 'OPT T+'<br>
+- dodany prze³±cznik -FV:VALUE pozwalaj±cy ustaliæ warto¶æ wype³nienia pamiêci gdy 'OPT F+'<br>
+- dodana mo¿liwo¶æ podania argumentu jako ci±gu dwóch znaków (poprzednio tylko 1 znak) np. lda #'AB' , mwa #'XY' $80<br>
+
+
+<p class="tekst-wiekszy">
+v2.0.7
+<p class="tekst">
+- poprawione generowanie kodu wynikowego dla nielegali DOP, SHA<br>
+- dodane nowe dyrektywy (65816) .A8, .A16, .I8, .I16, .AI8, .IA8, .AI16, .IA16 pozwalaj±ce ustawiæ rozmiar rejestrów AXY<br>
+- dodane nowe dyrektywy (65816) .ASIZE, .ISIZE zwracaj±ce aktualnie ustawiony rozmiar rejestrów AXY<br>
+- rozkaz JMP zmieniany jest na JML (65816) tylko gdy skok dotyczy innego 64KB banku ni¿ obecny<br>
+- dodany nowy prze³±cznik '-ml:value' (margin-left property), który umo¿liwia zmianê lewego marginesu generowanego listingu w zakresie od 32 do 128 znaków<br>
+
+
+<p class="tekst-wiekszy">
+v2.0.6
+<p class="tekst">
+- poprawione parsowanie parametrów makra zapisanych przy pomocy etykiet
+<pre>
+    .macro test currentRow, previousRow
+        .print Tmp%%currentRowAllowed
+        .print Tmp%%previousRowAllowed
+    .endm
+</pre>
+<p class="tekst">
+- poprawione alokowanie danych .ARRAY gdy nie ma okre¶lonego rozmiaru, lub jest to tablica inna ni¿ jednowymiarowa<br>
+- zwiêkszona liczba przebiegów dla .PROC, w pewnych warunkach dla parametru "xa .reg" parametr by³ ¼le interpretowany<br>
+- nowa dyrektywa .DEFINE pozwalaj±ca definiowaæ jedno liniowe makra (mo¿na definiowaæ wielokrotnie w tym samym przebiegu)
+<pre>
+  .DEFINE MACRO_NAME expression
+
+  .DEFINE pisz .print %%1+%%2
+
+  pisz (5,12)
+
+  .define text .sb
+
+  text 'atari'
+</pre>
+<p class="tekst">
+- nowa dyrektywa .UNDEF MACRO_NAME, usuwa definicjê jedno liniowego makra MACRO_NAME<br>
+
+
+<p class="tekst-wiekszy">
+v2.0.5
+<p class="tekst">
+- tablice .ARRAY w bloku .PROC s± pomijane je¶li u¿yto prze³±cznik -X (exclude unreferenced procedure)<br>
+- u¿ycie .ARRAY w bloku .STRUCT nie bêdzie generowaæ ju¿ zer w pliku wynikowym<br>
+- nowa dyrektywa .XGET, pozwalaj±ca wczytaæ do bufora pamiêci MADS-a plik i dodatkowo zmodyfikowaæ jego bajty pod warunkiem ¿e s± ró¿ne od zera (przydatne dla VBXE)<br>
+
+
+<p class="tekst-wiekszy">
+v2.0.4
+<p class="tekst">
+- usuniêty b³±d powoduj±cy b³êdny zapis bloku aktualizacji dla starszego bajtu adresu w bloku .RELOC<br>
+- .DB i .DW usuniête<br>
+- .DBYTE (MSB/LSB) odk³ada s³owo w odwrotnej kolejno¶ci (starszy/m³odszy)<br>
+- dodane dyrektywy .WGET (WORD), .LGET (LONG), .DGET (DWORD)<br>
+- poprawione dzia³anie makro rozkazków ADW, SBW, np.:
+<pre>
+	adw (tmp),y #1 posx
+	adw (tmp),y ptr2 ptr4
+</pre>
+
+<p class="tekst-wiekszy">
+v2.0.2
+<p class="tekst">
+- poprawione alokowanie danych dla .SB [+&ltbyte&gt],&ltbytes|string|char&gt <br>
+
+
+<p class="tekst-wiekszy">
+v2.0.1
+<p class="tekst">
+- poprawione alokowanie danych dla .ARRAY gdy typ wiêkszy od .BYTE<br>
+- .SIZEOF zwraca rozmiar dla wbudowanych typów .BYTE, .WORD, .LONG, .DWORD<br>
+- dodana relokowalna wersja playera MPT examples\players\mpt_player_reloc.asm<br>
+- poprawione dzia³anie dyrektywy .DS w blokach SDX (blk sparta $xxx) które nie s± relokowalne<br>
+
 
 <p class="tekst-wiekszy">
 v1.9.8

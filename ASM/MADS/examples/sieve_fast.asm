@@ -3,7 +3,7 @@
 
 true	= 1
 false	= 0
-size	= 255
+size	= 8190
 sizepl	= 256
 
 flags	= $8000
@@ -30,7 +30,10 @@ main
 ;int main()
 ;{
 ;	unsigned int i, prime, k, count, iter;
-	.var i, prime, k, count, iter .word = $80
+	.zpvar = $80
+	
+	.zpvar i, prime, k, count, bp .word
+	.zpvar iter .byte
 
 	.var iterations_num = iterations .word
 
@@ -44,13 +47,15 @@ main
 	wait
 
 	mwa #0 $13
+	
+	sta bp
 
 ;	iter = 1;
 
 	mva #1 iter
 
 ;	while (iter <= 10) {
-	#while .word iter < #iterations+1	;0
+	#while .byte iter < #iterations+1	;0
 
 ;		count = 0;
 		mwa #0 count
@@ -60,73 +65,92 @@ main
 
 		mwa #flags adr1
 
-		ldy #true
+		lda #true
+		ldy #0
 
 ;		while (i <= size) {
-		#while .word adr1 < #flags+size+1		;1
+		jmp sk0
+	lp0:
+;		flags[i] = true;
 
-;			flags[i] = true;
-
-			sty $ffff
-		adr1:	equ *-2
+		sta $ffff,y
+	adr1:	equ *-2
 		
+		iny
+		sne
+		inc adr1+1
+	sk0:
+		ldx adr1+1
+		cpx >flags+size+1
+		jne lp0
+		cpy <flags+size+1
+		jne lp0
+
 ;			i++;
-			inw adr1
 ;		}
-		#end
 
 ;		i = 0;
-		mwa #0 i
+		mwa #flags i
+
+		ldy #0
 		
 ;		while (i <= size) {
-		#while .word i < #size+1		;2
 
+		jmp sk1
+	lp1:
 ;			if (flags[i]) {
 
-			lda <flags
-			add i
-			tay
-			lda >flags
-			adc i+1
-			sta adr2+1
-
-			lda $ff00,y
-		adr2:	equ *-2
+			lda (i),y
 
 			#if .byte @
 
 ;				prime = i + i + 3;
-
-				adw i i prime
-
-				adw prime #3		
+			
+				lda i+1
+				sta prime+1
+				lda I
+				asl @
+				rol prime+1
+				add #$03
+				sta prime
+				scc
+				inc prime+1
 				
 ;				k = i + prime;
 
-				adw i prime k
-
+				add i
+				sta k
+				lda i+1
+				adc prime+1
+				
+			jmp sk2
+				sta k+1
+				
 ;				while (k <= size) {
-				#while .word k < #size+1		;3
-
+			lp2:
 ;					flags[k] = false;
 
-					lda <flags
-					add k
-					tay
-					lda >flags
-					adc k+1
-					sta adr3+1
-
 					lda #false
-					sta $ff00,y
-				adr3:	equ *-2
+					sta (k),y
 
 ;					k = k + prime;
 
-					adw k prime
+					lda k
+					add prime
+					sta k
+					lda k+1
+					adc prime+1
+			sk2:
+					sta k+1
+		
+				cmp >flags+size+1
+				bne @+
+				lda k
+				cmp <flags+size+1
+			@:
+				jcc lp2			
 
 ;				}
-				#end
 
 ;				count++;
 				inw count
@@ -137,12 +161,15 @@ main
 ;			i++;
 			inw i
 
+
+	sk1:	cpw i #flags+size+1
+		jcc lp1
+
 ;		}
-		#end
 
 ;		iter++;
 
-		inw iter
+		inc iter
 
 ;	}
 	#end
