@@ -1,9 +1,63 @@
-$Id: ChangeLog 114 2008-04-08 02:50:35Z phf $
 
 Note that we document changes to the source files and
 closely related files (Makefile, test cases) only, this
 is *not* a complete record of every single change ever
-made. Check the Subversion logs for that. :-)
+made. Check the GitHub commit history for that. :-)
+
+new in DASM version 2.20.14:
+
+    * Technical Documentation / User Guide for dasm in PDF format,
+      written by Andrew Davie in his engaging style.
+
+    * Dynamic Labels support by concatenating evaluated values
+
+    * Multiline C style /* */ comments
+
+    * Support for mc68hc908 controller family
+
+    * Cleaned up and improved Unit Tests
+
+    * new switch -R to remove output file if dasm found an
+      error during assembly
+
+    * Small optimization in the Atari 2600 CLEAN_START macro
+
+    * SETSTR expression; typically used within a macro to use 
+      the name of an argument
+
+DASM version 2.20.13:
+
+    * longstring segfault fix
+    * fix for non-symbol-compliant unquoted filenames
+    * address expression fix
+    * makefile portability fixes
+    * added atari 7800 support
+    * allow labels to shift between multiple passes
+    * fix for silenced single pass non-abort errors
+    * adjust .byte and .word negative range check
+    * duplicate macro fix
+    * reduce gcc Wall option build warnings
+    * added 'strict' syntax check mode (+ added to docs)
+    * enable .word size check for strict-mode only
+    * dynamic buffers for pass-output update
+
+DASM version 2.20.12:
+
+	* Fix for handling linux linefeeds under Windows 
+	  (fix by msaarna)
+
+	* Fix for segfault on long lines
+
+	* Supports using constants for include files 
+	  (enhancement by SpiceWare)
+
+	* 64-bit versions of DASM are now part of the release for 
+	  all platforms.
+
+	* Dockerfile for building a 'dasm build machine' docker image 
+	  based on Ubuntu 16.04. This allows you to build the dasm 
+	  executables for all platforms (Linux, Windows, macOS) in a 
+	  single go for any branch of dasm.
 
 2008-04-07  Peter H. Froehlich  <phf at acm dot org>
 

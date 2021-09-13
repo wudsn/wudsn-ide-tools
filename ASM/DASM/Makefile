@@ -1,4 +1,3 @@
-# $Id: Makefile 327 2014-02-09 13:06:55Z adavie $
 #
 # the DASM macro assembler (aka small systems cross assembler)
 #
@@ -38,21 +37,21 @@ install: build
 
 # just run all the tests
 test: build
-	echo "Running tests..."
-	(cd test; make; cd ..)
-	echo "Tests were run, but testing is not fully automated yet."
-	echo "In other words, don't rely on what you saw too much."
+	@echo "Running tests..."
+	(cd test; $(MAKE); cd ..)
+	@echo "Tests were run, but testing is not fully automated yet."
+	@echo "In other words, don't rely on what you saw too much."
 
 # just build everything and copy binaries to trunk/bin/
 build:
-	(cd src; make; cd ..)
+	(cd src; $(MAKE); cd ..)
 	mkdir -p bin
 	cp src/dasm bin/dasm
 	cp src/ftohex bin/ftohex
 
 # release version to use for archive name
 # supply this to make when you run it as
-#   RELEASE=2.20.11
+#   RELEASE=2.20.12
 # on the command line, that's the easiest
 # thing to do
 RELEASE=unknown-version-number
@@ -69,7 +68,7 @@ BINARY=
 # binaries
 BINS=bin/*
 # documentation
-DOCS=AUTHORS ChangeLog COPYING CREDITS FUTURE NEWS README README.ANDREW doc/* # HACKING? svn-eol-style.txt?
+DOCS=AUTHORS ChangeLog LICENSE CREDITS NEWS README  doc/*
 # support files for various machines
 MACS=machines/atari2600/* machines/channel-f/*
 # source files for dasm and ftohex
@@ -108,7 +107,6 @@ beta:
 	echo "The purpose is to identify regressions, nothing more." >>README.BETA
 	echo "Please do *not* re-distribute this release in any form!" >>README.BETA
 	echo "Please do *not* distribute binaries derived from it either!" >>README.BETA
-	echo "See http://dasm-dillon.sf.net/ for details on DASM." >>README.BETA
 	-tar zcvf dasm-beta-`date +%F`.tar.gz README.BETA $(MACS) $(OTHS) $(SRCS) $(TSTS)
 	rm -rf README.BETA
 
@@ -116,6 +114,6 @@ beta:
 # regular build from this Makefile; don't delete the
 # "real" distribution archives
 clean:
-	(cd src; make clean; cd ..)
-	(cd test; make clean; cd ..)
+	(cd src; $(MAKE) clean; cd ..)
+	(cd test; $(MAKE) clean; cd ..)
 	-rm -rf dasm-beta-*.tar.gz bin/
