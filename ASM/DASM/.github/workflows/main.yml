@@ -1,0 +1,61 @@
+name: Build, Test and Package Snapshots
+
+on:
+  push:
+    paths:
+    - 'src/**'
+    - 'test/**'
+    - '.github/workflows/main.yml'
+
+jobs:
+  build_for_windows:
+    runs-on: windows-2019
+    name: Build for Windows
+    steps:
+    - uses: actions/checkout@v2
+    - name: Make
+      run: make test # build + test
+      env:
+        CC: gcc
+    - run: |
+        mkdir -p artifacts/windows
+        cp bin/dasm.exe artifacts/windows/dasm.exe
+    - uses: actions/upload-artifact@v2
+      with :
+        name: dasm snapshot builds
+        path: artifacts
+
+  build_for_mac:
+    runs-on: macos-10.15
+    name: Build for Mac
+    steps:
+    - uses: actions/checkout@v2
+    - name: Make
+      run: make test # build + test
+      env:
+        CC: gcc
+    - run: |
+        mkdir -p artifacts/macos
+        cp bin/dasm artifacts/macos/dasm
+    - uses: actions/upload-artifact@v2
+      with :
+        name: dasm snapshot builds
+        path: artifacts
+
+  build_for_linux:
+    runs-on: ubuntu-18.04
+    name: Build for Linux
+    steps:
+    - uses: actions/checkout@v2
+    - name: Make
+      run: make test # build + test
+      env:
+        CC: gcc
+    - run: |
+        mkdir -p artifacts/linux
+        cp bin/dasm artifacts/linux/dasm
+    - uses: actions/upload-artifact@v2
+      with :
+        name: dasm snapshot builds
+        path: artifacts
+        
