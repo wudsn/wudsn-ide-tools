@@ -1,0 +1,5 @@
+WUDSN IDE-64 bit.lnk
+Tools\EMU\Altirra\Altirra64.exe
+Tools\EMU\Stella\64-bit
+Tools\EMU\WinVICE\x64
+Tools\IDE\Eclipse\4.x.x-win32-x86_64
