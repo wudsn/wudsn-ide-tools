@@ -1,6 +1,4 @@
 /*
-    $Id: version.h 313 2008-11-13 21:01:26Z phf $
-
     the DASM macro assembler (aka small systems cross assembler)
 
     Copyright (c) 1988-2002 by Matthew Dillon.
@@ -31,20 +29,9 @@
  */
 
 /**
- * @brief Macro to tag files going into DASM executables
- * with Subversion "Id" keywords.
- *
- * @warning Only .c files should be tagged, for obvious
- * reasons.
- */
-
-/* TODO: add some kind of __unused annotation to make sure they stay? */
-#define SVNTAG(id) static const char _svnid[] = id
-
-/**
  * @brief Macro to provide current DASM release as a string.
  */
-#define DASM_RELEASE "2.20.12"
+#define DASM_RELEASE "2.20.15-SNAPSHOT"
 
 /**
  * @brief Macro to provide current DASM headline, including
@@ -62,7 +49,7 @@
  * at 1987 even in his 2.16 release. We should settle this...
  */
 #define DASM_PRINT_COPYRIGHT \
-  (void) puts("Copyright (c) 1988-2008 by various authors (see file AUTHORS).");
+  (void) puts("Copyright (c) 1988-2020 by the DASM team.");
 
 /**
  * @brief Macro to print standard DASM legalese, including
@@ -70,7 +57,7 @@
  */
 #define DASM_PRINT_LEGAL \
   DASM_PRINT_COPYRIGHT \
-  (void) puts("License GPLv2+: GNU GPL version 2 or later (see file COPYING)."); \
+  (void) puts("License GPLv2+: GNU GPL version 2 or later (see file LICENSE)."); \
   (void) puts("DASM is free software: you are free to change and redistribute it."); \
   (void) puts("There is ABSOLUTELY NO WARRANTY, to the extent permitted by law."); \
 
@@ -79,7 +66,7 @@
  * usage messages.
  */
 #define DASM_PRINT_BUGS \
-  (void) puts("Report bugs to dasm-dillon-discuss@lists.sf.net please!");
+  (void) puts("Report bugs on https://github.com/dasm-assembler/dasm please!");
 
 #endif /* _DASM_VERSION_H */
 

@@ -1,6 +1,4 @@
 /*
-    $Id: symbols.c 327 2014-02-09 13:06:55Z adavie $
-
     the DASM macro assembler (aka small systems cross assembler)
 
     Copyright (c) 1988-2002 by Matthew Dillon.
@@ -28,8 +26,6 @@
  */
 
 #include "asm.h"
-
-SVNTAG("$Id: symbols.c 327 2014-02-09 13:06:55Z adavie $");
 
 static unsigned int hash1(const char *str, int len);
 SYMBOL *allocsymbol(void);
@@ -135,11 +131,13 @@ SYMBOL *CreateSymbol( const char *str, int len )
 
 static unsigned int hash1(const char *str, int len)
 {
-    unsigned int result = 0;
-    
-    while (len--)
-        result = (result << 2) ^ *str++;
-    return result & SHASHAND;
+    uint8_t a = 0;
+    uint8_t b = 0;
+    while (len--) {	// this is Fletcher's checksum, better distribution, faster
+    	a += *str++;
+    	b += a;
+    }
+    return ((((a << 8) & 0xFF00) | (b & 0xFF))  ) & SHASHAND;
 }
 
 /*

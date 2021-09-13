@@ -1,6 +1,4 @@
 /*
-    $Id: ops.c 327 2014-02-09 13:06:55Z adavie $
-
     the DASM macro assembler (aka small systems cross assembler)
 
     Copyright (c) 1988-2002 by Matthew Dillon.
@@ -31,18 +29,18 @@
 
 #include "asm.h"
 
-SVNTAG("$Id: ops.c 327 2014-02-09 13:06:55Z adavie $");
-
-unsigned char Gen[256];
+unsigned char Gen[MAXLINE];
 unsigned char OrgFill = DEFORGFILL;
 int	 Glen;
 
 extern MNEMONIC    Mne6502[];
+extern MNEMONIC    Mne65c02[];
 extern MNEMONIC    Mne6803[];
 extern MNEMONIC    MneHD6303[];
 extern MNEMONIC    Mne68705[];
 extern MNEMONIC    Mne68HC11[];
 extern MNEMONIC    MneF8[];
+extern MNEMONIC    Mne68908[];
 
 void generate(void);
 void genfill(long fill, long bytes, int size);
@@ -69,6 +67,14 @@ void v_processor(char *str, MNEMONIC *dummy)
         Processor = 6502;
     }
 
+    if (strcmp(str,"65c02") == 0 || strcmp(str, "65C02") == 0)
+    {
+        if ( !bCalled )
+            addhashtable(Mne65c02);
+
+        MsbOrder = 0;	    /*	lsb,msb */
+        Processor = 16502;
+    }
     if (strcmp(str,"6803") == 0)
     {
         if ( !bCalled )
@@ -116,6 +122,13 @@ void v_processor(char *str, MNEMONIC *dummy)
 		MsbOrder = 1;
         Processor = 0xf8;
     }
+    if ((strcmp(str,"68908") == 0) || (strcmp(str,"68hc908") == 0)) {
+       if ( !bCalled ) {
+           addhashtable(Mne68908);
+       }
+       MsbOrder = 1;           /*  msb,lsb */
+       Processor = 68908;
+    }
 
     bCalled = true;
 
@@ -144,6 +157,8 @@ void v_mnemonic(char *str, MNEMONIC *mne)
     short opidx;
     SYMBOL *symbase;
     int     opsize;
+    bool	byteRequested;
+    char sBuffer[128];
     
     Csegment->flags |= SF_REF;
     programlabel();
@@ -180,13 +195,16 @@ void v_mnemonic(char *str, MNEMONIC *mne)
     while (badcode(mne,addrmode) && Cvt[addrmode])
         addrmode = Cvt[addrmode];
 
+    if (mne->opcode[addrmode] == 0x42 && addrmode == AM_INDBYTEX && Processor == 16502)
+        addrmode = AM_INDWORDX;
+    else if (mne->opcode[addrmode] == 0x42 && addrmode == AM_INDBYTE && Processor == 16502)
+        addrmode = AM_INDWORD;
     
     if ( bTrace )
-        printf("mnemask: %08lx adrmode: %d  Cvt[am]: %d\n", mne->okmask, addrmode, Cvt[addrmode]);
+        printf("mnemask: %08lx adrmode: %d  Cvt[am]: %d   Mnext:%d   value: %ld\n", mne->okmask, addrmode, Cvt[addrmode], Mnext,  sym->value);
     
     if (badcode(mne,addrmode))
     {
-        char sBuffer[128];
         sprintf( sBuffer, "%s %s", mne->name, str );
         asmerr( ERROR_ILLEGAL_ADDRESSING_MODE, false, sBuffer );
         FreeSymbolList(symbase);
@@ -201,6 +219,48 @@ void v_mnemonic(char *str, MNEMONIC *mne)
     {
         addrmode = Mnext;
         
+        //FIX: OPCODE.FORCE needs to be adjusted for x,y,sp indexing...
+        switch(sym->addrmode) {
+        	case AM_INDBYTEX:
+        	case AM_INDBYTEY:
+        		// there is only INDWORD to force indirect addressing mode but not with X or Y
+        		// this must be an error
+                asmerr( ERROR_ILLEGAL_FORCED_ADDRESSING_MODE, false, mne->name );
+                FreeSymbolList(symbase);
+
+                //FIX: Cause assembly to fail when an invalid mode is used for an opcode...
+                ++Redo;
+                Redo_why |= REASON_MNEMONIC_NOT_RESOLVED;
+                return;
+
+        	case AM_BYTEADR_SP:
+        		addrmode = AM_BYTEADR_SP;
+                if ((Mnext == AM_WORDADR) || (Mnext == AM_WORDADR_SP))
+                	addrmode = AM_WORDADR_SP;
+        		break;
+
+        	case AM_0Y:
+        		addrmode = AM_0Y;
+
+            	if ((Mnext == AM_WORDADR) || (Mnext == AM_WORDADRY))
+            		addrmode = AM_WORDADRY;
+
+            	if ((Mnext == AM_BYTEADR) || (Mnext == AM_BYTEADRY))
+            		addrmode = AM_BYTEADRY;
+        		break;
+
+        	case AM_0X:
+        		addrmode = AM_0X;
+
+                if ((Mnext == AM_WORDADR) || (Mnext == AM_WORDADRX))
+                	addrmode = AM_WORDADRX;
+
+                if ((Mnext == AM_BYTEADR) || (Mnext == AM_BYTEADRX))
+                	addrmode = AM_BYTEADRX;
+        		break;
+        }
+
+
         if (badcode(mne,addrmode))
         {
             asmerr( ERROR_ILLEGAL_FORCED_ADDRESSING_MODE, false, mne->name );
@@ -214,14 +274,52 @@ void v_mnemonic(char *str, MNEMONIC *mne)
     }
     
     if ( bTrace )
-        printf("final addrmode = %d\n", addrmode);
+        printf("final addrmode = %d, opsize:%d Opsize[%d]:%d\n", addrmode, opsize, addrmode, Opsize[addrmode]);
+
+    byteRequested = false;
+    switch(Mnext) {
+    	case AM_IMM8:
+    	case AM_BYTEADR:
+    	case AM_BYTEADRX:
+    	case AM_BYTEADRY:
+    	case AM_BYTEADR_SP:
+    		byteRequested = true;
+    		if (opsize > 1) {
+    			sprintf( sBuffer, "%s %s, user requested byte mode", mne->name, str );
+    			asmerr( ERROR_ADDRESS_MUST_BE_LT_100, false, sBuffer );
+    		}
+    		break;
+    }
     
+    switch(addrmode) {
+    	case AM_IMM16:
+    	case AM_WORDADR:
+    	case AM_WORDADRX:
+    	case AM_WORDADRY:
+    	case AM_INDWORD:
+    	case AM_WORDADR_SP:
+    		if ( bStrictMode && ((sym->value > 0xFFFF) || (sym->value < -0xFFFF))) {	// isn't this our space ?
+    			sprintf( sBuffer, "%s %s", mne->name, str );
+    			asmerr( ERROR_ADDRESS_MUST_BE_LT_10000, false, sBuffer );
+    		}
+    		break;
+
+    	case AM_IMM8:
+    	case AM_BYTEADR:
+    	case AM_BYTEADRX:
+    	case AM_BYTEADRY:
+    	case AM_BYTEADR_SP:
+    		if (sym->value < -0xFF) {	// isn't this our space ?
+    			sprintf( sBuffer, "negative %s %s", mne->name, str );
+    			asmerr( ERROR_ADDRESS_MUST_BE_LT_100, false, sBuffer );
+    		}
+    		break;
+    }
+
     while (opsize > Opsize[addrmode])
     {
         if (Cvt[addrmode] == 0 || badcode(mne,Cvt[addrmode]))
         {
-            char sBuffer[128];
-            
             if (sym->flags & SYM_UNKNOWN)
                 break;
             
@@ -233,9 +331,33 @@ void v_mnemonic(char *str, MNEMONIC *mne)
                 break;
             }
 
-            sprintf( sBuffer, "%s %s", mne->name, str );
-            asmerr( ERROR_ADDRESS_MUST_BE_LT_100, false, sBuffer );
-            break;
+
+            if ((sym->value > 255) && !byteRequested) {
+                // automatically increasing address-mode only if user has not explicitly stated
+            if (addrmode == AM_BYTEADRX) {
+                if (! badcode(mne, AM_WORDADRX)) {
+                    addrmode = AM_WORDADRX;
+                    break;
+                }
+            }
+            if (addrmode == AM_BYTEADRY) {
+                if (! badcode(mne, AM_WORDADRY)) {
+                    addrmode = AM_WORDADRY;
+                    break;
+                }
+            }
+            if (addrmode == AM_BYTEADR_SP) {
+                if (! badcode(mne, AM_WORDADR_SP)) {
+                    addrmode = AM_WORDADR_SP;
+                    break;
+                }
+            }
+	    }
+
+        sprintf( sBuffer, "%s %s", mne->name, str );
+
+        asmerr( ERROR_ADDRESS_MUST_BE_LT_100, false, sBuffer );
+        break;
         }
         addrmode = Cvt[addrmode];
     }
@@ -255,8 +377,10 @@ void v_mnemonic(char *str, MNEMONIC *mne)
     {
     case AM_BITMOD:
         sym = symbase->next;
-        if (!(sym->flags & SYM_UNKNOWN) && sym->value >= 0x100)
-            asmerr( ERROR_ADDRESS_MUST_BE_LT_100, false, NULL );
+        if (!(sym->flags & SYM_UNKNOWN) && sym->value >= 0x100) {
+            sprintf( sBuffer, "unknown %s %ld", mne->name, sym->value);
+            asmerr( ERROR_ADDRESS_MUST_BE_LT_100, false, sBuffer );
+        }
         Gen[opidx++] = sym->value;
         
         if (!(symbase->flags & SYM_UNKNOWN))
@@ -280,9 +404,10 @@ void v_mnemonic(char *str, MNEMONIC *mne)
         
         sym = symbase->next;
         
-        if (!(sym->flags & SYM_UNKNOWN) && sym->value >= 0x100)
-            asmerr( ERROR_ADDRESS_MUST_BE_LT_100, false, NULL );
-        
+        if (!(sym->flags & SYM_UNKNOWN) && sym->value >= 0x100) {
+            sprintf( sBuffer, "%s %ld", mne->name, sym->value);
+            asmerr( ERROR_ADDRESS_MUST_BE_LT_100, false, sBuffer );
+        }
         Gen[opidx++] = sym->value;
         sym = sym->next;
         break;
@@ -313,9 +438,10 @@ void v_mnemonic(char *str, MNEMONIC *mne)
     {
         if (sym)
         {
-            if (!(sym->flags & SYM_UNKNOWN) && sym->value >= 0x100)
-                asmerr( ERROR_ADDRESS_MUST_BE_LT_100, false, NULL );
-            
+            if (!(sym->flags & SYM_UNKNOWN) && sym->value >= 0x100) {
+                sprintf( sBuffer, "unknown && > 256 %s %ld", mne->name, sym->value);
+                asmerr( ERROR_ADDRESS_MUST_BE_LT_100, false, sBuffer );
+            }
             Gen[opidx] = sym->value;
             sym = sym->next;
         }
@@ -326,8 +452,8 @@ void v_mnemonic(char *str, MNEMONIC *mne)
         
         ++opidx;
     }
-    
-    if ((mne->flags & MF_REL) || addrmode == AM_REL)
+
+    if ((mne->flags & MF_REL) || addrmode == AM_REL || addrmode == AM_BYTEREL)
     {
         ++opidx;		/*  to end of instruction   */
         
@@ -352,7 +478,6 @@ void v_mnemonic(char *str, MNEMONIC *mne)
                     //     another pass. ERROR_BRANCH_OUT_OF_RANGE was made non-fatal, but we keep 
                     //     pushing for Redo so assembly won't actually be succesfull until the branch
                     //     actually works.
-                        char sBuffer[64];
                         sprintf( sBuffer, "%ld", dest );
                         asmerr( ERROR_BRANCH_OUT_OF_RANGE, false, sBuffer );
             		++Redo;
@@ -416,15 +541,33 @@ getfilename(char *str)
 void
 v_include(char *str, MNEMONIC *dummy)
 {
-    char    *buf;
-    
-    programlabel();
+  SYMBOL *sym;
+  
+  programlabel();
+  
+  // only eval the string if it's compliant with symbol naming
+  if ((*str<'0')||(*str>'9')) //check could be more comprehensive
+    sym = eval(str, 0);
+  else
+    sym = NULL;
+
+  if ( (sym) && (sym->flags & SYM_STRING ) )
+  {
+    pushinclude(sym->string);
+  }
+  else
+  {
+    char *buf;
     buf = getfilename(str);
     
     pushinclude(buf);
     
     if (buf != str)
-        free(buf);
+      free(buf);
+  }
+  
+  if (sym)
+    FreeSymbolList(sym);
 }
 
 
@@ -546,9 +689,10 @@ v_dc(char *str, MNEMONIC *mne)
 {
     SYMBOL *sym;
     SYMBOL *tmp;
-    unsigned long  value;
+    long  value;
     char *macstr = 0;		/* "might be used uninitialised" */
     char vmode = 0;
+    char sBuffer[128];		/* verbose error messages*/
     
     Glen = 0;
     programlabel();
@@ -565,7 +709,7 @@ v_dc(char *str, MNEMONIC *mne)
 	/* F8... */
 
     /* db, dw, dd */
-    if ( (mne->name[0] == 'd') && (mne->name[1] != 'c') ) {
+    if ( (mne->name[0] == 'd') && (mne->name[1] != 'c') && (mne->name[1] != 'v')) {
         static char sTmp[4];
         strcpy(sTmp, "x.x");
         if ('d' == mne->name[1]) {
@@ -635,6 +779,17 @@ v_dc(char *str, MNEMONIC *mne)
                         Gen[Glen++] = (value >> 8) & 0xFF;
                     }
                     break;
+                case AM_OTHER_ENDIAN:
+                    if (MsbOrder == 0) {
+                        Gen[Glen++] = (value >> 8) & 0xFF;
+                        Gen[Glen++] = value & 0xFF;
+                    }
+                    else
+                    {
+                        Gen[Glen++] = value & 0xFF;
+                        Gen[Glen++] = (value >> 8) & 0xFF;
+                    }
+                	break;
                 case AM_LONG:
                     if (MsbOrder) {
                         Gen[Glen++] = (value >> 24)& 0xFF;
@@ -669,9 +824,22 @@ v_dc(char *str, MNEMONIC *mne)
             switch(Mnext) {
             default:
             case AM_BYTE:
+                //any value outside two's complement +ve and +ve byte representation is invalid...
+                if ((value < -0xFF)||(value > 0xFF)) 
+		{
+                    sprintf( sBuffer, "byte %s %ld", mne->name, value);
+                    asmerr( ERROR_ADDRESS_MUST_BE_LT_100, false, sBuffer );
+		}
                 Gen[Glen++] = value & 0xFF;
                 break;
             case AM_WORD:
+		//any value outside two's complement +ve and +ve word representation is invalid...
+                if ( (bStrictMode) && ((value < -0xFFFF)||(value > 0xFFFF)) )
+		{
+                    sprintf( sBuffer, "word %s %ld", mne->name, value);
+                    asmerr( ERROR_ADDRESS_MUST_BE_LT_10000, false, sBuffer );
+		}
+
                 if (MsbOrder) {
                     Gen[Glen++] = (value >> 8) & 0xFF;
                     Gen[Glen++] = value & 0xFF;
@@ -682,6 +850,21 @@ v_dc(char *str, MNEMONIC *mne)
                     Gen[Glen++] = (value >> 8) & 0xFF;
                 }
                 break;
+            case AM_OTHER_ENDIAN:
+                if ( (bStrictMode) && ((value < -0xFFFF)||(value > 0xFFFF)) ) {
+                    sprintf( sBuffer, "swapped %s %ld", mne->name, value);
+                    asmerr( ERROR_ADDRESS_MUST_BE_LT_10000, false, sBuffer );
+                }
+                if (MsbOrder == 0) {
+                    Gen[Glen++] = (value >> 8) & 0xFF;
+                    Gen[Glen++] = value & 0xFF;
+                }
+                else
+                {
+                    Gen[Glen++] = value & 0xFF;
+                    Gen[Glen++] = (value >> 8) & 0xFF;
+                }
+            	break;
             case AM_LONG:
                 if (MsbOrder) {
                     Gen[Glen++] = (value >> 24)& 0xFF;
@@ -899,8 +1082,8 @@ v_equ(char *str, MNEMONIC *dummy)
             if (lab->value != sym->value)
             {
                 asmerr( ERROR_EQU_VALUE_MISMATCH, false, NULL );
-                printf("old value: $%04lx  new value: $%04lx\n",
-                    lab->value, sym->value);
+                printf("INFO: Label '%s' changed from $%04lx to $%04lx\n",
+                    Av[0], lab->value, sym->value);
                 ++Redo;
                 Redo_why |= REASON_EQU_VALUE_MISMATCH;
             }
@@ -977,9 +1160,91 @@ v_echo(char *str, MNEMONIC *dummy)
 
 void v_set(char *str, MNEMONIC *dummy)
 {
-    SYMBOL *sym = eval(str, 0);
-    SYMBOL *lab;
-    
+
+    SYMBOL *sym, *lab;
+    char dynamicname[257];
+    int i = 0,j;
+    int setundefined = 0;
+
+    while (str[i] && str[i] != '"' && str[i] != ' ' && str[i] != ',' )
+        i++;
+
+    if(str[i] && str[i] == ',') // is this SET is using the "," eval-concat operator?
+    {
+        strncpy(dynamicname, str,256);
+        if(i<256)
+            dynamicname[i]=0;
+        dynamicname[256]=0;
+        j=strlen(dynamicname);
+
+        // eval-concat argument processing loop...
+        while (str[i] && str[i] != '"' && str[i] != ' ')
+        {
+            if( str[i] == 0 || str[i] == ' ' ) // leave if we've processed all arguments
+            {
+                break;
+            }
+            if(str[i+1]=='"') // is this a string constant? 
+            {
+                i=i+2; // advance to string contents
+                while (str[i] && str[i] != '"' && str[i] != ' ' && str[i] != ',')
+                {
+                    dynamicname[j++]=str[i++];
+                }
+                if (str[i] && str[i]=='"')
+                {
+                    dynamicname[j]=0;
+                    i++;
+                    continue;
+                }
+                else
+                {
+                    asmerr( ERROR_SYNTAX_ERROR, false, str);
+                    continue;
+                }
+            } // argument was string constant
+            else // this argument is a symbol to be evaluated
+            {
+                int t;
+                char tempbuf[257];
+                char tempval[257];
+                SYMBOL *symarg;
+                strncpy(tempbuf,str+i+1,256);
+                tempbuf[256]=0;
+                for(t=0;t<strlen(tempbuf);t++)
+                {
+                    if(tempbuf[t] == ',')
+                        tempbuf[t]=0;
+                }
+                symarg = eval(tempbuf,0);
+                if(symarg)
+                {
+                    if (symarg->flags & SYM_UNKNOWN) // one of the arguments isn't defined yet
+                        setundefined++; // ensure the set doesn't actually happen
+                    else
+                    {
+                        snprintf(tempval,256,"%d",(unsigned)symarg->value);
+                        strcpy(dynamicname+j,tempval);
+                        j=j+strlen(tempval);
+                    }
+                }
+                i++;
+                while (str[i] && str[i] != ' ' && str[i] != ',')
+                    i++;
+            } // argument was symbol
+
+            continue; // process any remaining arguments
+        }
+        dynamicname[i++] = 0;
+        if (setundefined) // not all of the arguments are defined yet, so skip this SET
+        {
+            return;
+        }
+        sym = eval(dynamicname,0);
+    }
+    else // traditional SET behavior
+        sym = eval(str, 0);
+
     lab = findsymbol(Av[0], strlen(Av[0]));
     if (!lab)
         lab = CreateSymbol( Av[0], strlen(Av[0]) );
@@ -988,6 +1253,13 @@ void v_set(char *str, MNEMONIC *dummy)
     lab->string = sym->string;
     sym->flags &= ~(SYM_STRING|SYM_MACRO);
     FreeSymbolList(sym);
+}
+
+void v_setstr(char *symstr, MNEMONIC *dummy)
+{
+    char str[1024];
+    snprintf(str,1024,"\"%s\"",symstr);
+    v_set(str,dummy);
 }
 
 void
@@ -1001,7 +1273,9 @@ v_execmac(char *str, MACRO *mac)
     programlabel();
     
     if (Mlevel == MAXMACLEVEL) {
-        puts("infinite macro recursion");
+        char errMsg[256];
+        sprintf(errMsg, " macro [%s] recursion > %d", mac->name, MAXMACLEVEL);
+        asmerr( ERROR_RECURSION_TOO_DEEP, true, errMsg );
         return;
     }
     ++Mlevel;
@@ -1423,6 +1697,14 @@ generate(void)
     
     if (Csegment->flags & SF_RORG)
         Csegment->rorg += Glen;
+
+    if (Csegment->org > maxFileSize) {
+    	char errMsg[128];
+    	sprintf(errMsg, "code segment growing larger (%ld) than max. allowed file size (%ld)\n"
+    					,Csegment->org, maxFileSize);
+    	asmerr( ERROR_RECURSION_TOO_DEEP, true, errMsg );
+    	return;
+    }
 }
 
 void closegenerate(void)
@@ -1446,8 +1728,14 @@ genfill(long fill, long entries, int size)
     int i;
     unsigned char c3,c2,c1,c0;
     
-    if (!bytes)
+    if (bytes == 0) {
+    	// nothing to do
         return;
+    }
+    if (bytes < 0) {
+    	asmerr( ERROR_ORIGIN_REVERSE_INDEXED, true, NULL );
+    	return;
+    }
     
     c3 = fill >> 24;
     c2 = fill >> 16;
