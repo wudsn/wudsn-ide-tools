@@ -4,6 +4,7 @@ export OS="Mac OS X"
 export EXT="macosx"
 export EXT32="$EXT-i386"
 export EXT64="$EXT-x86-64"
+export EXTA64="$EXT-aarch-64"
 export EXTPPC="$EXT-powerpc"
 
 echo Creating $OS binaries.
@@ -88,13 +89,17 @@ function makeMADS() {
 
 cd MADS
 
-#echo Creating MADS - $OS 32-bit version
+#echo Creating MADS - $OS Intel 32-bit version
 #ppc386 -Mdelphi -v -O3 -XXs -omads.$EXT32 mads.pas
 #rm -f mads.o
 
-echo Creating MADS - $OS 64-bit version
+echo Creating MADS - $OS Intel 64-bit version
 ppcx64 -Mdelphi -v -O3 -XXs -omads.$EXT64 mads.pas
 rm -f mads.o
+
+#echo Creating MADS - $OS M1 64-bit version
+#fpc -Paarch64 -Mdelphi -v -O3 -XXs -omads.$EXTA64 mads.pas
+#rm -f mads.o
 
 #echo Creating MADS - $OS PPC version
 #ppcppc -Mdelphi -v -O3 -XXs -omads.$EXTPPC mads.pas

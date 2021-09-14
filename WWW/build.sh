@@ -22,12 +22,13 @@ pushd /tmp
 
 # Compute target
 
-export platform="`uname`"
+export platform="`uname -s`"
+export arch="`uname -a`"
 if [[ $platform == Linux* ]]
  then {
         export target=linux
       }
- else if [[ $platform = Darwin* ]]
+ else if [[ $platform = "Darwin" ]]
       then {
              export target=macosx-x86_64
            }
@@ -44,45 +45,20 @@ if [[ $platform == Linux* ]]
 fi
 echo Target '$target' detected on platform '$platform'.
 
-export tmpdir=/tmp/jac
-export tmpwudsndir=$tmpdir/wudsn
 export jacdir=~/jac
 export wudsndir=$jacdir/wudsn
 export idefile=wudsn-ide-$target
 
-rm -rf $tmpdir
-mkdir -p $tmpdir
+export tmpdir=/tmp
+export tmpjacdir=$tmpdir/jac
 
-function download() {
-  export download_url=https://www.wudsn.com/productions/java/ide/downloads/wudsn-ide-win64.zip
-  export zipfile=wudsn-ide.zip
-
-  echo Building WUDSN IDE for target "'$target'".
-  echo Downloading "$download_url".
-  curl -o $zipfile -z $zipfile $download_url
-
-  echo Unzipping archive.
-  rm -rf $zipfile.log jac
-  unzip -o $zipfile -d $tmpdir >$zipfile.log
-}
-
-function merge(){
-  echo Merging $tmpwudsndir with local installation $wudsndir.
-  rm -f $targetfile
-# Keep local workspace .metadata with settings
-  rm -rf $tmpwudsndir/.metadata
-# Remove local workspace examples
-  rm -rf $wudsndir/Workspace/*
-# Take over global workspace examples
-  mv $tmpwudsndir/Workspace/* $wudsndir/Workspace
-}
+rm -rf $tmpjacdir
+mkdir -p $tmpjacdir
 
 function package(){
-  pushd $jacdir
-  export tarfile=$tmpdir/$idefile.tar
-  export zipfile=$tarfile.gz
-  tar -cvf $tarfile wudsn
-  gzip $tarfile
+  pushd ~
+  export zipfile=$tmpjacdir/$idefile.tar.gz
+  tar -cv --exclude='.DS_Store' --exclude='.git' -f $zipfile jac
   popd
   ls -l $zipfile
 
