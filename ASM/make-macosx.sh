@@ -1,5 +1,7 @@
 #!/bin/bash
 
+set -e
+
 export OS="Mac OS X"
 export EXT="macosx"
 export EXT32="$EXT-i386"
@@ -48,7 +50,7 @@ function makeDASM() {
 
 cd DASM
 
-mkdir bin
+mkdir -p bin
 cd src
 
 #echo Creating DASM - $OS 32-bit version
@@ -87,14 +89,18 @@ cd ..
 #------------------------------------------------------------------------
 function makeMADS() { 
 
+# The MADS folder was initially created using
+# git clone --depth=1 https://github.com/tebe6502/Mad-Assembler.git MADS
+
 cd MADS
+git pull --depth=1 --rebase
 
 #echo Creating MADS - $OS Intel 32-bit version
 #ppc386 -Mdelphi -v -O3 -XXs -omads.$EXT32 mads.pas
 #rm -f mads.o
 
 echo Creating MADS - $OS Intel 64-bit version
-ppcx64 -Mdelphi -v -O3 -XXs -omads.$EXT64 mads.pas
+ppcx64 -va -Mdelphi -vh -O3 -omads.$EXT64 mads.pas
 rm -f mads.o
 
 #echo Creating MADS - $OS M1 64-bit version
