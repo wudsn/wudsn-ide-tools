@@ -2,8 +2,8 @@
 
 set -e
 
-export OS="Mac OS X"
-export EXT="macosx"
+export OS="macOS"
+export EXT="macos"
 export EXT32="$EXT-i386"
 export EXT64="$EXT-x86-64"
 export EXTA64="$EXT-aarch-64"
