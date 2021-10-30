@@ -12,6 +12,17 @@ export EXTPPC="$EXT-powerpc"
 echo Creating $OS binaries.
 
 
+#------------------------------------------------------------------------
+# Install XCode Commnd Line Tools if required.
+#------------------------------------------------------------------------
+function installXCodeCommandlineTools() {
+  export XCODE_COMMANDLINE_TOOLS="/Library/Developer/CommandLineTools"
+  if [ ! -d $XCODE_COMMANDLINE_TOOLS ]; then
+    xcode-select --install
+  fi
+  export XCODE_COMMANDLINE_TOOLS_LIBS="${XCODE_COMMANDLINE_TOOLS}/SDKs/MacOSX.sdk"
+}
+
 #-------------------------------------------------------------------------
 # Create ATASM.
 #-------------------------------------------------------------------------
@@ -99,8 +110,10 @@ git pull --depth=1 --rebase
 #ppc386 -Mdelphi -v -O3 -XXs -omads.$EXT32 mads.pas
 #rm -f mads.o
 
+OPT="-Mdelphi -O3 -XR$XCODE_COMMANDLINE_TOOLS_LIBS"
+EXECUTABLE="mads.$EXT64"
 echo Creating MADS - $OS Intel 64-bit version
-ppcx64 -va -Mdelphi -vh -O3 -omads.$EXT64 mads.pas
+ppcx64 $OPT -o$EXECUTABLE mads.pas
 rm -f mads.o
 
 #echo Creating MADS - $OS M1 64-bit version
@@ -126,6 +139,7 @@ function displayAssembler() {
   done
 }
 
+installXCodeCommandlineTools
 #makeATASM
 makeDASM
 makeMADS

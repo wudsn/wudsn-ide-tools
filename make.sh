@@ -3,12 +3,13 @@
 
 set -e
 
-OS="macosx"
+OS="macos"
+#VERBOSE=-v
 
 pushd ASM
-bash -v make-$OS.sh
+bash $VERBOSE make-$OS.sh
 popd
 pushd PAS
-bash -v make-$OS.sh
+bash $VERBOSE make-$OS.sh
 popd
 echo

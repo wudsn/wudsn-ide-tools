@@ -8,3 +8,4 @@ PAS/MP/ppaslink.sh
 ASM/MADS/ppaslink.sh
 ASM/MADS/linkfiles.res
 ASM/MADS/link.res
+*.log
