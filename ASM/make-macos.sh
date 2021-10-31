@@ -1,28 +1,5 @@
 #!/bin/bash
 
-set -e
-
-export OS="macOS"
-export EXT="macos"
-export EXT32="$EXT-i386"
-export EXT64="$EXT-x86-64"
-export EXTA64="$EXT-aarch-64"
-export EXTPPC="$EXT-powerpc"
-
-echo Creating $OS binaries.
-
-
-#------------------------------------------------------------------------
-# Install XCode Commnd Line Tools if required.
-#------------------------------------------------------------------------
-function installXCodeCommandlineTools() {
-  export XCODE_COMMANDLINE_TOOLS="/Library/Developer/CommandLineTools"
-  if [ ! -d $XCODE_COMMANDLINE_TOOLS ]; then
-    xcode-select --install
-  fi
-  export XCODE_COMMANDLINE_TOOLS_LIBS="${XCODE_COMMANDLINE_TOOLS}/SDKs/MacOSX.sdk"
-}
-
 #-------------------------------------------------------------------------
 # Create ATASM.
 #-------------------------------------------------------------------------
@@ -98,13 +75,23 @@ cd ..
 #------------------------------------------------------------------------
 # Create MADS.
 #------------------------------------------------------------------------
+function fetchGitRepo($URL){
+
+	rm -rf .git
+	echo Getting latest MADS sources from github.
+	git init -b master  --quiet
+	git remote add origin $URL
+	git fetch origin master --force  --quiet
+	rm -rf .git
+
+}
+
 function makeMADS() { 
 
-# The MADS folder was initially created using
-# git clone --depth=1 https://github.com/tebe6502/Mad-Assembler.git MADS
 
 cd MADS
-git pull --depth=1 --rebase
+
+fetchMADS
 
 #echo Creating MADS - $OS Intel 32-bit version
 #ppc386 -Mdelphi -v -O3 -XXs -omads.$EXT32 mads.pas
