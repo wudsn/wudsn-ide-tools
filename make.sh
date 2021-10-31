@@ -275,8 +275,12 @@ function compileWithFPC(){
 	ARCHITECTURE_PPC="powerpc"
 
 
+	pushd ASM
+	compileWithFPC MADS mads.pas mads $OS_MACOS $ARCHITECTURE_I64
+	popd
+
 	pushd PAS
-	compileWithFPC MP mp.pas mp $OS_MACOS  $ARCHITECTURE_I64
+	compileWithFPC MP mp.pas mp $OS_MACOS $ARCHITECTURE_I64
 	popd
 
 	generateHTML
