@@ -1,4 +1,4 @@
-This project contains the contents for the "Tools" folder of the WUDSN IDE installation. This includes all supported assemblers and compilers.
+This project contains the contents for the "Tools" folder of the WUDSN IDE installation. This includes all supported assemblers, compilers and emulators.
 
 | Language | Tool | Version | OS | Architecture | File Name | File Type | File Date |
 |:---------|:-----|:--------|:---|:-------------|:----------|:----------|:----------|
