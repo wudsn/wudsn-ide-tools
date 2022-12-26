@@ -1,11 +1,23 @@
 This project contains the contents for the "Tools" folder of the WUDSN IDE installation. This includes all supported assemblers and compilers.
 
-| Tables   |      Are      |  Cool |
-|----------|:-------------:|------:|
-| col 1 is |  left-aligned | $1600 |
-| col 2 is |    centered   |   $12 |
-| col 3 is | right-aligned |    $1 |
+| Language | Tool | Version | OS | Architecture | File Name | File Type | File Date |
+|:---------|:-----|:--------|:---|:-------------|:----------|:----------|:----------|
+|Assembler|ACME||Windows|i386|ASM/ACME/acme.exe|PE32 executable (console) Intel 80386, for MS Windows|2021-10-04 00:50:06|
+|Assembler|ASM6||Windows|i386|ASM/ASM6/asm6.exe|PE32 executable (console) Intel 80386, for MS Windows|2021-10-04 00:50:06|
+|Assembler|ATASM||Linux|i386|ASM/ATASM/atasm.linux-i386|ELF 32-bit LSB executable, Intel 80386, version 1 (SYSV), dynamically linked, interpreter /lib/ld-linux.so.2, for GNU/Linux 2.6.24, BuildID[sha1]=b8aa248b7f241bb3bb6fa861b39cafc3bdcb691a, not stripped|2021-10-04 00:50:06|
+|Assembler|ATASM||Linux|x86-64|ASM/ATASM/atasm.linux-x86-64|ELF 64-bit LSB executable, x86-64, version 1 (SYSV), dynamically linked, interpreter /lib64/ld-linux-x86-64.so.2, for GNU/Linux 2.6.24, BuildID[sha1]=e7f3f75fef12a9d79fa1b78b753cf04270cf4540, not stripped|2021-10-04 00:50:06|
+|Assembler|ATASM||macOS|i386|ASM/ATASM/atasm.macos-i386|Mach-O executable i386|2021-10-04 00:50:06|
+|Assembler|ATASM||macOS|x86-64|ASM/ATASM/atasm.macos-x86-64|Mach-O 64-bit executable x86_64|2021-10-04 00:50:06|
+|Assembler|ATASM||macOS|powerpc|ASM/ATASM/atasm.macos-powerpc|Mach-O executable ppc_7400|2021-10-04 00:50:06|
+|Assembler|ATASM||Windows|i386|ASM/ATASM/atasm.exe|PE32 executable (console) Intel 80386 (stripped to external PDB), for MS Windows, UPX compressed|2021-10-04 00:50:06|
+|Assembler|MADS||Linux|i386|ASM/MADS/mads.linux-i386|ELF 32-bit LSB executable, Intel 80386, version 1 (SYSV), statically linked, stripped|2021-10-04 00:50:06|
+|Assembler|MADS||macOS|i386|ASM/MADS/mads.macos-i386|Mach-O executable i386|2021-10-04 00:50:06|
+|Assembler|MADS|2.1.4|macOS|x86-64|ASM/MADS/mads.macos-x86-64|Mach-O 64-bit executable x86_64|2021-10-31 02:42:17|
+|Assembler|MADS||macOS|powerpc|ASM/MADS/mads.macos-powerpc|Mach-O executable ppc|2021-10-04 00:50:06|
+|Assembler|MADS||Windows|i386|ASM/MADS/mads.exe|PE32 executable (console) Intel 80386 (stripped to external PDB), for MS Windows|2021-10-28 01:36:43|
+|Assembler|XASM||Linux|i386|ASM/XASM/xasm.linux-i386|ELF 32-bit LSB executable, Intel 80386, version 1 (SYSV), dynamically linked, interpreter /lib/ld-linux.so.2, for GNU/Linux 2.6.24, BuildID[sha1]=4841e109df8bb58e09da7f5c6078dd1575d02ce0, stripped|2021-10-04 00:50:06|
+|Assembler|XASM||macOS|i386|ASM/XASM/xasm.macos-i386|Mach-O executable i386|2021-10-04 00:50:06|
+|Assembler|XASM||Windows|i386|ASM/XASM/xasm.exe|PE32 executable (console) Intel 80386, for MS Windows|2021-10-04 00:50:06|
+|Pascal|MP|1.6.5|macOS|x86-64|PAS/MP/mp.macos-x86-64|Mach-O 64-bit executable x86_64|2021-10-31 02:42:23|
+|Pascal|MP||Windows|i386|PAS/MP/mp.exe|PE32 executable (console) Intel 80386 (stripped to external PDB), for MS Windows|2021-10-04 00:50:06|
 
-| Tables  |      Are      |  Cool |       |                           |                                |                   |
-|---------|:-------------:|------:|-------|---------------------------|--------------------------------|-------------------|
-|Assembler|	MADS	2.1.4     |	macOS |	x86-64|	ASM/MADS/mads.macos-x86-64|	Mach-O 64-bit executable x86_64| 2021-10-30 22:11:1|
