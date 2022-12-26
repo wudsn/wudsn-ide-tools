@@ -21,3 +21,81 @@ This project contains the contents for the "Tools" folder of the WUDSN IDE insta
 |Pascal|MP|1.6.5|macOS|x86-64|PAS/MP/mp.macos-x86-64|Mach-O 64-bit executable x86_64|2021-10-31 02:42:23|
 |Pascal|MP||Windows|i386|PAS/MP/mp.exe|PE32 executable (console) Intel 80386 (stripped to external PDB), for MS Windows|2021-10-04 00:50:06|
 
+Also included, but not yet automatically built tools:
+
+<table>
+			<tbody>
+				<tr>
+					<th>Compiler</th>
+					<th>Operating System</th>
+					<th>Architecture</th>
+					<th>Compiler Version</th>
+					<th>Executable Path</th>
+					<th>Compilation Date</th>
+					<th>Compiled By</th>
+				</tr>
+				<tr>
+					<td>DASM</td>
+					<td>Windows</td>
+					<td>Intel - 32 bit</td>
+					<td>2.20.11</td>
+					<td>DASM / bin / dasm.exe</td>
+					<td>2015-05-08</td>
+					<td>JAC!</td>
+				</tr>
+				<tr>
+					<td>DASM</td>
+					<td>Mac OS X</td>
+					<td>Intel</td>
+					<td>2.20.11</td>
+					<td>DASM / bin / dasm.macosx-i386</td>
+					<td>2015-05-01</td>
+					<td>JAC!</td>
+				</tr>
+				<tr>
+					<td>DASM</td>
+					<td>Mac OS X</td>
+					<td>PowerPC</td>
+					<td>2.20.11</td>
+					<td>DASM / bin / dasm.macosx-powerpc</td>
+					<td>2015-05-01</td>
+					<td>JAC!</td>
+				</tr>
+				<tr>
+					<td>DASM</td>
+					<td>Linux</td>
+					<td>Intel 32-bit</td>
+					<td>2.20.11-20140304</td>
+					<td>DASM / bin / dasm.linux-i386</td>
+					<td>2015-05-01</td>
+					<td>JAC!</td>
+				</tr>
+				<tr>
+					<td>DASM</td>
+					<td>Linux</td>
+					<td>Intel 64-bit</td>
+					<td>2.20.11-20140304</td>
+					<td>DASM / bin / dasm.linux-x86-64</td>
+					<td>2015-05-01</td>
+					<td>JAC!</td>
+				</tr>
+				<tr>
+					<td>KickAss</td>
+					<td>All</td>
+					<td>Java</td>
+					<td>V3.39</td>
+					<td>KICKASS / KickAss.jar</td>
+					<td>2015-03-26</td>
+					<td>Mads Nielsen</td>
+				</tr>
+				<tr>
+					<td>TASS</td>
+					<td>Windows</td>
+					<td>Intel - 32 bit</td>
+					<td>1.46 r38</td>
+					<td>TASS / 64tass.exe</td>
+					<td>2011-07-03</td>
+					<td>Soci</td>
+				</tr>
+			</tbody>
+		</table>
