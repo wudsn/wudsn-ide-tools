@@ -99,3 +99,5 @@ Also included, but not yet automatically built tools:
 				</tr>
 			</tbody>
 		</table>
+
+The paths defined in this repository are the defaults inside WUDSN IDE. They have to be maintained in class "com.wudsn.ide.lng.compiler.CompilerPaths".
