@@ -48,7 +48,6 @@ cd src
 #mv ftohex ../bin/ftohex.$EXT32
 #make clean
 
-echo Creating DASM - $OS 64-bit version
 export CC="clang -target x86_64-apple-darwin-macho"
 make
 mv dasm   ../bin/dasm.$EXT64
@@ -93,40 +92,9 @@ cd MADS
 
 fetchMADS
 
-#echo Creating MADS - $OS Intel 32-bit version
-#ppc386 -Mdelphi -v -O3 -XXs -omads.$EXT32 mads.pas
-#rm -f mads.o
-
-OPT="-Mdelphi -O3 -XR$XCODE_COMMANDLINE_TOOLS_LIBS"
-EXECUTABLE="mads.$EXT64"
-echo Creating MADS - $OS Intel 64-bit version
-ppcx64 $OPT -o$EXECUTABLE mads.pas
-rm -f mads.o
-
-#echo Creating MADS - $OS M1 64-bit version
-#fpc -Paarch64 -Mdelphi -v -O3 -XXs -omads.$EXTA64 mads.pas
-#rm -f mads.o
-
-#echo Creating MADS - $OS PPC version
-#ppcppc -Mdelphi -v -O3 -XXs -omads.$EXTPPC mads.pas
-rm -f mads.o
- 
-cd ..
-
 }
 
-#------------------------------------------------------------------------
-# Display Result Details.
-#------------------------------------------------------------------------
-function displayAssembler() {
-  echo Executables for $1: 
-  for f in $1$2*.$EXT32 $1$2*.$EXT64 $1$2*.$EXTPPC
-  do
-    file $f
-  done
-}
 
-installXCodeCommandlineTools
 #makeATASM
 makeDASM
 makeMADS

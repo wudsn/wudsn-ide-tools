@@ -9,3 +9,4 @@ ASM/MADS/ppaslink.sh
 ASM/MADS/linkfiles.res
 ASM/MADS/link.res
 *.log
+/README.html

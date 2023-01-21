@@ -4,12 +4,18 @@
 
 set -e
 
+#------------------------------------------------------------------------
+# Get list of supported languages.
+#------------------------------------------------------------------------
 function getLanguageList(){
     echo "$LANGUAGE_ASM $LANGUAGE_PAS"
 }
 
+#------------------------------------------------------------------------
+# Get human readabe name of a language.
+#------------------------------------------------------------------------
 function getLanguageName(){
-    LANGUAGE=$1
+    local LANGUAGE=$1
     case $LANGUAGE in
 
         "$LANGUAGE_ASM")
@@ -19,53 +25,30 @@ function getLanguageName(){
         echo "Pascal";
         ;;
         *)
-        echo "ERROR: Unknown language $LANGUAGE."
+        echo "ERROR: Unknown language '$LANGUAGE'."
         exit 1
     esac
 }
 
+#------------------------------------------------------------------------
+# Get list of tools for a language.
+#------------------------------------------------------------------------
 function getLanguageTools(){
-    LANGUAGE=$1
-    cd "$LANGUAGE"
-    TOOLS=$(ls -d "*/")
+    local LANGUAGE=$1
+    pushd "$LANGUAGE" >/dev/null 
+    local TOOLS
+    TOOLS=$(ls -d -- */)
     TOOLS="${TOOLS//\// }"
     echo "$TOOLS"
-    cd ..
+    popd >/dev/null
 }
 
-#------------------------------------------------------------------------
-# Display File Details.
-#------------------------------------------------------------------------
-function displayFiles() {
-  FILTER="$PATH_PREFIX*$FILE_EXTENSION"
-  FILE_FOUND="false"
-  echo "Filter $FILTER"
-  for FILE in $FILTER
-  do
-    if test -f "$FILE"; then
-     FILE_FOUND="true"
-     FILE_NAME="$FILE"
-     FILE_DATE=$(date -r "$FILE" "+%Y-%m-%d %H:%M:%S")
-     FILE_INFO=$(file -b "$FILE")
-     echo "- $FILE_INFO $FILE_DATE"
-     TOOL_VERSION=""
-     if test -f "$FILE".version; then
-         TOOL_VERSION=$(cat "$FILE".version)
-     fi
-     echo "<tr><td>$LANGUAGE_NAME</td><td>$TOOL</td><td>$TOOL_VERSION</td><td>$OS_NAME</td><td>$ARCHITECTURE</td><td>$FILE_NAME</td><td>$FILE_INFO</td><td>$FILE_DATE</th><tr>">>"$OUTPUT_HTML"
-    fi
-  done
-  if [[ "$FILE_FOUND" == "false" ]]
-  then
-     echo "- No file found."
-  fi
-}
 
 #------------------------------------------------------------------------
-# Get human readabe name of OS.
+# Get human readabe name of an OS.
 #------------------------------------------------------------------------
 function getOSName(){
-    OS=$1
+    local OS=$1
     case $OS in
         "$OS_LINUX")
         echo "Linux";
@@ -77,27 +60,38 @@ function getOSName(){
         echo "Windows";
         ;;
         *)
-        echo "ERROR: Unknown OS $OS."
+        echo "ERROR: Unknown OS '$OS'."
         exit 1
     esac
 }
 
+#------------------------------------------------------------------------
+# Get list of supported OSes.
+#------------------------------------------------------------------------
 function getOSList(){
     echo "$OS_LINUX $OS_MACOS $OS_WINDOWS"
 }
 
+#------------------------------------------------------------------------
+# Get list of supported architectures.
+#------------------------------------------------------------------------
 function getArchitectureList(){
     echo "$ARCHITECTURE_I32 $ARCHITECTURE_I64 $ARCHITECTURE_A64 $ARCHITECTURE_PPC $ARCHITECTURE_JAVA"
 }
 
 
+#------------------------------------------------------------------------
+# Get executable file extension for an OS and architecture.
+# Returns empty string if not supported 
+#------------------------------------------------------------------------
 function getFileExtension(){
-     ARCHITECTURE=$1
+    local OS=$1
+    local ARCHITECTURE=$2
     case $OS in
         "$OS_LINUX")
         case $ARCHITECTURE in
             "$ARCHITECTURE_I32" | "$ARCHITECTURE_I64")
-                echo ".$OS-$ARCHITECTURE";
+                echo ".${OS}-${ARCHITECTURE}";
             ;;
             "$ARCHITECTURE_JAVA")
                 echo ".jar"
@@ -107,7 +101,7 @@ function getFileExtension(){
          "$OS_MACOS")
         case $ARCHITECTURE in
             "$ARCHITECTURE_A64" | "$ARCHITECTURE_I32" | "$ARCHITECTURE_I64" | "$ARCHITECTURE_PPC" )
-                echo ".$OS-$ARCHITECTURE";
+                echo ".${OS}-${ARCHITECTURE}";
             ;;
             "$ARCHITECTURE_JAVA")
                 echo ".jar"
@@ -121,7 +115,7 @@ function getFileExtension(){
                 echo ".exe"
             ;;
              "$ARCHITECTURE_I64")
-                echo "-$ARCHITECTURE_I64.exe"
+                echo "-${ARCHITECTURE_I64}.exe"
             ;;
             "$ARCHITECTURE_JAVA")
                 echo ".jar"
@@ -129,40 +123,79 @@ function getFileExtension(){
         esac
         ;;
         *)
-        echo "ERROR: Unknown OS $OS in getFileExtension()."
+        echo "ERROR: Unknown OS '${OS}' in getFileExtension()."
         exit 1
         ;;
     esac
 }
 
 function getExecutableName(){
-    TARGET=$1
-    OS=$2
-    ARCHITECTURE=$3
-    echo "$TARGET$(getFileExtension "$ARCHITECTURE")"
+    local TARGET=$1
+    local OS=$2
+    local ARCHITECTURE=$3
+    echo "$TARGET$(getFileExtension "$OS" "$ARCHITECTURE")"
 }
-
-function forAllArchitectures(){
-  FUNCTION=$1
+ 
+function forAllOSesAndArchitectures(){
+  local FUNCTION=$1
+  local OS_LIST
   OS_LIST=$(getOSList)
   for OS in $OS_LIST
   do
     OS_NAME=$(getOSName "$OS")
+    local ARCHITECTURE_LIST
     ARCHITECTURE_LIST=$(getArchitectureList)
       for ARCHITECTURE in $ARCHITECTURE_LIST
       do
-          FILE_EXTENSION=$(getFileExtension "$ARCHITECTURE")
-          #echo "INFO: Architecture $ARCHITECTURE on $OS_NAME has file extension $FILE_EXTENSION".
+          FILE_EXTENSION=$(getFileExtension "$OS" "$ARCHITECTURE")
           
-          if [ -n "$FILE_EXTENSION" ]
-          then
-                #echo "$OS $OS_NAME $ARCHITECTURE *$FILE_EXTENSION"
+          if [ -n "$FILE_EXTENSION" ]; then
              $FUNCTION
 #         else
 #            echo "INFO: Architecture $ARCHITECTURE is not supported on $OS_NAME".
          fi
       done
   done
+}
+
+#------------------------------------------------------------------------
+# Display File Details.
+#------------------------------------------------------------------------
+
+function encodeHTML(){
+  local str=$1
+  for (( i=0; i<${#str}; i++ )); do
+    local c
+    c=${str:$i:1}
+    printf "&#%d;" "'$c" #
+  done
+  echo ""
+}
+
+function displayFiles() {
+  local FILTER
+  local FILE_FOUND
+  local FILES
+  FILTER=*${FILE_EXTENSION}
+  FILE_FOUND="false"
+  FILES=$(find ${PATH_PREFIX} -name ${FILTER})
+  for FILE in $FILES
+  do
+    if [ -f "$FILE" ]; then
+     FILE_FOUND="true"
+     FILE_NAME="$FILE"
+     FILE_DATE=$(date -r "$FILE" "+%Y-%m-%d %H:%M:%S")
+     FILE_INFO=$(file -b "$FILE")
+     TOOL_VERSION=""
+     if [ -f "${FILE}.version" ]; then
+       TOOL_VERSION=$(cat "${FILE}.version")
+     fi
+     echo "<tr><td>$LANGUAGE_NAME</td><td>$TOOL</td><td>$TOOL_VERSION</td><td>$OS_NAME</td><td>$ARCHITECTURE</td><td title=\"$(encodeHTML "$FILE_INFO")\">$FILE_NAME</td><td>$FILE_DATE</th><tr>">>"$README_MD"
+    fi
+  done
+  if [[ "$FILE_FOUND" == "false" ]] && [[ "$VERBOSE" == "-v" ]]; then
+     echo "- No file found for filter ${FILTER}."
+  fi
 }
 
 function displayLanguagesFiles(){
@@ -174,37 +207,42 @@ function displayLanguagesFiles(){
         for TOOL in $TOOLS
         do
             echo "Language $LANGUAGE_NAME, Tool $TOOL"
-#            TARGET=${TOOL,,}
             TARGET=$(echo "$TOOL" | tr '[:upper:]' '[:lower:]')
-            PATH_PREFIX=$LANGUAGE/$TOOL/$TARGET
-            forAllArchitectures displayFiles
+            PATH_PREFIX="$LANGUAGE/$TOOL"
+            forAllOSesAndArchitectures displayFiles
         done
     done
 }
 
 #------------------------------------------------------------------------
-# Compile Pascal source file with Free Pascal Compiler
+# Generate readme file with all included tools.
 #------------------------------------------------------------------------
-function generateHTML(){
-    OUTPUT_HTML="Readme.html"
-    echo "<!DOCTYPE html><html><head><title>WUDSN IDE Tools</title></head><body><table border=\"1\">">$OUTPUT_HTML
-    echo "<tr><th>Language</th><th>Tool</th><th>Version</th><th>OS</th><th>Architecture</th><th>File Name</th><th>File Type</th><th>File Date</th></tr>">>$OUTPUT_HTML
+function generateREADME(){
+    README_MD="README.md"
+    echo "Generating ${README_MD}"
+    echo "This project contains the contents for the \"Tools\" folder of the WUDSN IDE installation. This includes all supported assemblers, compilers and emulators.">>$README_MD
+    echo "<table>">>$README_MD
+    echo "<tr><th>Language</th><th>Tool</th><th>Version</th><th>OS</th><th>Architecture</th><th>File Name</th><th>File Date</th></tr>">>$README_MD
+    displayLanguagesFiles
+    echo "</table>">>$README_MD
+    echo "The paths defined in this repository are the defaults inside WUDSN IDE. They have to be maintained in class \"com.wudsn.ide.lng.compiler.CompilerPaths\".">>$README_MD
 
-    displayLanguagesFiles 
-
-    echo "</table></body></html>">>$OUTPUT_HTML
-    open $OUTPUT_HTML
+    local README_HTML="README.html"
+    echo "<!DOCTYPE html><html><head><title>WUDSN IDE Tools</title></head><body>">$README_HTML
+    cat $README_MD >>$README_HTML
+    echo "</body></html>">>$README_HTML
+    open $README_HTML
 }
 
 #------------------------------------------------------------------------
 # Install XCode Commnd Line Tools if required.
 #------------------------------------------------------------------------
-installXCodeCommandlineTools() {
+installXCodeCommandlineTools(){
   export XCODE_COMMANDLINE_TOOLS="/Library/Developer/CommandLineTools"
   if [ ! -d $XCODE_COMMANDLINE_TOOLS ]; then
     xcode-select --install
   fi
-  export XCODE_COMMANDLINE_TOOLS_LIBS="${XCODE_COMMANDLINE_TOOLS}/SDKs/MacOSX.sdk"
+  export XCODE_COMMANDLINE_TOOLS_LIBS="${XCODE_COMMANDLINE_TOOLS}/SDKs/MacOSX11.1.sdk"
 }
 
 #------------------------------------------------------------------------
@@ -212,14 +250,15 @@ installXCodeCommandlineTools() {
 #------------------------------------------------------------------------
 function compileWithFPC(){
 
-    NAME=$1
-    SOURCE=$2
-    TARGET=$3
-    OS=$4
-    ARCHITECTURE=$5
+    local NAME=$1
+    local SOURCE=$2
+    local TARGET=$3
+    local OS=$4
+    local ARCHITECTURE=$5
+    local EXECUTABLE
     EXECUTABLE=$(getExecutableName "$TARGET" "$OS" "$ARCHITECTURE")
-    echo "INFO: compileWithFPC $EXECUTABLE"
-    pushd "$NAME"
+    local LOG="$EXECUTABLE.log"
+    pushd "$NAME" >/dev/null
 
     OPT="-Mdelphi -O3"
   
@@ -229,65 +268,109 @@ function compileWithFPC(){
         COMMAND="none";
         ;;
         "$OS_MACOS")
-          OPT="$OPT -XR$XCODE_COMMANDLINE_TOOLS_LIBS"
+        OPT="$OPT -XR$XCODE_COMMANDLINE_TOOLS_LIBS"
         COMMAND="ppcx64"
         ;;
         "$OS_WINDOWS")
         COMMAND="FPC.exe";
         ;;
         *)
-        echo "ERROR: Unknown OS $OS in compileWithFPC()."
+        echo "ERROR: Unknown OS '$OS' in compileWithFPC()."
         exit 1
         ;;
     esac
 
-  if command -v $COMMAND &> /dev/null
-  then
-    echo Creating "$NAME" - "$OS" "$ARCHITECTURE" - "$EXECUTABLE"
-    $COMMAND "$OPT" -o"$EXECUTABLE" "$SOURCE"
-    if [ -f "$SOURCE".version ]
-    then cp "$SOURCE".version "$EXECUTABLE".version
+  # Check if command is present
+  if command -v $COMMAND &>/dev/null; then
+  	local COMMAND_LINE
+  	COMMAND_LINE="${COMMAND} ${OPT} -o${EXECUTABLE} ${SOURCE}"
+    echo "Creating ${NAME} for ${OS} on ${ARCHITECTURE} as ${EXECUTABLE} from ${SOURCE}"
+    if command ${COMMAND_LINE} &>${LOG}; then
+      if [ -f "${SOURCE}.version" ]; then
+        cp "${SOURCE}.version" "${EXECUTABLE}.version"
+      fi
+    else
+      cat "$LOG"
     fi
     rm -f "*.o"
   else
-    echo Creation of "$NAME" - "$OS" "$ARCHITECTURE" - "$EXECUTABLE" skipped. Command $COMMAND is not available.
+    echo "Creation of ${NAME} for ${OS} on ${ARCHITECTURE} as ${EXECUTABLE} skipped. Command ${COMMAND} is not available."
   fi
   
-  popd
+  popd >/dev/null
 }
 
+function testFunctionOSAndArchitecture(){
+  echo "INFO: Architecture ${ARCHITECTURE} on ${OS_NAME} has file extension '${FILE_EXTENSION}'."
+}
 
+#-------------------------------------------------------------------------
+# Create ATASM.
+#-------------------------------------------------------------------------
+function makeATASM() {
+
+cd ATASM/src
+
+#echo Creating ATASM - $OS 32-bit version
+#export ARCH="-arch i386"
+#make
+#chmod a+x atasm
+#mv atasm ../atasm.$EXT32
+#make clean
+
+export ARCH="-arch x86_64"
+make
+chmod a+x atasm
+mv atasm ../atasm.test
+make clean
+
+#echo Creating ATASM - $OS PPC version
+#export ARCH="-arch ppc"
+#make
+#chmod a+x atasm
+#mv atasm ../atasm.$EXTPPC
+#make clean
+
+cd ../..
+}
+
+function main(){
 #VERBOSE=-v
-    installXCodeCommandlineTools
+	installXCodeCommandlineTools
+	
+	LANGUAGE_ASM="ASM"
+	LANGUAGE_PAS="PAS"
+	
+	OS_LINUX="linux"
+	OS_MACOS="macos"
+	OS_WINDOWS="windows"
+	
+	ARCHITECTURE_A64="aarch-64"
+	ARCHITECTURE_I32="i386"
+	ARCHITECTURE_I64="x86-64"
+	ARCHITECTURE_JAVA="java"
+	ARCHITECTURE_PPC="powerpc"
+	
+	#  forAllOSesAndArchitectures testFunctionOSAndArchitecture
+	
+	pushd ASM >/dev/null
+	compileWithFPC MADS mads.pas mads $OS_MACOS $ARCHITECTURE_JAVA
+	compileWithFPC MADS mads.pas mads $OS_MACOS $ARCHITECTURE_I64
+	popd >/dev/null
+	
+	pushd PAS >/dev/null
+	compileWithFPC MP mp.pas mp $OS_MACOS $ARCHITECTURE_I64
+	popd >/dev/null
+	
+	generateREADME
 
-    LANGUAGE_ASM="ASM"
-    LANGUAGE_PAS="PAS"
+	pushd ASM >/dev/null
+	echo source "$VERBOSE" make-"$OS".sh
+	popd >/dev/null
+	pushd PAS >/dev/null
+	echo source "$VERBOSE" make-"$OS".sh
+	popd >/dev/null
+	echo
+}
 
-    OS_LINUX="linux"
-    OS_MACOS="macos"
-    OS_WINDOWS="windows"
-
-    ARCHITECTURE_A64="aarch-64"
-    ARCHITECTURE_I32="i386"
-    ARCHITECTURE_I64="x86-64"
-    ARCHITECTURE_JAVA="java"
-    ARCHITECTURE_PPC="powerpc"
-
-
-    pushd ASM
-    compileWithFPC MADS mads.pas mads $OS_MACOS $ARCHITECTURE_I64
-    popd
-
-    pushd PAS
-    compileWithFPC MP mp.pas mp $OS_MACOS $ARCHITECTURE_I64
-    popd
-
-    generateHTML
-pushd ASM
-echo source "$VERBOSE" make-"$OS".sh
-popd
-pushd PAS
-echo source "$VERBOSE" make-"$OS".sh
-popd
-echo
-
+main
