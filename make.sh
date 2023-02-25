@@ -220,7 +220,7 @@ function displayLanguagesFiles(){
 function generateREADME(){
     README_MD="README.md"
     echo "Generating ${README_MD}"
-    echo "This project contains the contents for the \"Tools\" folder of the WUDSN IDE installation. This includes all supported assemblers, compilers and emulators.">>$README_MD
+    echo "This project contains the contents for the \"Tools\" folder of the WUDSN IDE installation. This includes all supported assemblers, compilers and emulators.">$README_MD
     echo "<table>">>$README_MD
     echo "<tr><th>Language</th><th>Tool</th><th>Version</th><th>OS</th><th>Architecture</th><th>File Name</th><th>File Date</th></tr>">>$README_MD
     displayLanguagesFiles
@@ -269,7 +269,11 @@ function compileWithFPC(){
         ;;
         "$OS_MACOS")
         OPT="$OPT -XR$XCODE_COMMANDLINE_TOOLS_LIBS"
-        COMMAND="ppcx64"
+        if [ "$ARCHTECTURE" == "$ARCHITECTURE_I386"]; then
+        	COMMAND="ppcx64"
+        else
+        	COMMAND="ppcjvm"
+        fi
         ;;
         "$OS_WINDOWS")
         COMMAND="FPC.exe";
@@ -284,6 +288,8 @@ function compileWithFPC(){
   if command -v $COMMAND &>/dev/null; then
   	local COMMAND_LINE
   	COMMAND_LINE="${COMMAND} ${OPT} -o${EXECUTABLE} ${SOURCE}"
+  	# TODO For debugging
+  	echo $COMMAND_LINE
     echo "Creating ${NAME} for ${OS} on ${ARCHITECTURE} as ${EXECUTABLE} from ${SOURCE}"
     if command ${COMMAND_LINE} &>${LOG}; then
       if [ -f "${SOURCE}.version" ]; then
