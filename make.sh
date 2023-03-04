@@ -158,10 +158,59 @@ function forAllOSesAndArchitectures(){
   done
 }
 
+function forAllLanguagesAndToolsAndOSesAndArchitectures(){
+    LANGUAGE_LIST=$(getLanguageList)
+    for LANGUAGE in $LANGUAGE_LIST
+    do
+        LANGUAGE_NAME=$(getLanguageName "$LANGUAGE")
+        TOOLS=$(getLanguageTools "$LANGUAGE")
+        for TOOL in $TOOLS
+        do
+            echo "Processing Language $LANGUAGE_NAME, Tool $TOOL"
+            TARGET=$(echo "$TOOL" | tr '[:upper:]' '[:lower:]')
+            PATH_PREFIX="$LANGUAGE/$TOOL"
+            forAllOSesAndArchitectures $1
+        done
+    done
+}
+
+function testFunctionLanguageAndToolAndOSAndArchitecture(){
+  echo "INFO: Language ${LANGUAGE}, Tool ${TOOL}, Architecture ${ARCHITECTURE} on ${OS_NAME} has file extension '${FILE_EXTENSION}'."
+}
+
+function printCompileLanguageAndToolAndOSAndArchitecture(){
+   echo "Compiling: Language ${LANGUAGE}, Tool ${TOOL}, Architecture ${ARCHITECTURE} on ${OS_NAME} iwith file extension '${FILE_EXTENSION}'."
+}
+
+function compileLanguageAndToolAndOSAndArchitecture(){
+  local FUNCTION_NAME
+  FUNCTION_NAME="compile_${LANGUAGE}_${TOOL}"
+  if type "${FUNCTION_NAME}" 2>/dev/null | grep -q "function"
+  then
+    pushd "${LANGUAGE}/${TOOL}" >/dev/null
+    ${FUNCTION_NAME}
+    popd >/dev/null
+  fi
+}
+
+
+#------------------------------------------------------------------------
+# Tool-specific compile functions.
+#------------------------------------------------------------------------
+
+function compile_ASM_MADS(){
+  printCompileLanguageAndToolAndOSAndArchitecture
+  compileWithFPC ${TOOL} mads.pas mads $OS $ARCHITECTURE
+}
+
+function compile_PAS_MP(){
+  printCompileLanguageAndToolAndOSAndArchitecture
+  compileWithFPC ${TOOL} mp.pas mp $OS $ARCHITECTURE
+}
+
 #------------------------------------------------------------------------
 # Display File Details.
 #------------------------------------------------------------------------
-
 function encodeHTML(){
   local str=$1
   for (( i=0; i<${#str}; i++ )); do
@@ -172,6 +221,10 @@ function encodeHTML(){
   echo ""
 }
 
+#------------------------------------------------------------------------
+# Display files in ${PATH_PREFIX} that have file extension 
+# ${FILE_EXTENSION} abd their details as HTML table rows.
+#------------------------------------------------------------------------
 function displayFiles() {
   local FILTER
   local FILE_FOUND
@@ -198,24 +251,8 @@ function displayFiles() {
   fi
 }
 
-function displayLanguagesFiles(){
-    LANGUAGE_LIST=$(getLanguageList)
-    for LANGUAGE in $LANGUAGE_LIST
-    do
-        LANGUAGE_NAME=$(getLanguageName "$LANGUAGE")
-        TOOLS=$(getLanguageTools "$LANGUAGE")
-        for TOOL in $TOOLS
-        do
-            echo "Language $LANGUAGE_NAME, Tool $TOOL"
-            TARGET=$(echo "$TOOL" | tr '[:upper:]' '[:lower:]')
-            PATH_PREFIX="$LANGUAGE/$TOOL"
-            forAllOSesAndArchitectures displayFiles
-        done
-    done
-}
-
 #------------------------------------------------------------------------
-# Generate readme file with all included tools.
+# Generate readme file as Readme.md with all included tools.
 #------------------------------------------------------------------------
 function generateREADME(){
     README_MD="README.md"
@@ -223,12 +260,13 @@ function generateREADME(){
     echo "This project contains the contents for the \"Tools\" folder of the WUDSN IDE installation. This includes all supported assemblers, compilers and emulators.">$README_MD
     echo "<table>">>$README_MD
     echo "<tr><th>Language</th><th>Tool</th><th>Version</th><th>OS</th><th>Architecture</th><th>File Name</th><th>File Date</th></tr>">>$README_MD
-    displayLanguagesFiles
+    forAllLanguagesAndToolsAndOSesAndArchitectures displayFiles
     echo "</table>">>$README_MD
     echo "The paths defined in this repository are the defaults inside WUDSN IDE. They have to be maintained in class \"com.wudsn.ide.lng.compiler.CompilerPaths\".">>$README_MD
 
+#   Create local "Readme.html" for quick check of the content.
     local README_HTML="README.html"
-    echo "<!DOCTYPE html><html><head><title>WUDSN IDE Tools</title></head><body>">$README_HTML
+    echo "<!DOCTYPE html><html><head><title>WUDSN IDE Tools</title><style>table { border-collapse: collapse; } th, td { border: 1px solid black; }</style></head><body>">$README_HTML
     cat $README_MD >>$README_HTML
     echo "</body></html>">>$README_HTML
     open $README_HTML
@@ -258,7 +296,6 @@ function compileWithFPC(){
     local EXECUTABLE
     EXECUTABLE=$(getExecutableName "$TARGET" "$OS" "$ARCHITECTURE")
     local LOG="$EXECUTABLE.log"
-    pushd "$NAME" >/dev/null
 
     OPT="-Mdelphi -O3"
   
@@ -269,7 +306,7 @@ function compileWithFPC(){
         ;;
         "$OS_MACOS")
         OPT="$OPT -XR$XCODE_COMMANDLINE_TOOLS_LIBS"
-        if [ "$ARCHTECTURE" == "$ARCHITECTURE_I386"]; then
+        if [ "$ARCHTECTURE" == "$ARCHITECTURE_I386" ]; then
         	COMMAND="ppcx64"
         else
         	COMMAND="ppcjvm"
@@ -302,12 +339,6 @@ function compileWithFPC(){
   else
     echo "Creation of ${NAME} for ${OS} on ${ARCHITECTURE} as ${EXECUTABLE} skipped. Command ${COMMAND} is not available."
   fi
-  
-  popd >/dev/null
-}
-
-function testFunctionOSAndArchitecture(){
-  echo "INFO: Architecture ${ARCHITECTURE} on ${OS_NAME} has file extension '${FILE_EXTENSION}'."
 }
 
 #-------------------------------------------------------------------------
@@ -357,17 +388,10 @@ function main(){
 	ARCHITECTURE_JAVA="java"
 	ARCHITECTURE_PPC="powerpc"
 	
-	#  forAllOSesAndArchitectures testFunctionOSAndArchitecture
-	
-	pushd ASM >/dev/null
-	compileWithFPC MADS mads.pas mads $OS_MACOS $ARCHITECTURE_JAVA
-	compileWithFPC MADS mads.pas mads $OS_MACOS $ARCHITECTURE_I64
-	popd >/dev/null
-	
-	pushd PAS >/dev/null
-	compileWithFPC MP mp.pas mp $OS_MACOS $ARCHITECTURE_I64
-	popd >/dev/null
-	
+	#forAllLanguagesAndToolsAndOSesAndArchitectures testFunctionLanguageAndToolAndOSAndArchitecture
+
+	forAllLanguagesAndToolsAndOSesAndArchitectures compileLanguageAndToolAndOSAndArchitecture
+
 	generateREADME
 
 	pushd ASM >/dev/null
