@@ -43,42 +43,40 @@ function getLanguageTools(){
     popd >/dev/null
 }
 
-
 #------------------------------------------------------------------------
 # Get human readabe name of an OS.
 #------------------------------------------------------------------------
 function getOSName(){
-    local OS=$1
-    case $OS in
-        "$OS_LINUX")
-        echo "Linux";
-        ;;
-        "$OS_MACOS")
-        echo "macOS";
-        ;;
-        "$OS_WINDOWS")
-        echo "Windows";
-        ;;
-        *)
-        echo "ERROR: Unknown OS '$OS'."
-        exit 1
-    esac
+  local OS=$1
+  case $OS in
+    "$OS_LINUX")
+      echo "Linux";
+      ;;
+    "$OS_MACOS")
+      echo "macOS";
+      ;;
+    "$OS_WINDOWS")
+      echo "Windows";
+      ;;
+    *)
+      echo "ERROR: Unknown OS '$OS'."
+      exit 1
+  esac
 }
 
 #------------------------------------------------------------------------
 # Get list of supported OSes.
 #------------------------------------------------------------------------
 function getOSList(){
-    echo "$OS_LINUX $OS_MACOS $OS_WINDOWS"
+  echo "$OS_LINUX $OS_MACOS $OS_WINDOWS"
 }
 
 #------------------------------------------------------------------------
 # Get list of supported architectures.
 #------------------------------------------------------------------------
 function getArchitectureList(){
-    echo "$ARCHITECTURE_I32 $ARCHITECTURE_I64 $ARCHITECTURE_A64 $ARCHITECTURE_PPC $ARCHITECTURE_JAVA"
+  echo "$ARCHITECTURE_I32 $ARCHITECTURE_I64 $ARCHITECTURE_A64 $ARCHITECTURE_PPC $ARCHITECTURE_JAVA"
 }
-
 
 #------------------------------------------------------------------------
 # Get executable file extension for an OS and architecture.
@@ -87,10 +85,10 @@ function getArchitectureList(){
 function getFileExtension(){
     local OS=$1
     local ARCHITECTURE=$2
-    case $OS in
-        "$OS_LINUX")
-        case $ARCHITECTURE in
-            "$ARCHITECTURE_I32" | "$ARCHITECTURE_I64")
+    case ${OS} in
+        "${OS_LINUX}")
+        case ${ARCHITECTURE} in
+            "${ARCHITECTURE_I32}" | "${ARCHITECTURE_I64}")
                 echo ".${OS}-${ARCHITECTURE}";
             ;;
             "$ARCHITECTURE_JAVA")
@@ -98,26 +96,26 @@ function getFileExtension(){
             ;;
         esac
         ;;
-         "$OS_MACOS")
-        case $ARCHITECTURE in
-            "$ARCHITECTURE_A64" | "$ARCHITECTURE_I32" | "$ARCHITECTURE_I64" | "$ARCHITECTURE_PPC" )
+         "${OS_MACOS}")
+        case ${ARCHITECTURE} in
+            "${ARCHITECTURE_A64}" | "${ARCHITECTURE_I32}" | "${ARCHITECTURE_I64}" | "${ARCHITECTURE_PPC}" )
                 echo ".${OS}-${ARCHITECTURE}";
             ;;
-            "$ARCHITECTURE_JAVA")
+            "${ARCHITECTURE_JAVA}")
                 echo ".jar"
             ;;
         esac
         ;;
-        "$OS_WINDOWS")
+        "${OS_WINDOWS}")
         
-        case $ARCHITECTURE in
-            "$ARCHITECTURE_I32")
+        case ${ARCHITECTURE} in
+            "${ARCHITECTURE_I32}")
                 echo ".exe"
             ;;
-             "$ARCHITECTURE_I64")
+             "${ARCHITECTURE_I64}")
                 echo "-${ARCHITECTURE_I64}.exe"
             ;;
-            "$ARCHITECTURE_JAVA")
+            "${ARCHITECTURE_JAVA}")
                 echo ".jar"
             ;;
         esac
@@ -129,13 +127,19 @@ function getFileExtension(){
     esac
 }
 
+#------------------------------------------------------------------------
+# Function iterator for all OSes and architectures.
+#------------------------------------------------------------------------
 function getExecutableName(){
     local TARGET=$1
     local OS=$2
     local ARCHITECTURE=$3
     echo "$TARGET$(getFileExtension "$OS" "$ARCHITECTURE")"
 }
- 
+
+#------------------------------------------------------------------------
+# Function iterator for all OSes and architectures.
+#------------------------------------------------------------------------
 function forAllOSesAndArchitectures(){
   local FUNCTION=$1
   local OS_LIST
@@ -158,6 +162,10 @@ function forAllOSesAndArchitectures(){
   done
 }
 
+#------------------------------------------------------------------------
+# Function iterator for all languages, tools, OSes and architectures.
+#------------------------------------------------------------------------
+
 function forAllLanguagesAndToolsAndOSesAndArchitectures(){
     LANGUAGE_LIST=$(getLanguageList)
     for LANGUAGE in $LANGUAGE_LIST
@@ -179,7 +187,7 @@ function testFunctionLanguageAndToolAndOSAndArchitecture(){
 }
 
 function printCompileLanguageAndToolAndOSAndArchitecture(){
-   echo "Compiling: Language ${LANGUAGE}, Tool ${TOOL}, Architecture ${ARCHITECTURE} on ${OS_NAME} iwith file extension '${FILE_EXTENSION}'."
+   echo "Compiling: Language ${LANGUAGE}, Tool ${TOOL}, Architecture ${ARCHITECTURE} on ${OS_NAME} with file extension '${FILE_EXTENSION}'."
 }
 
 function compileLanguageAndToolAndOSAndArchitecture(){
@@ -198,6 +206,49 @@ function compileLanguageAndToolAndOSAndArchitecture(){
 # Tool-specific compile functions.
 #------------------------------------------------------------------------
 
+function compile_ASM_ATASM() {
+
+# Compile only if host OS matches.
+  if [ "${OS}" != "${OS_TYPE}" ]; then
+  	return
+  fi
+
+case ${ARCHITECTURE} in
+  ${ARCHITECTURE_I32})
+  	# No longer supported on macOS
+  	if [ "${OS}" == "${OS_MACOS}" ]; then
+  	  return
+    fi
+    export ARCH="-arch i386"
+    ;;
+  ${ARCHITECTURE_I64})
+    export ARCH="-arch x86_64"
+    ;;
+  ${ARCHITECTURE_PPC})
+  	# No longer supported on macOS
+   	if [ "${OS}" == "${OS_MACOS}" ]; then
+  	  return
+    fi
+    export ARCH="-arch ppc"
+    ;;
+  *)
+  	echo "Unsupported architecture ${ARCHITECTURE}."
+    return
+    ;;
+  esac
+
+  printCompileLanguageAndToolAndOSAndArchitecture
+  cd src
+  make clean 	# No longer supported on macOS
+ 
+  make  
+  chmod a+x atasm
+  mv atasm ../atasm${FILE_EXTENSION}
+  make clean
+
+  cd ..
+}
+
 function compile_ASM_MADS(){
   printCompileLanguageAndToolAndOSAndArchitecture
   compileWithFPC ${TOOL} mads.pas mads $OS $ARCHITECTURE
@@ -207,6 +258,7 @@ function compile_PAS_MP(){
   printCompileLanguageAndToolAndOSAndArchitecture
   compileWithFPC ${TOOL} mp.pas mp $OS $ARCHITECTURE
 }
+
 
 #------------------------------------------------------------------------
 # Display File Details.
@@ -342,65 +394,50 @@ function compileWithFPC(){
 }
 
 #-------------------------------------------------------------------------
-# Create ATASM.
+# Main function to compile all tools.
 #-------------------------------------------------------------------------
-function makeATASM() {
-
-cd ATASM/src
-
-#echo Creating ATASM - $OS 32-bit version
-#export ARCH="-arch i386"
-#make
-#chmod a+x atasm
-#mv atasm ../atasm.$EXT32
-#make clean
-
-export ARCH="-arch x86_64"
-make
-chmod a+x atasm
-mv atasm ../atasm.test
-make clean
-
-#echo Creating ATASM - $OS PPC version
-#export ARCH="-arch ppc"
-#make
-#chmod a+x atasm
-#mv atasm ../atasm.$EXTPPC
-#make clean
-
-cd ../..
-}
-
 function main(){
-#VERBOSE=-v
-	installXCodeCommandlineTools
+# VERBOSE=-v
 	
-	LANGUAGE_ASM="ASM"
-	LANGUAGE_PAS="PAS"
+  LANGUAGE_ASM="ASM"
+  LANGUAGE_PAS="PAS"
 	
-	OS_LINUX="linux"
-	OS_MACOS="macos"
-	OS_WINDOWS="windows"
-	
-	ARCHITECTURE_A64="aarch-64"
-	ARCHITECTURE_I32="i386"
-	ARCHITECTURE_I64="x86-64"
-	ARCHITECTURE_JAVA="java"
-	ARCHITECTURE_PPC="powerpc"
-	
-	#forAllLanguagesAndToolsAndOSesAndArchitectures testFunctionLanguageAndToolAndOSAndArchitecture
+  OS_LINUX="linux"
+  OS_MACOS="macos"
+  OS_WINDOWS="windows"
 
-	forAllLanguagesAndToolsAndOSesAndArchitectures compileLanguageAndToolAndOSAndArchitecture
+  ARCHITECTURE_A64="aarch-64"
+  ARCHITECTURE_I32="i386"
+  ARCHITECTURE_I64="x86-64"
+  ARCHITECTURE_JAVA="java"
+  ARCHITECTURE_PPC="powerpc"
 
-	generateREADME
+  # Map OS type and host type to own codes.
+  OS_TYPE="unknown"
+  
+  case "${OSTYPE}" in
+    linux-gnu)
+      OS_TYPE=${OS_LINUX}
+      ;;
+    darwin*) 
+      OS_TYPE=${OS_MACOS}
+      installXCodeCommandlineTools
+      ;;
+    *)
+      echo "ERROR: Unknown OS type ${OSTYPE}."
+      return 
+  esac
+ 
+  # The following line is only for testing the script functions.
+  #forAllLanguagesAndToolsAndOSesAndArchitectures testFunctionLanguageAndToolAndOSAndArchitecture
 
-	pushd ASM >/dev/null
-	echo source "$VERBOSE" make-"$OS".sh
-	popd >/dev/null
-	pushd PAS >/dev/null
-	echo source "$VERBOSE" make-"$OS".sh
-	popd >/dev/null
-	echo
+  forAllLanguagesAndToolsAndOSesAndArchitectures compileLanguageAndToolAndOSAndArchitecture
+
+  pushd ASM >/dev/null
+  echo source "$VERBOSE" make-"$OS".sh
+  popd >/dev/null
+
+  generateREADME
 }
 
 main
