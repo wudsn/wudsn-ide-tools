@@ -128,13 +128,146 @@ function getFileExtension(){
 }
 
 #------------------------------------------------------------------------
+# Install XCode Commnd Line Tools if required.
+#------------------------------------------------------------------------
+installXCodeCommandlineTools(){
+  export XCODE_COMMANDLINE_TOOLS="/Library/Developer/CommandLineTools"
+  if [ ! -d $XCODE_COMMANDLINE_TOOLS ]; then
+    xcode-select --install
+  fi
+  export XCODE_COMMANDLINE_TOOLS_LIBS="${XCODE_COMMANDLINE_TOOLS}/SDKs/MacOSX11.1.sdk"
+}
+
+#------------------------------------------------------------------------
+# Compile with command $1.
+#------------------------------------------------------------------------
+function compileWithCommand(){
+  local COMMAND=$1
+  # Check if command is present
+  if command -v $COMMAND &>/dev/null; then
+  	local COMMAND_LINE
+  	COMMAND_LINE="${COMMAND} ${OPT} -o${EXECUTABLE} ${SOURCE}"
+  	# TODO For debugging
+  	echo $COMMAND_LINE
+    echo "Creating ${NAME} for ${OS} on ${ARCHITECTURE} as ${EXECUTABLE} from ${SOURCE}."
+    if command ${COMMAND_LINE} &>${LOG}; then
+      if [ -f "${SOURCE}.version" ]; then
+        cp "${SOURCE}.version" "${EXECUTABLE}.version"
+      fi
+    else
+      cat "$LOG"
+    fi
+    rm -f "*.o"
+  else
+    echo "Creation of ${NAME} for ${OS} on ${ARCHITECTURE} as ${EXECUTABLE} skipped. Command ${COMMAND} is not available."
+  fi
+}
+
+#------------------------------------------------------------------------
+# Compile Pascal source file with Free Pascal Compiler
+#------------------------------------------------------------------------
+function compileWithFPC(){
+
+    local NAME=$1
+    local SOURCE=$2
+    local TARGET=$3
+    local OS=$4
+    local ARCHITECTURE=$5
+    local EXECUTABLE
+    EXECUTABLE=$(getExecutableName "$TARGET" "$OS" "$ARCHITECTURE")
+    local LOG="$EXECUTABLE.log"
+
+    OPT="-Mdelphi -O3"
+  
+    case $OS in
+
+        "$OS_LINUX")
+        COMMAND="none";
+        ;;
+        "$OS_MACOS")
+        OPT="$OPT -XR$XCODE_COMMANDLINE_TOOLS_LIBS"
+        if [ "$ARCHTECTURE" == "$ARCHITECTURE_I386" ]; then
+        	COMMAND="ppcx64"
+        else
+        	COMMAND="ppcjvm"
+        fi
+        ;;
+        "$OS_WINDOWS")
+        COMMAND="FPC.exe";
+        ;;
+        *)
+        echo "ERROR: Unknown OS '$OS' in compileWithFPC()."
+        exit 1
+        ;;
+    esac
+
+  compileWithCommand "${COMMAND}"
+}
+
+#------------------------------------------------------------------------
+# Compile C source file with standard CC compiler
+#------------------------------------------------------------------------
+function compileWithCC(){
+  local NAME=$1
+  local SOURCE=$2
+  local TARGET=$3
+
+  local EXECUTABLE
+  EXECUTABLE=$(getExecutableName "$TARGET" "$OS" "$ARCHITECTURE")
+  local LOG="$EXECUTABLE.log"
+
+  
+  local OPT
+  OPT=$(getCCARCH)
+  if [ -z "${OPT}" ]; then
+  	return
+  fi
+
+  printCompileLanguageAndToolAndOSAndArchitecture
+  compileWithCommand "cc"
+}
+
+#------------------------------------------------------------------------
+# Get ARCH parameter for standard CC compiler.
+#------------------------------------------------------------------------
+function getCCARCH(){
+# Compile only if host OS matches.
+  if [ "${OS}" != "${OS_TYPE}" ]; then
+  	return
+  fi
+
+case ${ARCHITECTURE} in
+  ${ARCHITECTURE_A64})
+    echo "-arch arm64"
+    ;;
+  ${ARCHITECTURE_I32})
+  	# No longer supported on macOS
+  	if [ "${OS}" == "${OS_MACOS}" ]; then
+  	  return
+    fi
+    echo "-arch i386"
+    ;;
+  ${ARCHITECTURE_I64})
+    echo "-arch x86_64"
+    ;;
+  ${ARCHITECTURE_PPC})
+  	# No longer supported on macOS
+   	if [ "${OS}" == "${OS_MACOS}" ]; then
+  	  return
+    fi
+    echo"-arch ppc"
+    ;;
+  esac
+}
+
+#------------------------------------------------------------------------
 # Function iterator for all OSes and architectures.
 #------------------------------------------------------------------------
 function getExecutableName(){
-    local TARGET=$1
-    local OS=$2
-    local ARCHITECTURE=$3
-    echo "$TARGET$(getFileExtension "$OS" "$ARCHITECTURE")"
+  local TARGET=$1
+  local OS=$2
+  local ARCHITECTURE=$3
+  echo "$TARGET$(getFileExtension "$OS" "$ARCHITECTURE")"
 }
 
 #------------------------------------------------------------------------
@@ -151,13 +284,12 @@ function forAllOSesAndArchitectures(){
     ARCHITECTURE_LIST=$(getArchitectureList)
       for ARCHITECTURE in $ARCHITECTURE_LIST
       do
-          FILE_EXTENSION=$(getFileExtension "$OS" "$ARCHITECTURE")
-          
-          if [ -n "$FILE_EXTENSION" ]; then
-             $FUNCTION
-#         else
-#            echo "INFO: Architecture $ARCHITECTURE is not supported on $OS_NAME".
-         fi
+        FILE_EXTENSION=$(getFileExtension "$OS" "$ARCHITECTURE")
+        if [ -n "$FILE_EXTENSION" ]; then
+          $FUNCTION
+#       else
+#         echo "INFO: Architecture $ARCHITECTURE is not supported on $OS_NAME".
+        fi
       done
   done
 }
@@ -167,19 +299,19 @@ function forAllOSesAndArchitectures(){
 #------------------------------------------------------------------------
 
 function forAllLanguagesAndToolsAndOSesAndArchitectures(){
-    LANGUAGE_LIST=$(getLanguageList)
-    for LANGUAGE in $LANGUAGE_LIST
-    do
-        LANGUAGE_NAME=$(getLanguageName "$LANGUAGE")
-        TOOLS=$(getLanguageTools "$LANGUAGE")
-        for TOOL in $TOOLS
-        do
-            echo "Processing Language $LANGUAGE_NAME, Tool $TOOL"
-            TARGET=$(echo "$TOOL" | tr '[:upper:]' '[:lower:]')
-            PATH_PREFIX="$LANGUAGE/$TOOL"
-            forAllOSesAndArchitectures $1
-        done
-    done
+  LANGUAGE_LIST=$(getLanguageList)
+  for LANGUAGE in $LANGUAGE_LIST
+  do
+    LANGUAGE_NAME=$(getLanguageName "$LANGUAGE")
+    TOOLS=$(getLanguageTools "$LANGUAGE")
+    for TOOL in $TOOLS
+      do
+        echo "Processing Language $LANGUAGE_NAME, Tool $TOOL"
+        TARGET=$(echo "$TOOL" | tr '[:upper:]' '[:lower:]')
+        PATH_PREFIX="$LANGUAGE/$TOOL"
+        forAllOSesAndArchitectures $1
+      done
+  done
 }
 
 function testFunctionLanguageAndToolAndOSAndArchitecture(){
@@ -206,40 +338,21 @@ function compileLanguageAndToolAndOSAndArchitecture(){
 # Tool-specific compile functions.
 #------------------------------------------------------------------------
 
-function compile_ASM_ATASM() {
+function compile_ASM_ASM6() {
+  compileWithCC ${TOOL} asm6.c asm6
+}
 
-# Compile only if host OS matches.
-  if [ "${OS}" != "${OS_TYPE}" ]; then
+function compile_ASM_ATASM() {
+  local ARCH
+  ARCH=$(getCCARCH)
+  if [ -z "${ARCH}" ]; then
   	return
   fi
-
-case ${ARCHITECTURE} in
-  ${ARCHITECTURE_I32})
-  	# No longer supported on macOS
-  	if [ "${OS}" == "${OS_MACOS}" ]; then
-  	  return
-    fi
-    export ARCH="-arch i386"
-    ;;
-  ${ARCHITECTURE_I64})
-    export ARCH="-arch x86_64"
-    ;;
-  ${ARCHITECTURE_PPC})
-  	# No longer supported on macOS
-   	if [ "${OS}" == "${OS_MACOS}" ]; then
-  	  return
-    fi
-    export ARCH="-arch ppc"
-    ;;
-  *)
-  	echo "Unsupported architecture ${ARCHITECTURE}."
-    return
-    ;;
-  esac
+  export ARCH
 
   printCompileLanguageAndToolAndOSAndArchitecture
   cd src
-  make clean 	# No longer supported on macOS
+  make clean
  
   make  
   chmod a+x atasm
@@ -248,6 +361,7 @@ case ${ARCHITECTURE} in
 
   cd ..
 }
+
 
 function compile_ASM_MADS(){
   printCompileLanguageAndToolAndOSAndArchitecture
@@ -322,75 +436,6 @@ function generateREADME(){
     cat $README_MD >>$README_HTML
     echo "</body></html>">>$README_HTML
     open $README_HTML
-}
-
-#------------------------------------------------------------------------
-# Install XCode Commnd Line Tools if required.
-#------------------------------------------------------------------------
-installXCodeCommandlineTools(){
-  export XCODE_COMMANDLINE_TOOLS="/Library/Developer/CommandLineTools"
-  if [ ! -d $XCODE_COMMANDLINE_TOOLS ]; then
-    xcode-select --install
-  fi
-  export XCODE_COMMANDLINE_TOOLS_LIBS="${XCODE_COMMANDLINE_TOOLS}/SDKs/MacOSX11.1.sdk"
-}
-
-#------------------------------------------------------------------------
-# Compile Pascal source file with Free Pascal Compiler
-#------------------------------------------------------------------------
-function compileWithFPC(){
-
-    local NAME=$1
-    local SOURCE=$2
-    local TARGET=$3
-    local OS=$4
-    local ARCHITECTURE=$5
-    local EXECUTABLE
-    EXECUTABLE=$(getExecutableName "$TARGET" "$OS" "$ARCHITECTURE")
-    local LOG="$EXECUTABLE.log"
-
-    OPT="-Mdelphi -O3"
-  
-    case $OS in
-
-        "$OS_LINUX")
-        COMMAND="none";
-        ;;
-        "$OS_MACOS")
-        OPT="$OPT -XR$XCODE_COMMANDLINE_TOOLS_LIBS"
-        if [ "$ARCHTECTURE" == "$ARCHITECTURE_I386" ]; then
-        	COMMAND="ppcx64"
-        else
-        	COMMAND="ppcjvm"
-        fi
-        ;;
-        "$OS_WINDOWS")
-        COMMAND="FPC.exe";
-        ;;
-        *)
-        echo "ERROR: Unknown OS '$OS' in compileWithFPC()."
-        exit 1
-        ;;
-    esac
-
-  # Check if command is present
-  if command -v $COMMAND &>/dev/null; then
-  	local COMMAND_LINE
-  	COMMAND_LINE="${COMMAND} ${OPT} -o${EXECUTABLE} ${SOURCE}"
-  	# TODO For debugging
-  	echo $COMMAND_LINE
-    echo "Creating ${NAME} for ${OS} on ${ARCHITECTURE} as ${EXECUTABLE} from ${SOURCE}"
-    if command ${COMMAND_LINE} &>${LOG}; then
-      if [ -f "${SOURCE}.version" ]; then
-        cp "${SOURCE}.version" "${EXECUTABLE}.version"
-      fi
-    else
-      cat "$LOG"
-    fi
-    rm -f "*.o"
-  else
-    echo "Creation of ${NAME} for ${OS} on ${ARCHITECTURE} as ${EXECUTABLE} skipped. Command ${COMMAND} is not available."
-  fi
 }
 
 #-------------------------------------------------------------------------
