@@ -194,7 +194,7 @@ function compileWithCommand(){
     # Don't stop one error.
     set +e
     if command ${COMMAND_LINE} &>"${LOG}"; then
-      copyExecutable "${EXECUTABLE_TMP}" "${EXECUTABLE}" "${SOURCE}" >>"${LOG}"
+      copyExecutable "${EXECUTABLE_TMP}" "${EXECUTABLE}" "${SOURCE}"
     else
       echo "ERROR: Command ${COMMAND_LINE} failed."
       cat "${LOG}"
@@ -396,23 +396,12 @@ function compile_ASM_ASM6() {
   compileWithCC "${TOOL}" asm6.c asm6
 }
 
-function compile_ASM_ATASM_Internal(){
-  make "clean"
-  make  
-  chmod a+x "atasm"
-  mv "atasm" "../${EXECUTABLE}"
-  make "clean"
-}
-
-
 function compile_ASM_ATASM() {
-  return
   local NAME="${TOOL}"
   local TARGET="atasm"
-
   local EXECUTABLE
-  EXECUTABLE="$(getExecutableName "${TARGET}" "${OS}" "${ARCHITECTURE}")"
-  
+  EXECUTABLE="../$(getExecutableName "${TARGET}" "${OS}" "${ARCHITECTURE}")"
+
   local ARCH
   ARCH="$(getCCARCH)"
   if [ -z "${ARCH}" ]; then
@@ -420,14 +409,13 @@ function compile_ASM_ATASM() {
   fi
   export ARCH
 
-  printCompileLanguageAndToolAndOSAndArchitecture
-  cd src
-#  local COMMAND
-#  COMMAND="compile_ASM_ATASM_Internal"
-#  compileWithCommand "${NAME}" "${COMMAND}"
-  compile_ASM_ATASM_Internal
-  cd ..
-  exit 1
+  local LOG="${EXECUTABLE}.log"
+  pushd "src" >"${LOG}"
+  make "clean" >>"${LOG}"
+  make >>"${LOG}"
+  copyExecutable "atasm" "${EXECUTABLE}" "atasm.c"
+  make "clean" >>"${LOG}"
+  popd >>"${LOG}"
 }
 
 
