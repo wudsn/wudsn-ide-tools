@@ -392,10 +392,12 @@ function compileLanguageAndToolAndOSAndArchitecture(){
 # Tool-specific compile functions.
 #------------------------------------------------------------------------
 
+#------------------------------------------------------------------------
 function compile_ASM_ASM6() {
   compileWithCC "${TOOL}" asm6.c asm6
 }
 
+#------------------------------------------------------------------------
 function compile_ASM_ATASM() {
   local NAME="${TOOL}"
   local TARGET="atasm"
@@ -410,20 +412,54 @@ function compile_ASM_ATASM() {
   export ARCH
 
   local LOG="${EXECUTABLE}.log"
-  pushd "src" >"${LOG}"
-  make "clean" >>"${LOG}"
+  pushd "src" >/dev/null
+  make "clean" >"${LOG}"
   make >>"${LOG}"
   copyExecutable "atasm" "${EXECUTABLE}" "asm.c"
   make "clean" >>"${LOG}"
-  popd >>"${LOG}"
+  popd >/dev/null"
 }
 
+#------------------------------------------------------------------------
+function compile_ASM_DASM() {
+  local NAME="${TOOL}"
+  local TARGET="dasm"
+  local EXECUTABLE
+  EXECUTABLE="../bin/$(getExecutableName "${TARGET}" "${OS}" "${ARCHITECTURE}")"
 
+  local ARCH
+  ARCH="$(getCCARCH)"
+  if [ -z "${ARCH}" ]; then
+  	return
+  fi
+
+  mkdir -p "bin"
+  local LOG="${EXECUTABLE}.log"
+  pushd "src"
+  
+  export CC="cc ${ARCH}"
+  make >"${LOG}"
+  copyExecutable "${TARGET}" "${EXECUTABLE}" "main.c"
+
+  TARGET="ftohex"
+  EXECUTABLE="../bin/$(getExecutableName "${TARGET}" "${OS}" "${ARCHITECTURE}")"
+  copyExecutable "${TARGET}" "${EXECUTABLE}" "ftohex.c"
+  make clean  >>"${LOG}"
+  popd >/dev/null
+
+  pushd "test" >/dev/null
+  make clean >>"${LOG}"
+  popd >/dev/null
+
+}
+
+#------------------------------------------------------------------------
 function compile_ASM_MADS(){
   printCompileLanguageAndToolAndOSAndArchitecture
   compileWithFPC "${TOOL}" mads.pas mads "${OS}" "${ARCHITECTURE}"
 }
 
+#------------------------------------------------------------------------
 function compile_PAS_MP(){
   printCompileLanguageAndToolAndOSAndArchitecture
   compileWithFPC "${TOOL}" mp.pas mp "${OS}" "${ARCHITECTURE}"
@@ -487,7 +523,7 @@ function generateREADME(){
 
   echo "This project contains the contents for the \"Tools\" folder of the WUDSN IDE installation. This includes all supported assemblers, compilers and emulators.">>${README_FILE}
   echo "<table>">>${README_FILE}
-  echo "<tr><th>Language</th><th>Tool</th><th>Version</th><th>OS</th><th>Architecture</th><th>File Name</th><th>File Date</th></tr>">>${README_FILE}
+  echo "<tr><th>Language</th><th>Tool</th><th>Version</th><th>OS</th><th>Architecture</th><th>File Name (File Type in Tooltip)</th><th>File Date</th></tr>">>${README_FILE}
   forAllLanguagesAndToolsAndOSesAndArchitectures displayFiles
   echo "</table>">>${README_FILE}
   echo "The paths defined in this repository are the defaults inside WUDSN IDE. They have to be maintained in class \"com.wudsn.ide.lng.compiler.CompilerPaths\".">>${README_FILE}
