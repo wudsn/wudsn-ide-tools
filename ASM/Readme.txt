@@ -1,8 +1,7 @@
 
 This archive folder contains all assemblers supported by WUDSN IDE.
-It contains the following versions:
+It contains the following versions which have not own ".version" file yet:
 
-ATASM   : 1.09
 CA65    : 2.13.3
 DASM    : 2.20.15
 KICKASS : 3.39

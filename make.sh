@@ -413,7 +413,7 @@ function compile_ASM_ATASM() {
   pushd "src" >"${LOG}"
   make "clean" >>"${LOG}"
   make >>"${LOG}"
-  copyExecutable "atasm" "${EXECUTABLE}" "atasm.c"
+  copyExecutable "atasm" "${EXECUTABLE}" "asm.c"
   make "clean" >>"${LOG}"
   popd >>"${LOG}"
 }
