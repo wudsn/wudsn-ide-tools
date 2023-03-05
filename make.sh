@@ -3,6 +3,7 @@
 # Check using https://www.shellcheck.net/.
 # Hints:
 # -always use "${VARIABLE}" unless it is the list of "for ... in ${VARIABLE}"
+# TODO Overwrite only, if binary has actually changed!!
 
 set -e
 
@@ -148,27 +149,38 @@ function compileWithCommand(){
   # Check if command is present
   if command -v "${COMMAND}" &>/dev/null; then
     echo "Creating ${NAME} for ${OS} on ${ARCHITECTURE} as ${EXECUTABLE} from ${SOURCE}."
+  	local EXECUTABLE_TMP
   	local COMMAND_LINE
-  	COMMAND_LINE="${COMMAND} ${OPT} -o${EXECUTABLE} ${SOURCE}"
+  	EXECUTABLE_TMP="${EXECUTABLE}.tmp"
+  	COMMAND_LINE="${COMMAND} ${OPT} -o${EXECUTABLE_TMP} ${SOURCE}"
   	if [ "${VERBOSE}" == "-v" ]; then
   	  echo "${COMMAND_LINE}"
   	fi
-  
+
     # Don't stop one error.
     set +e
+    rm -f "${LOG}"
     if command ${COMMAND_LINE} &>"${LOG}"; then
-      if [ -f "${SOURCE}.version" ]; then
-        cp "${SOURCE}.version" "${EXECUTABLE}.version"
+      # Check is new file is different fromold file.
+      if [ cmp --silent "${EXECUTABLE_TMP}" "${EXECUTABLE}" ]; then
+        echo "Binary files is unchanged."
+      else
+      	# Overwrite old file and take over version information.
+      	mv "${EXECUTABLE_TMP}" "${EXECUTABLE}"
+        if [ -f "${SOURCE}.version" ]; then
+          cp "${SOURCE}.version" "${EXECUTABLE}.version"
+        fi
       fi
     else
       echo "ERROR: Command ${COMMAND_LINE} failed."
-      cat "$LOG"
+      cat "${LOG}"
       exit 1
     fi
    
     # Do stop on error.
     set -e
-    rm -f "*.o"
+    rm -f *.o
+    rm -f *.tmp
   else
     echo "Creation of ${NAME} for ${OS} on ${ARCHITECTURE} as ${EXECUTABLE} skipped. Command ${COMMAND} is not available."
   fi
@@ -466,7 +478,7 @@ function generateREADME(){
 #-------------------------------------------------------------------------
 function main(){
 # VERBOSE="-v"
-  set -x
+# set -x
 
   LANGUAGE_ASM="ASM"
   LANGUAGE_PAS="PAS"
