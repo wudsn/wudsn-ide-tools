@@ -3,7 +3,6 @@
 # Check using https://www.shellcheck.net/.
 # Hints:
 # -always use "${VARIABLE}" unless it is the list of "for ... in ${VARIABLE}"
-# TODO Overwrite only, if binary has actually changed!!
 
 set -e
 
@@ -141,11 +140,44 @@ installXCodeCommandlineTools(){
   export XCODE_COMMANDLINE_TOOLS_LIBS="${XCODE_COMMANDLINE_TOOLS}/SDKs/MacOSX11.1.sdk"
 }
 
+
 #------------------------------------------------------------------------
-# Compile with command $1.
+# Compile with a command.
+# IMPORTING $1 = EXECUTABLE_TMP
+# IMPORTING $2 = EXECUTABLE
+# IMPORTING $3 = SOURCE
+#------------------------------------------------------------------------
+function copyExecutable(){
+ local EXECUTABLE_TMP=$1
+ local EXECUTABLE=$2
+ local SOURCE=$3
+
+ # Check if new file is different from old file.
+ if cmp --silent "${EXECUTABLE_TMP}" "${EXECUTABLE}"; then
+   echo "Binary file ${EXECUTABLE} is unchanged."
+ else
+   # Overwrite old file and take over version information from source.
+   mv "${EXECUTABLE_TMP}" "${EXECUTABLE}"
+   if [ -f "${SOURCE}.version" ]; then
+     cp "${SOURCE}.version" "${EXECUTABLE}.version"
+   fi
+ fi
+}
+
+#------------------------------------------------------------------------
+# Compile with a command.
+# IMPORTING $1 = NAME
+# IMPORTING $2 = COMMAND
+# IMPORTING $3 = EXECUTABLE
+# IMPORTING $4 = SOURCE
+# IMPORTING      OS
+# IMPORTING      ARCHITECTURE
 #------------------------------------------------------------------------
 function compileWithCommand(){
-  local COMMAND=$1
+  local NAME=$1
+  local COMMAND=$2
+  local EXECUTABLE=$3
+  local SOURCE=$4
   # Check if command is present
   if command -v "${COMMAND}" &>/dev/null; then
     echo "Creating ${NAME} for ${OS} on ${ARCHITECTURE} as ${EXECUTABLE} from ${SOURCE}."
@@ -157,20 +189,12 @@ function compileWithCommand(){
   	  echo "${COMMAND_LINE}"
   	fi
 
+    local LOG="${EXECUTABLE}.log"
+    rm -f "${LOG}"
     # Don't stop one error.
     set +e
-    rm -f "${LOG}"
     if command ${COMMAND_LINE} &>"${LOG}"; then
-      # Check is new file is different fromold file.
-      if [ cmp --silent "${EXECUTABLE_TMP}" "${EXECUTABLE}" ]; then
-        echo "Binary files is unchanged."
-      else
-      	# Overwrite old file and take over version information.
-      	mv "${EXECUTABLE_TMP}" "${EXECUTABLE}"
-        if [ -f "${SOURCE}.version" ]; then
-          cp "${SOURCE}.version" "${EXECUTABLE}.version"
-        fi
-      fi
+      copyExecutable "${EXECUTABLE_TMP}" "${EXECUTABLE}" "${SOURCE}" >>"${LOG}"
     else
       echo "ERROR: Command ${COMMAND_LINE} failed."
       cat "${LOG}"
@@ -198,7 +222,6 @@ function compileWithFPC(){
   local ARCHITECTURE=$5
   local EXECUTABLE
   EXECUTABLE="$(getExecutableName "$TARGET" "$OS" "${ARCHITECTURE}")"
-  local LOG="${EXECUTABLE}.log"
 
   OPT="-Mdelphi -O3"
   
@@ -232,7 +255,7 @@ function compileWithFPC(){
       ;;
     esac
 
-  compileWithCommand "${COMMAND}"
+  compileWithCommand "${NAME}" "${COMMAND}" "${EXECUTABLE}" "${SOURCE}"
 }
 
 #------------------------------------------------------------------------
@@ -245,7 +268,6 @@ function compileWithCC(){
 
   local EXECUTABLE
   EXECUTABLE="$(getExecutableName "${TARGET}" "${OS}" "${ARCHITECTURE}")"
-  local LOG="${EXECUTABLE}.log"
 
   
   local OPT
@@ -255,7 +277,7 @@ function compileWithCC(){
   fi
 
   printCompileLanguageAndToolAndOSAndArchitecture
-  compileWithCommand "cc"
+  compileWithCommand "${NAME}" "cc" "${EXECUTABLE}" "${SOURCE}"
 }
 
 #------------------------------------------------------------------------
@@ -350,7 +372,8 @@ function testFunctionLanguageAndToolAndOSAndArchitecture(){
 }
 
 function printCompileLanguageAndToolAndOSAndArchitecture(){
-   echo "Compiling: Language ${LANGUAGE}, Tool ${TOOL}, Architecture ${ARCHITECTURE} on ${OS_NAME} with file extension '${FILE_EXTENSION}'."
+   # echo "Compiling: Language ${LANGUAGE}, Tool ${TOOL}, Architecture ${ARCHITECTURE} on ${OS_NAME} with file extension '${FILE_EXTENSION}'."
+   return
 }
 
 function compileLanguageAndToolAndOSAndArchitecture(){
@@ -373,7 +396,23 @@ function compile_ASM_ASM6() {
   compileWithCC "${TOOL}" asm6.c asm6
 }
 
+function compile_ASM_ATASM_Internal(){
+  make "clean"
+  make  
+  chmod a+x "atasm"
+  mv "atasm" "../${EXECUTABLE}"
+  make "clean"
+}
+
+
 function compile_ASM_ATASM() {
+  return
+  local NAME="${TOOL}"
+  local TARGET="atasm"
+
+  local EXECUTABLE
+  EXECUTABLE="$(getExecutableName "${TARGET}" "${OS}" "${ARCHITECTURE}")"
+  
   local ARCH
   ARCH="$(getCCARCH)"
   if [ -z "${ARCH}" ]; then
@@ -383,14 +422,12 @@ function compile_ASM_ATASM() {
 
   printCompileLanguageAndToolAndOSAndArchitecture
   cd src
-  make clean
- 
-  make  
-  chmod a+x "atasm"
-  mv "atasm" "../atasm${FILE_EXTENSION}"
-  make "clean"
-
+#  local COMMAND
+#  COMMAND="compile_ASM_ATASM_Internal"
+#  compileWithCommand "${NAME}" "${COMMAND}"
+  compile_ASM_ATASM_Internal
   cd ..
+  exit 1
 }
 
 
