@@ -1,42 +1,11 @@
 #!/bin/bash
 
-#-------------------------------------------------------------------------
-# Create ATASM.
-#-------------------------------------------------------------------------
-function makeATASM() {
-
-cd ATASM/src
-
-#echo Creating ATASM - $OS 32-bit version
-#export ARCH="-arch i386"
-#make
-#chmod a+x atasm
-#mv atasm ../atasm.$EXT32
-#make clean
-
-echo Creating ATASM - $OS 64-bit version
-export ARCH="-arch x86_64"
-make
-chmod a+x atasm
-mv atasm ../atasm.$EXT64
-make clean
-
-#echo Creating ATASM - $OS PPC version
-#export ARCH="-arch ppc"
-#make
-#chmod a+x atasm
-#mv atasm ../atasm.$EXTPPC
-#make clean
-
-cd ../..
-}
 
 #------------------------------------------------------------------------
 # Create DASM.
 #------------------------------------------------------------------------
-function makeDASM() {
+function compile_ASM_DASM() {
 
-cd DASM
 
 mkdir -p bin
 cd src
@@ -93,17 +62,4 @@ cd MADS
 fetchMADS
 
 }
-
-
-#makeATASM
-makeDASM
-makeMADS
-
-#------------------------------------------------------------------------
-# List result. 
-#------------------------------------------------------------------------
-echo Done.
-displayAssembler ATASM /
-displayAssembler DASM  /bin/
-displayAssembler MADS  /
 
