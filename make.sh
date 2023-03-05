@@ -417,7 +417,7 @@ function compile_ASM_ATASM() {
   make >>"${LOG}"
   copyExecutable "atasm" "${EXECUTABLE}" "asm.c"
   make "clean" >>"${LOG}"
-  popd >/dev/null"
+  popd >/dev/null
 }
 
 #------------------------------------------------------------------------
@@ -435,7 +435,7 @@ function compile_ASM_DASM() {
 
   mkdir -p "bin"
   local LOG="${EXECUTABLE}.log"
-  pushd "src"
+  pushd "src" >/dev/null
   
   export CC="cc ${ARCH}"
   make >"${LOG}"
