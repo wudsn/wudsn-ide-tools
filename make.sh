@@ -584,4 +584,18 @@ function main(){
  
 }
 
+#------------------------------------------------------------------------
+# TODO: Use
+#------------------------------------------------------------------------
+function fetchGitRepo(){
+
+  URL=$1
+  rm -rf .git
+  echo Getting latest MADS sources from github.
+  git init -b master  --quiet
+  git remote add origin $URL
+  git fetch origin master --force  --quiet
+  rm -rf .git
+}
+
 main
