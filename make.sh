@@ -493,15 +493,23 @@ function displayFiles() {
   for FILE in ${FILES}
   do
     if [ -f "${FILE}" ]; then
-     FILE_FOUND="true"
-     FILE_NAME="${FILE}"
-     FILE_DATE="$(date -r "${FILE}" "+%Y-%m-%d %H:%M:%S")"
-     FILE_INFO="$(file -b "${FILE}")"
-     TOOL_VERSION=""
-     if [ -f "${FILE}.version" ]; then
-       TOOL_VERSION="$(cat "${FILE}.version")"
-     fi
-     echo "<tr><td>${LANGUAGE_NAME}</td><td>${TOOL}</td><td>${TOOL_VERSION}</td><td>${OS_NAME}</td><td>${ARCHITECTURE}</td><td title=\"$(encodeHTML "${FILE_INFO}")\">${FILE_NAME}</td><td>${FILE_DATE}</th><tr>">>"${README_FILE}"
+      FILE_FOUND="true"
+      FILE_NAME="${FILE}"
+      
+      # Ensure X flag is set in file system and git repository
+      if [ "${FILE_EXTENSION}" = ".exe"  ]; then
+        chmod a-x "${FILE}" 
+      else
+        chmod a+x "${FILE}" 
+      fi
+
+      FILE_DATE="$(date -r "${FILE}" "+%Y-%m-%d %H:%M:%S")"
+      FILE_INFO="$(file -b "${FILE}")"
+      TOOL_VERSION=""
+      if [ -f "${FILE}.version" ]; then
+        TOOL_VERSION="$(cat "${FILE}.version")"
+      fi
+      echo "<tr><td>${LANGUAGE_NAME}</td><td>${TOOL}</td><td>${TOOL_VERSION}</td><td>${OS_NAME}</td><td>${ARCHITECTURE}</td><td title=\"$(encodeHTML "${FILE_INFO}")\">${FILE_NAME}</td><td>${FILE_DATE}</th><tr>">>"${README_FILE}"
     fi
   done
   if [[ "${FILE_FOUND}" == "false" ]] && [[ "${VERBOSE}" == "-v" ]]; then
