@@ -5,7 +5,7 @@ This folder contains the binary builds of the [AtariSIO tools](https://github.co
 * `ataricom` displays the details of an Atari `COM/XEX` file.
 * `dir2atr` creates an ATR disk image from a folder of files.
 
-You can find the full description in the [README.TXT](README.TXT).
+You can find the full description in the [README.txt](README.txt).
 
 The binary versions have been compiled by
 * Peter Dell (linux-86-64, macos-aarch64, macos-x86-64, windows-x86-64)
