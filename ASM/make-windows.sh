@@ -27,7 +27,7 @@ cd ../..
 cd ASM6
 
 echo Creating ASM6 - $OS 64-bit version
-$CC asm6.c -o asm6.exe
+make
 
 cd ..
 
