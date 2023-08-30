@@ -1,7 +1,6 @@
 #!/bin/bash
 
 export OS="Windows"
-export EXT="linux"
 export EXT32="exe"
 
 echo Creating $OS binaries.
