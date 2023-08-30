@@ -27,9 +27,10 @@ cd ../..
 cd ASM6
 
 echo Creating ASM6 - $OS 64-bit version
-$CC asm6.c
+$CC asm6.c -o asm6.exe
 
 cd ..
+
 
 
 #------------------------------------------------------------------------
@@ -70,10 +71,25 @@ rm mads.o
 
 cd ..
 
+#-------------------------------------------------------------------------
+# Create TASS.
+#-------------------------------------------------------------------------
+
+cd TASS/src
+
+echo Creating TASS - $OS 64-bit version
+make -f Makefile.win
+mv 64tass.exe ../
+make clean
+cd ../..
+
 #------------------------------------------------------------------------
 # List result. 
 #------------------------------------------------------------------------
 echo Done.
 ls -al ATASM/*.$EXT
+ls -al ASM6/*.$EXT
 ls -al DASM/bin/*.$EXT
 ls -al MADS/*.$EXT
+ls -al TASS/*.$EXT
+

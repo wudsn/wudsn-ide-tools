@@ -1,15 +1,15 @@
 /*
-    Turbo Assembler 6502/65C02/65816/CPU64/DTV
-    Copyright (C) <year>  <name of author>
+    Turbo Assembler 6502/65C02/65816/DTV
+    $Id: 64tass.c 2954 2023-01-07 10:22:44Z soci $
 
-   6502/65C02 Turbo Assembler  Version 1.3
-   (c)1996 Taboo Productions, Marek Matula
-  
-   6502/65C02 Turbo Assembler  Version 1.35  ANSI C port
-   (c)2000 [BiGFooT/BReeZe^2000]
-  
-   6502/65C02/65816/CPU64/DTV Turbo Assembler  Version 1.4x
-   (c)2001-2005 Soci/Singular (soci@c64.rulez.org)
+    6502/65C02 Turbo Assembler  Version 1.3
+    (c) 1996 Taboo Productions, Marek Matula
+
+    6502/65C02 Turbo Assembler  Version 1.35  ANSI C port
+    (c) 2000 BiGFooT/BReeZe^2000
+
+    6502/65C02/65816/DTV Turbo Assembler  Version 1.4x
+    (c) 2001-2014 Soci/Singular (soci@c64.rulez.org)
 
     This program is free software; you can redistribute it and/or modify
     it under the terms of the GNU General Public License as published by
@@ -21,2197 +21,5256 @@
     MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
     GNU General Public License for more details.
 
-    You should have received a copy of the GNU General Public License
-    along with this program; if not, write to the Free Software
-    Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+    You should have received a copy of the GNU General Public License along
+    with this program; if not, write to the Free Software Foundation, Inc.,
+    51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 
 */
 
-#define _GNU_SOURCE
-#define _MAIN_C_
-#include <stdio.h>
+#include "64tass.h"
 #include <string.h>
-#include <stdlib.h>
 
-#include <sys/stat.h>
-#include <time.h>
-
+#include "error.h"
 #include "opcodes.h"
-#include "misc.h"
+#include "eval.h"
+#include "values.h"
+#include "section.h"
+#include "encoding.h"
+#include "file.h"
+#include "variables.h"
+#include "macro.h"
+#include "instruction.h"
+#include "unicode.h"
+#include "listing.h"
+#include "optimizer.h"
+#include "arguments.h"
+#include "ternary.h"
+#include "opt_bit.h"
+#include "longjump.h"
+#include "mem.h"
+#include "unicodedata.h"
+#include "main.h"
+#include "version.h"
 
-static char *mnemonic;    //mnemonics
-const unsigned char *opcode;    //opcodes
+#include "listobj.h"
+#include "codeobj.h"
+#include "strobj.h"
+#include "addressobj.h"
+#include "boolobj.h"
+#include "bytesobj.h"
+#include "intobj.h"
+#include "bitsobj.h"
+#include "functionobj.h"
+#include "namespaceobj.h"
+#include "operobj.h"
+#include "gapobj.h"
+#include "typeobj.h"
+#include "noneobj.h"
+#include "registerobj.h"
+#include "labelobj.h"
+#include "errorobj.h"
+#include "macroobj.h"
+#include "mfuncobj.h"
+#include "memblocksobj.h"
+#include "symbolobj.h"
+#include "dictobj.h"
+#include "encobj.h"
 
-#define linelength 4096
-#define nestinglevel 256
-int errors=0,conderrors=0,warnings=0, wrapwarn=0, wrapwarn2=0;
-long sline;      //current line
-static unsigned long low_mem,top_mem;
-static unsigned long all_mem, full_mem;
-static int pass=0;      //pass
-static int listing=0;   //listing
-static int foundopcode;   //listing
-static unsigned char* mem64=NULL;//c64mem
-static unsigned char* mmap=NULL; //c64 memory map
-unsigned long address=0,l_address=0; //address, logical address
-char pline[linelength];  //current line data
-static char llist[linelength];  //current line for listing
-static int lpoint;              //position in current line
-static char ident[linelength], ident2[linelength];  //identifier (label, etc)
-static char varname[linelength];//variable (same as identifier?)
-static char path[80];           //path
-static int pagelo=-1;           //still in same page?
-static FILE* flist;             //listfile
-static char lastl=1;            //for listing (skip one line
-static int logisave=0;          // number of nested .logical
-static unsigned long* logitab;  //.logical .here
-static char longaccu=0,longindex=0,scpumode=0,cpu64mode=0,dtvmode=0;
-static unsigned char databank=0;
-static unsigned int dpage=0;
-static char fixeddig;
-static char procname[linelength];
-static unsigned long current_requires;
-static unsigned long current_conflicts;
-static unsigned long current_provides;
-static int allowslowbranch=1;
-static int longbranchasjmp=0;
+linenum_t vline;      /* current line */
+address_t all_mem, all_mem2;
+unsigned int all_mem_bits;
+uint8_t pass = 0, max_pass = MAX_PASS;         /* pass */
+address_t star = 0;
+const uint8_t *pline;           /* current line data */
+struct linepos_s lpoint;        /* position in current line */
+static uint8_t strength = 0;
+bool fixeddig, constcreated;
+uint32_t outputeor = 0; /* EOR value for final output (usually 0, unless changed by .eor) */
+bool referenceit = true;
+const struct cpu_s *current_cpu;
+static unsigned int err_msg_char_note_once;
 
-static char s_stack[256];
-static struct {long val; char sgn;} e_stack[256];
-static long v_stack[256];
-static int ssp,esp,vsp;
+static size_t waitfor_p, waitfor_len;
+static struct waitfor_s {
+    Wait_types what;
+    uint8_t skip;
+    struct linepos_s epoint;
+    union {
+        struct {
+            address_t laddr;
+            Obj *val;
+            address_t addr;
+            Label *label;
+            size_t membp;
+        } cmd_logical;
+        struct {
+            struct section_address_s *section_address;
+            Label *label;
+            size_t membp;
+        } cmd_virtual;
+        struct {
+            struct section_s *section;
+            struct section_address_s *section_address;
+            address_t addr;
+            Label *label;
+            size_t membp;
+        } cmd_section;
+        struct {
+            bool unionmode;
+            address_t laddr;
+            address_t addr, addr2;
+        } cmd_union;
+        struct {
+            address_t addr;
+            Label *label;
+            size_t membp;
+        } cmd_with;
+        struct {
+            address_t addr;
+            Label *label;
+            size_t membp;
+        } cmd_weak;
+        struct {
+            address_t laddr;
+            address_t addr;
+            Label *label;
+            size_t membp;
+        } cmd_page;
+        struct {
+            address_t addr;
+            Label *label;
+            size_t membp;
+        } cmd_proc;
+        struct {
+            address_t addr;
+            Label *label;
+            size_t membp;
+        } cmd_block;
+        struct {
+            bool unionmode;
+        } cmd_struct;
+        struct {
+            bool breakout;
+        } cmd_rept;
+        struct {
+            Obj *val;
+        } cmd_macro;
+        struct {
+            Obj *val;
+        } cmd_function;
+        struct {
+            Obj *val;
+            address_t addr;
+            Label *label;
+            size_t membp;
+        } cmd_switch;
+        struct {
+            address_t addr;
+            Label *label;
+            size_t membp;
+        } cmd_if;
+        struct {
+            Enc *enc;
+        } cmd_encode;
+    } u;
+} *waitfors, *waitfor;
 
-static char waitfor[nestinglevel];
-static char skipit[nestinglevel];
-static int waitforp=0;
+struct star_s *star_tree = NULL;
 
-static int last_mnem;
-
-int labelexists;
-unsigned long backr, forwr, reffile;
-unsigned long curfnum=1;
-unsigned long macrecursion;
-
-                       // 0       1       2        3        4         5        6         7      8         9
-const char* command[]={"byte"   ,"text", "ptext", "char" ,"shift","shiftl" ,"null"  ,"rta" , "int"  , "word" , "long" ,"offs"  ,"macro"  ,"endm"   ,"for" ,
-                        "next"   ,"if"   ,"else"  ,"fi"    ,"elsif","rept"   ,"include","binary","comment","endc",
-                        "page"   ,"endp" ,"logical","here" ,"as"   ,"al"     ,"xs"    ,"xl"     ,"error"  ,"proc",
-                        "pend"   ,"databank","dpage","fill","global","warn"  ,"enc"   ,"endif"  , "ifne"  , "ifeq",
-                        "ifpl"   , "ifmi","cerror","cwarn", "align","assert", "check", "cpu", "option"};
-enum {
-    CMD_BYTE, CMD_TEXT, CMD_PTEXT, CMD_CHAR, CMD_SHIFT, CMD_SHIFT2, CMD_NULL, CMD_RTA, CMD_INT, CMD_WORD, CMD_LONG, CMD_OFFS, CMD_MACRO, CMD_ENDM, CMD_FOR, CMD_NEXT, CMD_IF,
-    CMD_ELSE, CMD_FI, CMD_ELSIF, CMD_REPT, CMD_INCLUDE, CMD_BINARY, CMD_COMMENT, CMD_ENDC, CMD_PAGE, CMD_ENDP, CMD_LOGICAL,
-    CMD_HERE, CMD_AS, CMD_AL, CMD_XS, CMD_XL, CMD_ERROR, CMD_PROC, CMD_PEND, CMD_DATABANK, CMD_DPAGE,
-    CMD_FILL, CMD_GLOBAL, CMD_WARN, CMD_ENC, CMD_ENDIF, CMD_IFNE, CMD_IFEQ, CMD_IFPL, CMD_IFMI, CMD_CERROR, CMD_CWARN, CMD_ALIGN, CMD_ASSERT, CMD_CHECK, CMD_CPU, CMD_OPTION
+static const char *const command[] = { /* must be sorted, first char is the ID */
+    "\x08" "addr",
+    "\x22" "al",
+    "\x34" "align",
+    "\x21" "as",
+    "\x35" "assert",
+    "\x5b" "autsiz",
+    "\x3a" "bend",
+    "\x63" "bfor",
+    "\x1a" "binary",
+    "\x50" "binclude",
+    "\x39" "block",
+    "\x5a" "break",
+    "\x66" "breakif",
+    "\x62" "brept",
+    "\x65" "bwhile",
+    "\x05" "byte",
+    "\x54" "case",
+    "\x4e" "cdef",
+    "\x32" "cerror",
+    "\x06" "char",
+    "\x36" "check",
+    "\x1b" "comment",
+    "\x59" "continue",
+    "\x67" "continueif",
+    "\x37" "cpu",
+    "\x33" "cwarn",
+    "\x28" "databank",
+    "\x55" "default",
+    "\x0d" "dint",
+    "\x29" "dpage",
+    "\x4c" "dsection",
+    "\x47" "dstruct",
+    "\x4a" "dunion",
+    "\x0e" "dword",
+    "\x4f" "edef",
+    "\x15" "else",
+    "\x17" "elsif",
+    "\x2c" "enc",
+    "\x6f" "encode",
+    "\x3f" "end",
+    "\x3a" "endblock",
+    "\x1c" "endc",
+    "\x1c" "endcomment",
+    "\x70" "endencode",
+    "\x52" "endf",
+    "\x6c" "endfor",
+    "\x52" "endfunction",
+    "\x16" "endif",
+    "\x20" "endlogical",
+    "\x11" "endm",
+    "\x6a" "endmacro",
+    "\x5f" "endn",
+    "\x5f" "endnamespace",
+    "\x1e" "endp",
+    "\x1e" "endpage",
+    "\x27" "endproc",
+    "\x6d" "endrept",
+    "\x46" "ends",
+    "\x4d" "endsection",
+    "\x6b" "endsegment",
+    "\x46" "endstruct",
+    "\x56" "endswitch",
+    "\x49" "endu",
+    "\x49" "endunion",
+    "\x61" "endv",
+    "\x61" "endvirtual",
+    "\x58" "endweak",
+    "\x6e" "endwhile",
+    "\x69" "endwith",
+    "\x40" "eor",
+    "\x25" "error",
+    "\x16" "fi",
+    "\x2a" "fill",
+    "\x12" "for",
+    "\x51" "function",
+    "\x44" "goto",
+    "\x20" "here",
+    "\x3e" "hidemac",
+    "\x14" "if",
+    "\x2f" "ifeq",
+    "\x31" "ifmi",
+    "\x2e" "ifne",
+    "\x30" "ifpl",
+    "\x19" "include",
+    "\x43" "lbl",
+    "\x0b" "lint",
+    "\x1f" "logical",
+    "\x0c" "long",
+    "\x10" "macro",
+    "\x5c" "mansiz",
+    "\x5e" "namespace",
+    "\x13" "next",
+    "\x04" "null",
+    "\x0f" "offs",
+    "\x38" "option",
+    "\x1d" "page",
+    "\x27" "pend",
+    "\x26" "proc",
+    "\x3c" "proff",
+    "\x3b" "pron",
+    "\x01" "ptext",
+    "\x18" "rept",
+    "\x07" "rta",
+    "\x4b" "section",
+    "\x5d" "seed",
+    "\x41" "segment",
+    "\x4d" "send",
+    "\x2d" "sfunction",
+    "\x02" "shift",
+    "\x03" "shiftl",
+    "\x3d" "showmac",
+    "\x09" "sint",
+    "\x45" "struct",
+    "\x53" "switch",
+    "\x71" "tdef",
+    "\x00" "text",
+    "\x48" "union",
+    "\x42" "var",
+    "\x60" "virtual",
+    "\x2b" "warn",
+    "\x57" "weak",
+    "\x64" "while",
+    "\x68" "with",
+    "\x0a" "word",
+    "\x24" "xl",
+    "\x23" "xs",
 };
-#define COMMANDS 54
 
-// ---------------------------------------------------------------------------
+typedef enum Command_types {
+    CMD_TEXT = 0, CMD_PTEXT, CMD_SHIFT, CMD_SHIFTL, CMD_NULL, CMD_BYTE, CMD_CHAR,
+    CMD_RTA, CMD_ADDR, CMD_SINT, CMD_WORD, CMD_LINT, CMD_LONG, CMD_DINT,
+    CMD_DWORD, CMD_OFFS, CMD_MACRO, CMD_ENDM, CMD_FOR, CMD_NEXT, CMD_IF,
+    CMD_ELSE, CMD_FI, CMD_ELSIF, CMD_REPT, CMD_INCLUDE, CMD_BINARY,
+    CMD_COMMENT, CMD_ENDC, CMD_PAGE, CMD_ENDP, CMD_LOGICAL, CMD_HERE, CMD_AS,
+    CMD_AL, CMD_XS, CMD_XL, CMD_ERROR, CMD_PROC, CMD_PEND, CMD_DATABANK,
+    CMD_DPAGE, CMD_FILL, CMD_WARN, CMD_ENC, CMD_SFUNCTION, CMD_IFNE, CMD_IFEQ,
+    CMD_IFPL, CMD_IFMI, CMD_CERROR, CMD_CWARN, CMD_ALIGN, CMD_ASSERT,
+    CMD_CHECK, CMD_CPU, CMD_OPTION, CMD_BLOCK, CMD_BEND, CMD_PRON, CMD_PROFF,
+    CMD_SHOWMAC, CMD_HIDEMAC, CMD_END, CMD_EOR, CMD_SEGMENT, CMD_VAR, CMD_LBL,
+    CMD_GOTO, CMD_STRUCT, CMD_ENDS, CMD_DSTRUCT, CMD_UNION, CMD_ENDU,
+    CMD_DUNION, CMD_SECTION, CMD_DSECTION, CMD_SEND, CMD_CDEF, CMD_EDEF,
+    CMD_BINCLUDE, CMD_FUNCTION, CMD_ENDF, CMD_SWITCH, CMD_CASE, CMD_DEFAULT,
+    CMD_ENDSWITCH, CMD_WEAK, CMD_ENDWEAK, CMD_CONTINUE, CMD_BREAK, CMD_AUTSIZ,
+    CMD_MANSIZ, CMD_SEED, CMD_NAMESPACE, CMD_ENDN, CMD_VIRTUAL, CMD_ENDV,
+    CMD_BREPT, CMD_BFOR, CMD_WHILE, CMD_BWHILE, CMD_BREAKIF, CMD_CONTINUEIF,
+    CMD_WITH, CMD_ENDWITH, CMD_ENDMACRO, CMD_ENDSEGMENT, CMD_ENDFOR,
+    CMD_ENDREPT, CMD_ENDWHILE, CMD_ENCODE, CMD_ENDENCODE, CMD_TDEF 
+} Command_types;
 
-void status() {
-    freeerrorlist(1);
-    errors+=conderrors;
-    if (arguments.quiet) {
-        fprintf(stdout,"Error messages:    ");
-        if (errors) fprintf(stdout,"%i\n",errors); else fprintf(stdout,"None\n");
-        fprintf(stdout,"Warning messages:  ");
-        if (warnings) fprintf(stdout,"%i\n",warnings); else fprintf(stdout,"None\n");
-        fprintf(stdout,"Passes:            %i\n",pass);
-        fprintf(stdout,"Range:             ");
-        if (low_mem<=top_mem) fprintf(stdout,(full_mem==0xffff)?"$%04lx-$%04lx\n\n":"$%06lx-$%06lx\n\n",low_mem,top_mem);else fprintf(stdout,"None\n");
-    }
-    if (mem64) free(mem64);			// free codemem
-    if (mmap) free(mmap);				// free memorymap
-
-    tfree();
+/* --------------------------------------------------------------------------- */
+static void compile_init(const char *name) {
+    err_init(name);
+    init_type();
+    objects_init();
+    init_section();
+    init_file();
+    init_variables();
+    init_eval();
+    init_ternary();
+    init_opt_bit();
+    waitfors = NULL;
+    waitfor_p = 0;
+    waitfor_len = 0;
+    pass = 0;
+    err_msg_char_note_once = 0;
+    max_pass = MAX_PASS;
 }
 
-// ---------------------------------------------------------------------------
+static void compile_destroy(void) {
+    destroy_lastlb();
+    destroy_eval();
+    destroy_variables();
+    destroy_section();
+    destroy_longjump();
+    destroy_encoding();
+    destroy_values();
+    destroy_transs();
+    err_destroy();
+    destroy_file();
+    destroy_ternary();
+    destroy_opt_bit();
+    destroy_arguments();
+    if (unfc(NULL)) {}
+    if (unfkc(NULL, NULL, 0)) {}
+    str_cfcpy(NULL, NULL);
+    free_macro();
+    free(waitfors);
+}
 
-void readln(FILE* fle) {
-    int i=0,i2=0,q=0;
-    char ch;
+void new_waitfor(Wait_types what, linepos_t epoint) {
+    uint8_t skwait = waitfor->skip;
+    waitfor_p++;
+    if (waitfor_p >= waitfor_len) extend_array(&waitfors, &waitfor_len, 8);
+    waitfor = &waitfors[waitfor_p];
+    waitfor->what = what;
+    waitfor->skip = skwait;
+    waitfor->epoint = *epoint;
+}
 
-    for (;;) {
-        ch=fgetc(fle);
-        if (feof(fle)) {sline++;break;}
-        if (!ch) continue;   //null?
-        if (ch==13) {
-            ch=fgetc(fle);
-            if (feof(fle)) ch=10;
-            if (ch!=10) {
-                if (ch==':') ch=32;
-                ungetc(ch,fle);
-            } else goto ide;
-            sline++;break;
+static void reset_waitfor(void) {
+    struct waitfor_s dummy;
+    struct linepos_s lpos = {0, 0};
+    dummy.skip = 1;
+    waitfor_p = (size_t)0 - 1U;
+    waitfor = &dummy;
+    new_waitfor(W_NONE, &lpos);
+}
+
+bool close_waitfor(Wait_types what) {
+    if (waitfor->what == what) {
+        waitfor_p--;
+        waitfor = &waitfors[waitfor_p];
+        return true;
+    }
+    return false;
+}
+
+static void set_size(const Label *label, address_t size, Memblocks *mem, address_t oaddr, size_t membp) {
+    Code *code = Code(label->value);
+    if (code->v.obj != CODE_OBJ) return;
+    size &= all_mem2;
+    if (code->size != size) {
+        code->size = size;
+        if (code->pass != 0) {
+            if (fixeddig && pass > max_pass) err_msg_cant_calculate(&label->name, &label->epoint);
+            fixeddig = false;
         }
-        if (ch==10) {
-        ide:
-            ch=fgetc(fle);
-            if (!feof(fle)) {
-                if (ch==':') ch=32;
-                ungetc(ch,fle);
-            }
-            sline++;break;
+    }
+    code->pass = pass;
+    if (code->memblocks != mem) {
+        val_destroy(Obj(code->memblocks));
+        code->memblocks = ref_memblocks(mem);
+    }
+    code->memaddr = oaddr;
+    code->membp = membp;
+}
+
+static bool tobool(const struct values_s *v1, bool *truth) {
+    Obj *val = v1->val, *err;
+    const Type *obj = val->obj;
+    bool error;
+    if (obj == BOOL_OBJ) {
+        *truth = Bool(val)->value;
+        return false;
+    }
+    err = obj->truth(val, TRUTH_BOOL, &v1->epoint);
+    error = err->obj != BOOL_OBJ;
+    if (error) {
+        if (err->obj == ERROR_OBJ) {
+            err_msg_output(Error(err));
         }
-        llist[i2++]=ch;
-        if (ch=='\'' && !(q & 5)) q^=2;
-        if (ch=='"' && !(q & 6)) q^=1;
-        if (!q) {
-            if (ch==9) ch=32;
-            if (ch==';') {ch=32;q=4;}
-            if (ch==':') {
-                i2--;
-                if (i2) {
-                    ungetc(ch,fle);
-                    sline++;
-                    break;
-                }
-                sline--;
-                goto at;
-            }
-        }
-        if (!(q & 4)) {
-            pline[i]=ch;
-            i++;
-        }
-    at:
-        if (i2==sizeof(pline)-1) {sline++;pline[i]=0;err_msg(ERROR_LINE_TOO_LONG,NULL);}
+    } else {
+        *truth = Bool(err)->value;
+        if (diagnostics.strict_bool) err_msg_bool(ERROR_____CANT_BOOL, val, &v1->epoint);
     }
-    llist[i2]=0;
-    if (i)
-        while (pline[i-1]==' ') i--;
-    pline[i]=lpoint=foundopcode=0;
+    val_destroy(err);
+    return error;
 }
 
-// ---------------------------------------------------------------------------
-
-void pokeb(unsigned char byte) {
-
-    if (fixeddig)
-    {
-	if (arguments.nonlinear) mmap[address>>3]|=(1<<(address & 7));
-	if (address<low_mem) low_mem=address;
-	if (address>top_mem) top_mem=address;
-	if (address<=full_mem) mem64[address]=byte;
-    }
-    if (wrapwarn) {err_msg(ERROR_TOP_OF_MEMORY,NULL);wrapwarn=0;}
-    if (wrapwarn2) {err_msg(ERROR___BANK_BORDER,NULL);wrapwarn2=0;}
-    address++;l_address++;l_address&=all_mem;
-    if (address>all_mem) {
-	if (fixeddig) wrapwarn=1;
-	address=0;
-    }
-    if ((fixeddig) && (scpumode || cpu64mode)) if (!(address & 0xffff) || !(l_address & 0xffff)) wrapwarn2=1;
+static MUST_CHECK bool touval2(const struct values_s *vals, uval_t *uv, unsigned int bits) {
+    Error *err;
+    Obj *val = vals->val;
+    if (val == none_value && (constcreated || !fixeddig) && pass < max_pass) return true;
+    err = val->obj->uval2(val, uv, bits, &vals->epoint);
+    if (err == NULL) return false;
+    err_msg_output_and_destroy(err);
+    return true;
 }
 
-// ---------------------------------------------------------------------------
-int what(int *tempno) {
-    char ch;
-    int no;
-
-    ignore();
-    switch (ch=whatis[(int)here()]) {
-    case WHAT_COMMAND:
-	{
-            lpoint++;
-	    for (no=0; no<COMMANDS; no++)
-	    {
-		for (ch=0; ch<strlen(command[(int)no]); ch++)
-		    if (command[(int)no][(int)ch]!=lowcase(pline[lpoint+ch])) break;
-		if (ch==strlen(command[(int)no]))
-		{
-		    if (((ch=lowcase(pline[lpoint+strlen(command[(int)no])]))<'a' ||
-			 ch>'z') && ch!='_') {
-                        lpoint+=strlen(command[(int)no]);
-                        if (no==CMD_ENDIF) no=CMD_FI; else
-                        if (no==CMD_IFNE) no=CMD_IF;
-                        *tempno=no;
-			return WHAT_COMMAND;
-		    }
-		}
-	    }
-	    *tempno=no;
-	    return 0;
-	}
-    case WHAT_COMA:
-	lpoint++;
-        ignore();
-	switch (lowcase(get()))
-	{
-	case 'y': return WHAT_Y;
-	case 'x': ignore();if (get()==')') return WHAT_XZ; else {lpoint--; return WHAT_X;}
-	case 's': ignore();if (get()==')') return WHAT_SZ; else {lpoint--; return WHAT_S;}
-	default: lpoint--;return WHAT_COMA;
-	}
-    case WHAT_CHAR:
-	if (!foundopcode) {
-	    char s1,s2,s3,*p;
-	    int also=0,felso,s4,elozo;
-
-	    ch=lowcase(here());
-	    no=(felso=last_mnem)/2;
-	    if (((s1=lowcase(pline[lpoint+3]))==0x20 || !s1) &&
-		(s2=lowcase(pline[lpoint+1])) && (s3=lowcase(pline[lpoint+2])))
-		for (;;) {  // do binary search
-		    if (!(s4=ch-*(p=mnemonic+no*3)))
-			if (!(s4=s2-*(++p)))
-			    if (!(s4=s3-*(++p)))
-			    {
-				lpoint+=3;
-				*tempno=no;foundopcode=1;
-				return WHAT_MNEMONIC;
-			    }
-
-		    elozo=no;
-		    if (elozo==(no=((s4>0) ? (felso+(also=no)) : (also+(felso=no)) )/2)) break;
-		}
-	}
-    case WHAT_LBL:
-            *tempno=1;return WHAT_EXPRESSION;
-    case WHAT_EXPRESSION://tempno=1 if label, 0 if expression
-	    *tempno=0;return WHAT_EXPRESSION;
-    default:lpoint++;return ch;
+/* --------------------------------------------------------------------------- */
+/*
+ * Skip memory
+ */
+static void memskip(address_t db, linepos_t epoint) {
+    if (current_address->moved) {
+        if (current_address->address < current_address->start) err_msg2(ERROR_OUTOF_SECTION, NULL, epoint);
+        if (current_address->wrapwarn) {err_msg_mem_wrap(epoint);current_address->wrapwarn = false;}
+        current_address->moved = false;
     }
-}
-
-int get_ident2(unsigned char allowed) {
-    int i=0;
-    unsigned char ch;
-    if (arguments.casesensitive)
-	while ((whatis[ch=here()]==WHAT_CHAR) || (ch>='0' && ch<='9') || ch==allowed || ch=='_') {ident[i++]=ch; lpoint++; }
-    else
-	while (((ch=lowcase(pline[lpoint]))>='a' && ch<='z') || (ch>='0' && ch<='9') || ch==allowed || ch=='_') { ident[i++]=ch; lpoint++; }
-    ident[i]=0;
-    return 0;
-}
-
-int get_ident(unsigned char allowed) {
-    int v,code;
- 
-    if ((v=what(&code))!=WHAT_EXPRESSION || !code) {
-	err_msg(ERROR_EXPRES_SYNTAX,NULL);
-	return 1;
-    }
-    return get_ident2(allowed);
-}
-
-long get_num(int *cd, int mode) {
-    long val=0;            //md=0, define it, md=1 error if not exist
-    struct slabel* tmp;
-
-    unsigned char ch;
-    *cd=0;   // 0=unknown stuff, 1=ok, 2=exist, unuseable
-
-    if (mode) {
-        if (mode & 1) {
-            sprintf(ident,"+%lu+%lu",reffile,forwr+(mode >> 1));
-            goto in;
+    if (current_address->bankwarn) {err_msg_pc_bank(epoint);current_address->bankwarn = false;}
+    if (db > (~current_address->l_address & 0xffff)) {
+        current_address->bankwarn = (0x10000 - (current_address->l_address & 0xffff) == db);
+        if (!current_address->bankwarn) err_msg_pc_bank(epoint);
+        current_address->l_address = (current_address->l_address + db) & all_mem;
+    } else current_address->l_address += db;
+    if (db > (~current_address->address & all_mem2)) {
+        if (db - 1 + current_address->address == all_mem2) {
+            current_address->wrapwarn = current_address->moved = true;
+            if (current_address->end <= all_mem2) current_address->end = all_mem2 + 1;
+            current_address->address = 0;
         } else {
-            sprintf(ident,"-%lu-%lu",reffile,backr-(mode >> 1));
-            goto in;
+            if (current_address->start != 0) err_msg2(ERROR_OUTOF_SECTION, NULL, epoint);
+            if (current_address->end <= all_mem2) current_address->end = all_mem2 + 1;
+            current_address->moved = false;
+            current_address->address = (current_address->address + db) & all_mem2;
+            err_msg_mem_wrap(epoint);current_address->wrapwarn = false;
+        }
+    } else current_address->address += db;
+    memjmp(current_address->mem, current_address->address);
+}
+
+/* --------------------------------------------------------------------------- */
+/*
+ * output one byte
+ */
+FAST_CALL uint8_t *pokealloc(address_t db, linepos_t epoint) {
+    if (current_address->moved) {
+        if (current_address->address < current_address->start) err_msg2(ERROR_OUTOF_SECTION, NULL, epoint);
+        if (current_address->wrapwarn) {err_msg_mem_wrap(epoint);current_address->wrapwarn = false;}
+        current_address->moved = false;
+    }
+    if (current_address->bankwarn) {err_msg_pc_bank(epoint);current_address->bankwarn = false;}
+    if (db > (~current_address->l_address & 0xffff)) {
+        current_address->bankwarn = (0x10000 - (current_address->l_address & 0xffff) == db);
+        if (!current_address->bankwarn) err_msg_pc_bank(epoint);
+        current_address->l_address = (current_address->l_address + db) & all_mem;
+    } else current_address->l_address += db;
+    if (db > (~current_address->address & all_mem2)) {
+        if (db - 1 + current_address->address == all_mem2) {
+            current_address->wrapwarn = current_address->moved = true;
+            if (current_address->end <= all_mem2) current_address->end = all_mem2 + 1;
+            current_address->address = 0;
+        } else {
+            if (current_address->start != 0) err_msg2(ERROR_OUTOF_SECTION, NULL, epoint);
+            if (current_address->end <= all_mem2) current_address->end = all_mem2 + 1;
+            current_address->moved = false;
+            current_address->address = (current_address->address + db) & all_mem2;
+            err_msg_mem_wrap(epoint);current_address->wrapwarn = false;
+        }
+    } else current_address->address += db;
+    return alloc_mem(current_address->mem, db);
+}
+
+/* --------------------------------------------------------------------------- */
+static int get_command(void) {
+    unsigned int no, also, felso, elozo;
+    const uint8_t *label;
+    uint8_t tmp[13];
+    lpoint.pos++;
+    label = pline + lpoint.pos;
+    if (arguments.caseinsensitive) {
+        int i, j;
+        for (i = j = 0; i < (int)sizeof tmp; i++) {
+            if ((uint8_t)(label[i] - 'a') <= ('z' - 'a')) continue;
+            if ((uint8_t)(label[i] - 'A') > ('Z' - 'A')) break;
+            while (j < i) { tmp[j] = label[j]; j++; }
+            tmp[j++] = label[i] | 0x20;
+        }
+        if ((unsigned int)(i - 2) >= (sizeof tmp - 2)) return lenof(command);
+        if (j != 0) {
+            while (j <= i) { tmp[j] = label[j]; j++; }
+            label = tmp;
         }
     }
-    ignore();
-    switch (ch=get()) {
-    case '$':
-	{
-	    ignore();
-	    while (((ch=lowcase(get()))>='0' && ch<='9') ||
-		   (ch>='a' && ch<='f')) {
-		if (val>0x7ffffffl) {err_msg(ERROR_CONSTNT_LARGE,NULL); return 0;}
-		val=(val<<4)+(ch=ch<='9' ? ch-'0' : ch-'a'+10);
-	    }
-	    lpoint--;
-	    *cd=1;
-	    return val;
-	}
-    case '%':
-	{
-	    ignore();
-	    while (((ch=get()) & 0xfe)=='0') {
-		if (val>0x3fffffffl) {err_msg(ERROR_CONSTNT_LARGE,NULL); return 0;}
-		val=(val<<1)+ch-'0';
-	    }
-	    lpoint--;
-	    *cd=1;
-	    return val;
-	}
-    case '"':
-	{
-            if ((ch=get()) && ch!='"') {
-		if (get()=='"') {*cd=1; return petascii(ch);}
-	    }
-	    err_msg(ERROR_EXPRES_SYNTAX,NULL);
-	    return 0;
-	}
-    case '\'':
-	{
-            if ((ch=get()) && ch!='\'') {
-		if (get()=='\'') {*cd=1; return petascii(ch);}
-	    }
-	    err_msg(ERROR_EXPRES_SYNTAX,NULL);
-	    return 0;
-	}
-    case '*': *cd=1; return l_address;
+
+    also = 0;
+    felso = lenof(command);
+    no = lenof(command)/2;
+    do {  /* do binary search */
+        const uint8_t *cmd2 = (const uint8_t *)command[no];
+        int s4 = label[0] - cmd2[1];
+        if (s4 == 0) {
+            unsigned int l = 1;
+            for (;;) {
+                s4 = label[l] - cmd2[l + 1];
+                if (s4 != 0) break;
+                l++;
+                if (cmd2[l + 1] != 0) continue;
+                if (label[l] >= '0') {
+                    if ((uint8_t)(label[l] - 'a') <= ('z' - 'a')) break;
+                    if ((label[l] & 0x80) != 0) {
+                        if (arguments.to_ascii) {
+                            unichar_t ch;
+                            utf8in(pline + lpoint.pos + l, &ch);
+                            if ((uget_property(ch)->property & (id_Continue | id_Start)) != 0) return lenof(command);
+                        }
+                    } else if (label[l] <= '9' || (uint8_t)(label[l] - 'A') <= ('Z' - 'A') || label[l] == '_') return lenof(command);
+                }
+                lpoint.pos += l;
+                return cmd2[0];
+            }
+        }
+        elozo = no;
+        no = ((s4 >= 0) ? (felso + (also = no)) : (also + (felso = no)))/2;
+    } while (elozo != no);
+    return lenof(command);
+}
+
+/* ------------------------------------------------------------------------------ */
+
+static void set_cpumode(const struct cpu_s *cpumode) {
+    current_cpu = cpumode;
+    all_mem = cpumode->max_address;
+    all_mem_bits = (all_mem == 0xffff) ? 16 : 24;
+    select_opcodes(cpumode);
+    listing_set_cpumode(cpumode);
+    cpu_opt_set_cpumode(cpumode);
+    if (registerobj_createnames(cpumode->registers)) constcreated = true;
+}
+
+static void const_assign(Label *label, Obj *val) {
+    label->defpass = pass;
+    if (fixeddig && label->usepass >= pass) {
+        if (val->obj->same(val, label->value)) {
+            val_destroy(val);
+            return;
+        }
+        if (pass > max_pass) err_msg_cant_calculate(&label->name, &label->epoint);
+        fixeddig = false;
+    }
+    val_destroy(label->value);
+    label->value = val;
+}
+
+struct textrecursion_s {
+    address_t gaps, p;
+    address_t sum, max;
+    int prm;
+    Textconv_types tconv;
+    Error_types error;
+    uint8_t buff[16];
+    linepos_t epoint;
+};
+
+static void textrecursion_flush(struct textrecursion_s *trec) {
+    memcpy(pokealloc(trec->p, trec->epoint), trec->buff, trec->p);
+    trec->p = 0;
+}
+
+static void textrecursion_gaps(struct textrecursion_s *trec) {
+    memskip(trec->gaps, trec->epoint); 
+    trec->gaps = 0;
+}
+
+static void textdump(struct textrecursion_s *trec, unsigned int uval) {
+    switch (trec->prm) {
+    case CMD_SHIFT:
+        if ((uval & 0x80) != 0) {
+            uval ^= 0x80;
+            trec->error = ERROR___NO_HIGH_BIT;
+        }
+        break;
+    case CMD_SHIFTL:
+        if ((uval & 0x80) != 0) trec->error = ERROR___NO_HIGH_BIT;
+        uval <<= 1;
+        break;
+    case CMD_NULL:
+        if (uval == 0) trec->error = ERROR_NO_ZERO_VALUE;
+        break;
     default:
-	{
-            static char ident2[linelength];
-            char *iit;
-	    lpoint--;
-	    if ((ch>='0') && (ch<='9')) { //decimal number...
-		while (((ch=get())>='0') && (ch<='9')) {
-		    if (val>(0x7fffffffl-ch+'0')/10) {err_msg(ERROR_CONSTNT_LARGE,NULL); return 0;}
-		    val=(val*10)+ch-'0';
-		}
-		lpoint--;
-		*cd=1;
-		return val;
-	    }
-            if (get_ident('.')) return 0; //label?
-        in:
-            if ((iit=strchr(ident,'.'))) {
-                *iit=0;
-                if ((tmp=find_label(ident))) {
-                    tmp->proclabel=0;
-                    tmp->used=1;
+        break;
+    }
+    if (trec->p >= sizeof trec->buff) textrecursion_flush(trec);
+    trec->buff[trec->p++] = (uint8_t)(uval ^ outputeor);
+}
+
+static void textdump_bytes(struct textrecursion_s *trec, const Bytes *bytes) {
+    size_t len2;
+    address_t i, ln;
+    unsigned int inv;
+    if (bytes->len > 0) {
+        len2 = (size_t)bytes->len;
+        inv = 0;
+    } else if (bytes->len == 0) {
+        return;
+    } else {
+        inv = 0xff;
+        len2 = (size_t)~bytes->len;
+    }
+    ln = trec->max - trec->sum;
+    if (len2 < ln) ln = (address_t)len2;
+    trec->sum += ln;
+    if (trec->gaps > 0) textrecursion_gaps(trec);
+    if (ln > sizeof trec->buff) {
+        uint8_t *d;
+        if (trec->p > 0) textrecursion_flush(trec);
+        if (trec->prm == CMD_SHIFT || trec->prm == CMD_SHIFTL) ln--;
+        d = pokealloc(ln, trec->epoint);
+        switch (trec->prm) {
+        case CMD_SHIFT:
+            for (i = 0; i < ln; i++) {
+                unsigned int uval = bytes->data[i] ^ inv;
+                if ((uval & 0x80) != 0) {
+                    uval ^= 0x80;
+                    trec->error = ERROR___NO_HIGH_BIT;
                 }
-                *iit='.';
+                d[i] = (uint8_t)(uval ^ outputeor);
             }
-	    if (procname[0]) {
-		strcpy(ident2,procname);
-		strcat(ident2,".");
-		strcat(ident2,ident);
-		tmp=find_label(ident2);     //ok, local label
-	    } else tmp=NULL;
-            if (!tmp) tmp=find_label(ident);  //ok, global label
-	    if (pass==1) {
-                if (tmp) if (tmp->ertelmes) {*cd=1;if (!procname[0]) {tmp->proclabel=0;tmp->used=1;} return tmp->value;}
-		*cd=2;return 0;
-	    }
-	    else {
-                if (tmp) {
-                    if ((tmp->requires & current_provides)!=tmp->requires) err_msg(ERROR_REQUIREMENTS_,ident);
-                    if (tmp->conflicts & current_provides) err_msg(ERROR______CONFLICT,ident);
-                    if (tmp->ertelmes) {*cd=1;tmp->proclabel=0;tmp->used=1;return tmp->value;} else {*cd=2;return 0;}}
-                if (mode) err_msg(ERROR___NOT_DEFINED,(mode & 1)?"+":"-");
-                else
-                    err_msg(ERROR___NOT_DEFINED,ident); //never reached
-                return 0;
-	    }
-	}
-    }
-}
-
-int priority(char ch) {
-    switch (ch)
-    {
-    case '(':return 0;
-    case 'l':          // <
-    case 'h':          // >
-    case 'H':return 5; // `
-    case '=':
-    case '<':
-    case '>':
-    case 'o':          // !=
-    case 'g':          // >=
-    case 's':return 10;// <=
-    case '+':
-    case '-':return 15;
-    case '*':
-    case '/':
-    case 'u':return 20;// mod
-    case '|':
-    case '^':return 25;
-    case '&':return 30;
-    case 'm':          // <<
-    case 'd':return 35;// >>
-    case 'n':          // -
-    case 'i':          // ~
-    case 't':return 40;// !
-    default:return 0;
-    }
-}
-
-void pushs(char ch) {
-    if ((ch=='n' || ch=='t' || ch=='i' || ch=='l' || ch=='h' || ch=='H') && ssp &&
-	priority(s_stack[ssp-1])==priority(ch)) { s_stack[ssp++]=ch; return; }
-    if (!ssp || priority(s_stack[ssp-1])<priority(ch)) {
-	s_stack[ssp++]=ch;
-	return;
-    }
-    while (ssp && priority(s_stack[ssp-1])>=priority(ch)) e_stack[esp++].sgn=s_stack[--ssp];
-    s_stack[ssp++]=ch;
-}
-
-char val_length(long val)
-{
-        if (val<0) return 3;
-    	if (val<0x100) return 0;
-        if (val<0x10000) return 1;
-	if (val<0x1000000) return 2;
-        return 3;
-}
-
-long get_exp(int *wd, int *df,int *cd) {// length in bytes, defined
-    long val;
-    int i,cod,nd=0,tp=0;
-    char ch;
-
-    ssp=esp=0;
-    *wd=3;    // 0=byte 1=word 2=long 3=negative/too big
-    *df=1;    // 1=result is ok, result is not yet known
-    *cd=0;    // 0=error
-
-    ignore();
-    if (pline[lpoint]=='@')
-    {
-	switch (lowcase(pline[++lpoint]))
-	{
-	case 'b':*wd=0;break;
-	case 'w':*wd=1;break;
-	case 'l':*wd=2;break;
-	default:err_msg(ERROR______EXPECTED,"@B or @W or @L"); return 0;
-	}
-        lpoint++;
-	ignore();
-    }
-    if (pline[lpoint]=='(') tp=1;
-    for (;;) {
-        if (!nd) {
-            int db=0;
-            ignore();
-            ch=get();
-            switch (ch) {
-            case '(': s_stack[ssp++]='('; continue;
-            case '+':
-            ba: ch=here();
-                db++;
-                if (!(ch>='0' && ch<='9') && ch!='$' && ch!='"' && ch!='\'' && ch!='%' && ch!='(' && ch!='_' && !(ch>='a' && ch<='z') && !(ch>='A' && ch<='Z')) {
-                    if (ch=='+') {lpoint++;goto ba;}
-                    val=get_num(&cod,db*2-1);
-                    goto ide;
-                }
-                continue;
-            case '-':
-            ba2:ch=here();
-                db++;
-                if (!(ch>='0' && ch<='9') && ch!='$' && ch!='"' && ch!='\'' && ch!='%' && ch!='(' && ch!='_' && !(ch>='a' && ch<='z') && !(ch>='A' && ch<='Z')) {
-                    if (ch=='-') {lpoint++;goto ba2;}
-                    val=get_num(&cod,db*2);
-                    goto ide;
-                }
-                pushs('n');
-                continue;
-            case '!': pushs('t'); continue;
-            case '~': pushs('i'); continue;
-            case '<': pushs('l'); continue;
-            case '>': pushs('h'); continue;
-            case '`': pushs('H'); continue;
+            textdump(trec, bytes->data[i] ^ inv);
+            return;
+        case CMD_SHIFTL:
+            for (i = 0; i < ln; i++) {
+                unsigned int uval = bytes->data[i] ^ inv;
+                if ((uval & 0x80) != 0) trec->error = ERROR___NO_HIGH_BIT;
+                uval <<= 1;
+                d[i] = (uint8_t)(uval ^ outputeor);
             }
-	    lpoint--;
-            val=get_num(&cod,0);
-        ide:
-	    if (!cod) return 0; //unknown stuff found...
-	    if (cod==2) *df=0;  //not yet useable...
-	    e_stack[esp].val=val;
-	    e_stack[esp++].sgn=' ';
-	    nd=1;
-	}
-	else {
-	    ignore();
-	    if ((ch=pline[lpoint])=='&' || ch=='|' || ch=='^' ||
-		ch=='*' || ch=='/' || ch=='+' || ch=='-' || ch=='=' ||
-		ch=='<' || ch=='>' || (ch=='!' && pline[lpoint+1]=='=')) {
-		if (tp) tp=1;
-		if ((ch=='<') && (pline[lpoint+1]=='<')) {pushs('m'); lpoint++;}
-		else if ((ch=='>') && (pline[lpoint+1]=='>')) {pushs('d'); lpoint++;}
-		else if ((ch=='>') && (pline[lpoint+1]=='=')) {pushs('g'); lpoint++;}
-		else if ((ch=='<') && (pline[lpoint+1]=='=')) {pushs('s'); lpoint++;}
-		else if ((ch=='/') && (pline[lpoint+1]=='/')) {pushs('u'); lpoint++;}
-		else if (ch=='!') {pushs('o'); lpoint++;}
-		else pushs(ch);
-		nd=0;
-		lpoint++;
-		continue;
-	    }
-	    if (ch==')') {
-		while ((ssp) && (s_stack[ssp-1]!='('))
-		    e_stack[esp++].sgn=s_stack[--ssp];
-		lpoint++;
-		if (ssp==1 && tp) tp=2;
-		if (!ssp) {err_msg(ERROR_EXPRES_SYNTAX,NULL); return 0;}
-		ssp--;
-		continue;
-	    }
-	    while ((ssp) && (s_stack[ssp-1]!='('))
-		e_stack[esp++].sgn=s_stack[--ssp];
-	    if (!ssp) {
-		if (tp==2) *cd=3; else *cd=1;
-		break;
-	    }
-	    if (ssp>1) {err_msg(ERROR_EXPRES_SYNTAX,NULL); return 0;}
-	    if (tp) *cd=2;
-	    else {err_msg(ERROR_EXPRES_SYNTAX,NULL); return 0;}
-	    break;
-	}
-    }
-    vsp=0;
-    for (i=0; i<esp; i++) {
-	if ((ch=e_stack[i].sgn)==' ')
-	    v_stack[vsp++]=e_stack[i].val;
-        else {
-            switch (ch) {
-            case 'l': v_stack[vsp-1]&=255; continue;
-            case 'h': v_stack[vsp-1]=(v_stack[vsp-1] >> 8) & 255; continue;
-            case 'H': v_stack[vsp-1]=(v_stack[vsp-1] >> 16) & 255; continue;
-            case 'n': v_stack[vsp-1]=-v_stack[vsp-1]; continue;
-            case 'i': v_stack[vsp-1]=~v_stack[vsp-1]; continue;
-            case 't': v_stack[vsp-1]=!v_stack[vsp-1]; continue;
-            case '=': v_stack[vsp-2]=v_stack[vsp-2]==v_stack[vsp-1]; vsp--; continue;
-            case 'o': v_stack[vsp-2]=v_stack[vsp-2]!=v_stack[vsp-1]; vsp--; continue;
-            case '<': v_stack[vsp-2]=v_stack[vsp-2]<v_stack[vsp-1]; vsp--; continue;
-            case '>': v_stack[vsp-2]=v_stack[vsp-2]>v_stack[vsp-1]; vsp--; continue;
-            case 'g': v_stack[vsp-2]=v_stack[vsp-2]>=v_stack[vsp-1]; vsp--; continue;
-            case 's': v_stack[vsp-2]=v_stack[vsp-2]<=v_stack[vsp-1]; vsp--; continue;
-            case '*': v_stack[vsp-2]*=v_stack[vsp-1]; vsp--; continue;
-            case '/': if (!v_stack[vsp-1]) {err_msg(ERROR_DIVISION_BY_Z,NULL); return 0;} else v_stack[vsp-2]/=v_stack[vsp-1]; vsp--; continue;
-            case 'u': if (!v_stack[vsp-1]) {err_msg(ERROR_DIVISION_BY_Z,NULL); return 0;} else v_stack[vsp-2]%=v_stack[vsp-1]; vsp--; continue;
-            case '+': v_stack[vsp-2]+=v_stack[vsp-1]; vsp--; continue;
-            case '-': v_stack[vsp-2]-=v_stack[vsp-1]; vsp--; continue;
-            case '&': v_stack[vsp-2]&=v_stack[vsp-1]; vsp--; continue;
-            case '|': v_stack[vsp-2]|=v_stack[vsp-1]; vsp--; continue;
-            case '^': v_stack[vsp-2]^=v_stack[vsp-1]; vsp--; continue;
-            case 'm': v_stack[vsp-2]<<=v_stack[vsp-1]; vsp--; continue;
-            case 'd': v_stack[vsp-2]>>=v_stack[vsp-1]; vsp--; continue;
+            textdump(trec, bytes->data[i] ^ inv);
+            return;
+        case CMD_NULL:
+            for (i = 0; i < ln; i++) {
+                unsigned int uval = bytes->data[i] ^ inv;
+                if (uval == 0) trec->error = ERROR_NO_ZERO_VALUE;
+                d[i] = (uint8_t)(uval ^ outputeor);
             }
-	}
-    }
-    val=v_stack[0];
-    if (*df) {
-	switch (*wd)
-	{
-	case 0:if (val>0xff) val=-1;break;
-	case 1:if (val>0xffff) val=-1;break;
-	case 2:if (val>0xffffff) val=-1;break;
-	default:return val;
-	}
-        if (val>=0) return val;
-	err_msg(ERROR_CONSTNT_LARGE,NULL);
-	*cd=0;
-    }
-    return 0;
-}
-
-void wait_cmd(FILE* fil,int no)
-{
-    int wrap=waitforp;
-    int pr,wh;
-    long lin,pos;
-
-    for (;;) {
-	if (feof(fil)) {
-	    char nc[20];
-	    strcpy(nc,".");
-	    strcat(nc,command[no]);
-	    err_msg(ERROR______EXPECTED,nc);
-	    return;
-	}
-	if (no==CMD_PEND) { //.pend
-	    lin=sline;
-	    pos=ftell(fil);
-	}
-	readln(fil);
-	if ((wh=what(&pr))==WHAT_EXPRESSION) {
-            if (!pr) {
-                if (here()=='-') {
-                    lpoint++;if (here()!=0x20 && here()) goto baj;
-                    backr++;
-                    goto hh;
-                } else if (here()=='+') {
-                    lpoint++;if (here()!=0x20 && here()) goto baj;
-                    forwr++;
-                    goto hh;
-                }
-            baj: lpoint--;
+            return;
+        default:
+            if (inv == 0 && outputeor == 0) {
+                memcpy(d, bytes->data, ln);
+                return;
             }
-            get_ident('_');   //skip label
-            hh:
-	    wh=what(&pr);
-	}
-	if (wh==WHAT_COMMAND) {
-	    if (pr==no && wrap==waitforp) return;
-	    switch (pr)
-	    {
-	    case CMD_FOR:waitfor[++waitforp]='n';break;//.for
-	    case CMD_NEXT:if (waitfor[waitforp]=='n') waitforp--;break;//.next
-	    case CMD_IFEQ:
-	    case CMD_IFPL:
-	    case CMD_IFMI:
-            case CMD_IF:waitfor[++waitforp]='e';break;//.if
-            case CMD_ELSE:if (waitfor[waitforp]=='e') waitfor[waitforp]='f';break;//.else
-            case CMD_FI:if (waitfor[waitforp]=='e' || waitfor[waitforp]=='f') waitforp--;break;//.fi
-            case CMD_ELSIF:break;//.elsif
-	    case CMD_REPT:waitfor[++waitforp]='n';break;//.rept
-	    case CMD_PROC:if (no==CMD_PEND && wrap==waitforp) {sline=lin;fseek(fil,pos,SEEK_SET);return;}break;// .proc
-	    }
-	}
-    }
-}
-
-int get_path() {
-    int i=0,q=1;
-    ignore();
-    if (pline[lpoint]=='\"') {lpoint++;q=0;}
-    while (pline[lpoint] && (pline[lpoint]!='\"' || q) && i<80) path[i++]=get();
-    if (i==80 || (!q && pline[lpoint]!='\"')) {err_msg(ERROR_GENERL_SYNTAX,NULL); return 1;}
-    if (!q) lpoint++;
-    path[i]=0;
-    ignore();
-    return 0;
-}
-
-void mtranslate(char* mpr, int nprm, char *cucc) //macro parameter expansion
-{
-    int q,p,pp,i,j;
-    char ch;
-    char tmp[linelength];
-
-    strcpy(tmp,cucc);
-    q=p=0;
-    for (i=0; (ch=tmp[i]); i++) {
-	if (ch=='"' && !(q & 2)) q^=1;
-	else if (ch=='\'' && !(q & 1)) q^=2;
-	else if (!q) {
-            if (ch==';') q=4;
-	    if (ch=='\\') {
-		if (((ch=lowcase(tmp[i+1]))>='1' && ch<='9') || (ch>='a' && ch<='z')) {
-		    if ((ch=(ch<='9' ? ch-'1' : ch-'a'+9))>=nprm) {err_msg(ERROR_MISSING_ARGUM,NULL); break;}
-		    for (pp=j=0; j<ch; j++) while (mpr[pp++]); //skip parameters
-		    while (mpr[pp]==32) pp++; //skip space
-		    while (mpr[pp] && p<linelength) cucc[p++]=mpr[pp++];//copy
-		    if (p>=linelength) err_msg(ERROR_LINE_TOO_LONG,NULL);
-		    i++;continue;
-                } else if (ch=='@') {
-                    for (pp=j=0;j<nprm;j++) {
-                        while (mpr[pp] && p<linelength) cucc[p++]=mpr[pp++];//copy
-                        if (p>=linelength) err_msg(ERROR_LINE_TOO_LONG,NULL);
-                        if ((j+1)<nprm) {
-                            cucc[p++]=',';pp++;
-                        }
-                    }
-                    if (p>=linelength) err_msg(ERROR_LINE_TOO_LONG,NULL);
-                    i++;continue;
-                } else ch='\\';
-	    }
-	}
-	cucc[p++]=ch;
-	if (p>=linelength) err_msg(ERROR_LINE_TOO_LONG,NULL);
-    }
-    cucc[p]=0;
-}
-
-void set_cpumode(int cpumode) {
-    all_mem=0x00ffff;scpumode=0;cpu64mode=0;dtvmode=0;
-    switch (last_mnem=cpumode) {
-    case OPCODES_6502: mnemonic=MNEMONIC6502; opcode=c6502;break;
-    case OPCODES_65C02:mnemonic=MNEMONIC65C02;opcode=c65c02;break;
-    case OPCODES_6502i:mnemonic=MNEMONIC6502i;opcode=c6502i;break;
-    case OPCODES_65816:mnemonic=MNEMONIC65816;opcode=c65816;all_mem=0xffffff;scpumode=1;break;
-    case OPCODES_CPU64:mnemonic=MNEMONICCPU64;opcode=ccpu64;all_mem=0xffffff;cpu64mode=1;break;
-    case OPCODES_65DTV02:mnemonic=MNEMONIC65DTV02;opcode=c65dtv02;dtvmode=1;break;
-    }
-}
-
-void compile(char* nam,long fpos,char tpe,char* mprm,int nprm,FILE* fin) // "",0
-{
-    char mparams[256];
-    FILE* fil;
-  
-    int wht,w,d,c,i;
-    int prm=0;
-    long val;
-
-    char ch;
-
-    long pos,lin,cnt,oldpos=-1;
-
-    char snum[12];
-    int fflen;
-
-    struct slabel* tmp;
-    struct smacro* tmp2;
-
-    struct stat filestat;
-    unsigned long backr_old, forwr_old, reffile_old;
-
-    if (tpe==0) {
-        backr_old=backr;
-        forwr_old=forwr;
-        backr=forwr=1;
-    }
-    if (tpe==0 || tpe==1) reffile_old=reffile;
-    if (fin) oldpos=ftell(fin);
-    else {
-        char volt;
-	if ((fin=openfile(nam,&volt))==NULL) err_msg(ERROR_CANT_FINDFILE,nam);
-	if (volt) {
-	    if (tpe==1 || tpe==3) oldpos=ftell(fin);
-	    else err_msg(ERROR_FILERECURSION,NULL);
+            for (i = 0; i < ln; i++) {
+                unsigned int uval = bytes->data[i] ^ inv;
+                d[i] = (uint8_t)(uval ^ outputeor);
+            }
+            return;
         }
-        if (tpe==1) reffile=reffile_old;
-     }
-    if (fseek(fin,fpos,SEEK_SET)) err_msg(ERROR_CANT_FINDFILE,"[Compile - fseek()]");
-    for (;;) {
-	if (feof(fin))
-	{
-            switch (tpe) {
-            case 3:
-	    case 1:err_msg(ERROR______EXPECTED,".ENDM"); break;
-	    case 2:err_msg(ERROR______EXPECTED,".NEXT");
-	    }
-	    break;
-	}
+    } 
+    for (i = 0; i < ln; i++) {
+        textdump(trec, bytes->data[i] ^ inv);
+    }
+}
 
-	readln(fin);
-	if (nprm>=0) mtranslate(mprm,nprm,pline); //expand macro parameters, if any
+static void textrecursion(struct textrecursion_s *trec, Obj *val) {
+    struct iter_s iter;
+    uval_t uval;
 
-        ident2[0]=0;
-	if ((wht=what(&prm))==WHAT_EXPRESSION) {
-            if (!prm) {
-                if (here()=='-') {
-                    lpoint++;if (here()!=0x20 && here()) goto baj;
-                    prm=1;
-                    sprintf(ident,"-%lu-%lu",reffile,backr++);
-                    goto hh;
-                } else if (here()=='+') {
-                    lpoint++;if (here()!=0x20 && here()) goto baj;
-                    prm=1;
-                    sprintf(ident,"+%lu+%lu",reffile,forwr++);
-                    goto hh;
-                }
-            baj:
-                err_msg(ERROR_GENERL_SYNTAX,NULL);
-                continue;
-            } //not label
-            get_ident('_');                                           //get label
-        hh: strcpy(ident2,ident);
-            if (!(skipit[waitforp] & 1)) {wht=what(&prm);goto jn;} //skip things if needed
-            if ((wht=what(&prm))==WHAT_EQUAL) { //variable
-		strcpy(varname,procname);
-		if (procname[0]) strcat(varname,".");
-                strcat(varname,ident);
-                val=get_exp(&w,&d,&c); //ellenorizve.
-                if (listing && arguments.source) {
-                    if (nprm>=0) mtranslate(mprm,nprm,llist);
-                    fprintf(flist,(all_mem==0xffff)?"=%04lx\t\t\t\t\t%s\n":"=%06lx\t\t\t\t\t%s\n",val,llist);
-                }
-		if (!c) continue;
-		if (c==2) {err_msg(ERROR_EXPRES_SYNTAX,NULL); continue;}
-		ignore();if (here()) {err_msg(ERROR_EXTRA_CHAR_OL,NULL); continue;}
-		tmp=new_label(varname);
-		if (pass==1) {
-		    if (labelexists) {
-			err_msg(ERROR_DOUBLE_DEFINE,varname);
-			continue;
-		    }
-                    else {
-                        tmp->requires=current_requires;
-                        tmp->conflicts=current_conflicts;
-			tmp->proclabel=0;tmp->used=0;
-			if (d) {tmp->value=val;tmp->ertelmes=1;}
-                        else tmp->ertelmes=0;
-		    }
-		}
-		else {
-                    if (labelexists) {
-                        tmp->requires=current_requires;
-                        tmp->conflicts=current_conflicts;
-			if (tmp->ertelmes) {
-			    if (tmp->value!=val) {
-                                tmp->value=val;
-				fixeddig=0;
-			    }
-			}
-			else {
-			    if (d) {tmp->value=val;tmp->ertelmes=1;}
-			}
-		    }
-		}
-                continue;
+    if (trec->sum >= trec->max) return;
+
+retry:
+    switch (val->obj->type) {
+    case T_STR:
+        val = bytes_from_str(Str(val), trec->epoint, trec->tconv);
+        textrecursion(trec, val);
+        val_destroy(val);
+        return;
+    case T_ERROR:
+    case T_FLOAT:
+    case T_INT:
+    case T_BOOL:
+    case T_NONE:
+        iter.data = NULL;
+        goto doit;
+    case T_CODE:
+        val = get_code_value(Code(val), trec->epoint);
+        textrecursion(trec, val);
+        val_destroy(val);
+        return;
+    case T_ADDRESS:
+        if (Address(val)->type != A_NONE) {
+            iter.data = NULL;
+            goto doit;
+        }
+        val = Address(val)->val;
+        goto retry;
+    case T_GAP:
+        iter.data = NULL;
+        goto dogap;
+    case T_BITS:
+        if (Bits(val)->bits <= 8) {
+            if (Bits(val)->bits == 0) return;
+            iter.data = NULL;
+            goto doit;
+        }
+        val = bytes_from_bits(Bits(val), trec->epoint);
+        textrecursion(trec, val);
+        val_destroy(val);
+        return;
+    case T_BYTES:
+        iter.data = NULL;
+        goto dobytes;
+    default:
+        iter.data = val; val->obj->getiter(&iter);
+    }
+
+    while ((val = iter.next(&iter)) != NULL) {
+        if (val->obj->iterable) goto rec;
+        switch (val->obj->type) {
+        case T_BITS:
+            if (Bits(val)->bits <= 8) {
+                if (Bits(val)->bits == 0) break;
+                goto doit;
             }
-            if (wht==WHAT_COMMAND && prm==CMD_MACRO) { // .macro
-            do_macro:
-		ignore();if (here()) {err_msg(ERROR_EXTRA_CHAR_OL,NULL); continue;}
-		tmp2=new_macro(ident);
-		if (labelexists) {
-		    if (pass==1) {err_msg(ERROR_DOUBLE_DEFINE,ident); continue;}
-		}
-		else {
-		    tmp2->point=ftell(fin);
-		    tmp2->lin=sline;
-		}
-		wait_cmd(fin,CMD_ENDM); //.endm
-		continue;
-	    }
-            if ((tmp2=find_macro(ident))) {lpoint--;goto as_macro;}
-	    if (listing && arguments.source && ((wht==WHAT_COMMAND && prm>CMD_LONG && prm!=CMD_PROC) || wht==WHAT_STAR || wht==WHAT_EOL || wht==WHAT_HASHMARK || wht==WHAT_EXPRESSION)) {
-                if (lastl==2) {fputc('\n',flist);lastl=1;}
-                if (ident[0]!='-' && ident[0]!='+')
-                    fprintf(flist,(all_mem==0xffff)?".%04lx\t\t\t\t\t%s\n":".%06lx\t\t\t\t\t%s\n",address,ident);
-                else
-                    fprintf(flist,(all_mem==0xffff)?".%04lx\t\t\t\t\t%c\n":".%06lx\t\t\t\t\t%c\n",address,ident[0]);
-	    }
-	    if (wht==WHAT_COMMAND && (prm==CMD_PROC || prm==CMD_GLOBAL)) tmp=new_label(ident); //.proc or .global
-	    else {
-		strcpy(varname,procname);
-                if (procname[0]) strcat(varname,".");
-		strcat(varname,ident);
-		tmp=new_label(varname);
-	    }
-	    if (pass==1) {
-		if (labelexists) {
-		    err_msg(ERROR_DOUBLE_DEFINE,ident);
-		    continue;
-		}
-                else {
-                    tmp->requires=current_requires;
-                    tmp->conflicts=current_conflicts;
-                    tmp->ertelmes=1;tmp->used=0;
-		    tmp->value=l_address;
-		    if (wht==WHAT_COMMAND && prm==CMD_PROC) tmp->proclabel=1; else tmp->proclabel=0;
-		}
-	    }
-	    else {
-                if (labelexists) {
-                    tmp->requires=current_requires;
-                    tmp->conflicts=current_conflicts;
-                    if (tmp->value!=l_address) {
-                        tmp->value=l_address;
-                        fixeddig=0;
-                    }
-		}
-	    }
-	}
-	jn:
-	switch (wht) {
-	case WHAT_STAR:if (skipit[waitforp] & 1) //skip things if needed
-	    {
-		ignore();if (get()!='=') {err_msg(ERROR______EXPECTED,"="); break;}
-		wrapwarn=0;wrapwarn2=0;
-		val=get_exp(&w,&d,&c);if (!d) fixeddig=0;
-		if (!c) break;
-		if (c==2) {err_msg(ERROR_EXPRES_SYNTAX,NULL); break;}
-                ignore();if (here()) goto extrachar;
-                if (d) {
-                    if (val>all_mem || val<0) {err_msg(ERROR_CONSTNT_LARGE,NULL); break;}
-                    address=l_address=(unsigned)val;
-                }
-		lastl=0;
-		break;
-	    }
-	case WHAT_EOL: break;
-	case WHAT_COMMAND:
-	    {
-		char lcol,kiirva; //for listing
-                ignore();
-		if (prm==CMD_FI) // .fi
-		{
-                    if (waitfor[waitforp]!='e' && waitfor[waitforp]!='f') {err_msg(ERROR______EXPECTED,".IF"); break;}
-		    if (here()) goto extrachar;
-		    waitforp--;
-                    break;
-		}
-		if (prm==CMD_ELSE) { // .else
-		    if (waitfor[waitforp]=='f') {err_msg(ERROR______EXPECTED,".FI"); break;}
-		    if (waitfor[waitforp]!='e') {err_msg(ERROR______EXPECTED,".IF"); break;}
-		    if (here()) goto extrachar;
-		    skipit[waitforp]=skipit[waitforp] >> 1;
-		    waitfor[waitforp]='f';
-                    break;
-		}
-		if (prm==CMD_IF || prm==CMD_IFEQ || prm==CMD_IFPL || prm==CMD_IFMI || prm==CMD_ELSIF) { // .if
-		    if (prm==CMD_ELSIF && waitfor[waitforp]!='e') {err_msg(ERROR______EXPECTED,".IF"); break;}
-		    if (((skipit[waitforp]==1) && prm!=CMD_ELSIF) || ((skipit[waitforp]==2) && prm==CMD_ELSIF)) {
-			val=get_exp(&w,&d,&c); //ellenorizve.
-			if (!c) break;
-			if (c==2) {err_msg(ERROR_EXPRES_SYNTAX,NULL); break;}
-			ignore();if (here()) goto extrachar;
-                	if (!d) {err_msg(ERROR___NOT_DEFINED,"argument used for condition");wait_cmd(fin,CMD_FI);break;}
-		    } else val=0;
-                    waitfor[++waitforp]='e';
-                    switch (prm) {
-                    case CMD_ELSIF:
-                        waitforp--;
-                        if (val) skipit[waitforp]=skipit[waitforp] >> 1; else
-                            skipit[waitforp]=skipit[waitforp] & 2;
-                        break;
-                    case CMD_IF:
-                        if (val) skipit[waitforp]=skipit[waitforp-1] & 1; else
-                            skipit[waitforp]=(skipit[waitforp-1] & 1) << 1;
-                        break;
-                    case CMD_IFEQ:
-                        if (!val) skipit[waitforp]=skipit[waitforp-1] & 1; else
-                            skipit[waitforp]=(skipit[waitforp-1] & 1) << 1;
-                        break;
-                    case CMD_IFPL:
-                        if (val>=0) skipit[waitforp]=skipit[waitforp-1] & 1; else
-                            skipit[waitforp]=(skipit[waitforp-1] & 1) << 1;
-                        break;
-                    case CMD_IFMI:
-                        if (val<0) skipit[waitforp]=skipit[waitforp-1] & 1; else
-                            skipit[waitforp]=(skipit[waitforp-1] & 1) << 1;
-                        break;
-                    }
-		    break;
-		}
-                if (!(skipit[waitforp] & 1)) break; //skip things if needed
-                if (prm<CMD_RTA) {    // .byte .text .ptext .char .shift .shift2 .null
-                    int ch2=-1;
-                    char quo;
-                    unsigned long ptextaddr=address;
-                    if (prm==CMD_PTEXT) pokeb(0);
-                    for (;;) {
+            FALL_THROUGH; /* fall through */
+        case T_STR:
+        case T_CODE:
+        case T_ADDRESS:
+        rec:
+            textrecursion(trec, val);
+            break;
+        case T_GAP:
+        dogap:
+            if (trec->p > 0) textrecursion_flush(trec);
+            trec->gaps++;
+            trec->sum++;
+            if (iter.data == NULL) return;
+            break;
+        case T_BYTES:
+        dobytes:
+            textdump_bytes(trec, Bytes(val));
+            if (iter.data == NULL) return;
+            break;
+        default:
+        doit:
+            if (touval(val, &uval, 8, trec->epoint)) uval = 256 + '?'; else uval &= 0xff;
+            trec->sum++;
+            if (trec->gaps > 0) textrecursion_gaps(trec);
+            textdump(trec, uval);
+            if (iter.data == NULL) return;
+            break;
+        }
+        if (trec->sum >= trec->max) break;
+    }
+    iter_destroy(&iter);
+}
 
-                        ignore();
-                        ch=here();
-                        if (ch=='"' || ch=='\'') {
-                            quo=ch;
-			    if (pline[lpoint+1] && pline[lpoint+1]!=quo && pline[lpoint+2]==quo) goto textconst;
-                            lpoint++;
-			    for (;;) {
-				if (!(ch=get())) {err_msg(ERROR______EXPECTED,"End of string"); break;}
-				if (ch==quo) {
-				    if (pline[lpoint]==quo) lpoint++; else break;
-                                }
-                                if (ch2>=0) {
-                                    pokeb(ch2);
-                                }
-                                ch2=(unsigned char)petascii(ch);
-                                if (prm==CMD_CHAR) {if (ch2>=0x80) {err_msg(ERROR_CONSTNT_LARGE,NULL); goto cvege2;}}
-                                else if (prm==CMD_SHIFT || prm==CMD_SHIFT2) {
-                                    if (encoding==1 && ch2>=0x80) {err_msg(ERROR_CONSTNT_LARGE,NULL); goto cvege2;}
-                                    if (ch2>=0xc0 && ch2<0xe0) ch2-=0x60; else
-                                        if (ch2==0xff) ch2=0x7e; else
-                                            if (ch2>=0x80) {err_msg(ERROR_CONSTNT_LARGE,NULL); goto cvege2;}
-            			    if (prm==CMD_SHIFT2) ch2<<=1;
-                                } else
-                                    if (prm==CMD_NULL && !ch2) {err_msg(ERROR_CONSTNT_LARGE,NULL); goto cvege2;}
-                            }
-                            goto cvege;
-			}
-			if (ch=='^') {
-                            lpoint++;
-			    val=get_exp(&w,&d,&c);if (!d) fixeddig=0;
-			    if (!c) break;
-			    if (c==2) {err_msg(ERROR_EXPRES_SYNTAX,NULL); break;}
+struct byterecursion_s {
+    address_t gaps, p;
+    uint8_t buff[16];
+    bool warn;
+    linepos_t epoint;
+    linepos_t epoint2;
+    int bits;
+    int prm;
+};
 
-			    sprintf(snum,"%ld",val);
+static void byterecursion_flush(struct byterecursion_s *brec) {
+    memcpy(pokealloc(brec->p, brec->epoint), brec->buff, brec->p); 
+    brec->p = 0;
+}
 
-                            for(i=0; snum[i]; i++) {
-                                if (ch2>=0) {
-                                    pokeb(ch2);
-                                }
-                                ch2=(unsigned char)petascii(snum[i]);
-                                if (prm==CMD_CHAR) {if (ch2>=0x80) {err_msg(ERROR_CONSTNT_LARGE,NULL); goto cvege2;}}
-                                else if (prm==CMD_SHIFT || prm==CMD_SHIFT2) {
-                                    if (encoding==1 && ch2>=0x80) {err_msg(ERROR_CONSTNT_LARGE,NULL); goto cvege2;}
-                                    if (ch2>=0xc0 && ch2<0xe0) ch2-=0x60; else
-                                        if (ch2==0xff) ch2=0x7e; else
-                                            if (ch2>=0x80) {err_msg(ERROR_CONSTNT_LARGE,NULL); goto cvege2;}
-				    if (prm==CMD_SHIFT2) ch2<<=1;
-                                }
-                            }
-                            goto cvege;
-			}
-		    textconst:
-			val=get_exp(&w,&d,&c); //ellenorizve.
-			if (!c) break;
-                        if (c==2) {err_msg(ERROR_EXPRES_SYNTAX,NULL); break;}
-                        if (d) {
-                            if (prm==CMD_CHAR) {
-                                if (val>0x7f || val<-0x80) {err_msg(ERROR_CONSTNT_LARGE,NULL); break;}
-                            } else {
-                                if (val>0xff || val<0) {err_msg(ERROR_CONSTNT_LARGE,NULL); break;}
-                            }
-                        }
-                        if (ch2>=0) {
-                            pokeb(ch2);
-                        }
-                        ch2=(unsigned char)val;
-                        if (prm==CMD_SHIFT || prm==CMD_SHIFT2) {
-                            if (encoding==1 && ch2>=0x80) {err_msg(ERROR_CONSTNT_LARGE,NULL); goto cvege2;}
-                            if (ch2>=0xc0 && ch2<0xe0) ch2-=0x60; else
-                                if (ch2==0xff) ch2=0x7e; else
-                                    if (ch2>=0x80 && d) {err_msg(ERROR_CONSTNT_LARGE,NULL); break;}
-			    if (prm==CMD_SHIFT2) ch2<<=1;
-                        } else
-                            if (prm==CMD_NULL && !ch2 && d) {err_msg(ERROR_CONSTNT_LARGE,NULL); break;}
-                    cvege:
-                        ignore();if ((ch=get())==',') continue;
-                        if (ch) err_msg(ERROR______EXPECTED,",");
-                        if (ch2>=0) {
-                            if (prm==CMD_SHIFT) ch2|=0x80;
-                            if (prm==CMD_SHIFT2) ch2|=0x01;
-                            pokeb(ch2);
-                        }
-                        if (prm==CMD_NULL) {
-                            pokeb(0);
-                        }
-                        if (prm==CMD_PTEXT) {
-                            if ((address>ptextaddr && address-ptextaddr>0x100) ||
-                                (address<ptextaddr && address+all_mem-ptextaddr>0xff)) {err_msg(ERROR_CONSTNT_LARGE,NULL);break;}
+static void byterecursion_gaps(struct byterecursion_s *brec) {
+    memskip(brec->gaps, brec->epoint);
+    brec->gaps = 0;
+}
 
-                            mem64[ptextaddr]=(address-ptextaddr-1) & 0xff;
-                        }
-                    cvege2:
-                        if (listing) {
-                            if (lastl!=2) {fputc('\n',flist);lastl=2;}
-                            fprintf(flist,(all_mem==0xffff)?">%04lx\t ":">%06lx  ",ptextaddr);
-                            lcol=25;
-                            kiirva=1;
-                            while (ptextaddr!=address) {
-                                ch2=mem64[ptextaddr];
-                                ptextaddr=(ptextaddr+1) & all_mem;
-                                if (lcol==1) {
-                                    if (arguments.source && kiirva) {
-                                        if (nprm>=0) mtranslate(mprm,nprm,llist);
-                                        fprintf(flist,"\t%s\n",llist);kiirva=0;
-                                    } else fputc('\n',flist);
-                                    fprintf(flist,(all_mem==0xffff)?">%04lx\t ":">%06lx  ",ptextaddr);lcol=25;
-                                }
-                                fprintf(flist,"%02x ",(unsigned char)ch2);
-    
-                                lcol-=3;
-                            }
-                        }
-			break;
-		    }
-		}
-		if (prm==CMD_WORD || prm==CMD_INT || prm==CMD_RTA) { // .word .int .rta
-		    if (listing) {
-			if (lastl!=2) {fputc('\n',flist);lastl=2;}
-                        fprintf(flist,(all_mem==0xffff)?">%04lx\t ":">%06lx  ",address);
-			lcol=25;
-                        kiirva=1;
-		    }
-		    for (;;) {
-			val=get_exp(&w,&d,&c); //ellenorizve.
-			if (!c) break;
-                        if (c==2) {err_msg(ERROR_EXPRES_SYNTAX,NULL); break;}
-                        if (d) {
-                            if (prm==CMD_INT) {
-                                if (val>0x7fff || val<-0x8000) {err_msg(ERROR_CONSTNT_LARGE,NULL); break;}
-                            } else {
-                                if (val>0xffff || val<0) {err_msg(ERROR_CONSTNT_LARGE,NULL); break;}
-                                if (prm==CMD_RTA)
-                                    val=(val-1) & 0xffff;
-                            }
-                        }
-			if (listing) {
-			    if (lcol==1) {
-                                if (arguments.source && kiirva) {
-                                    if (nprm>=0) mtranslate(mprm,nprm,llist);
-                                    fprintf(flist,"\t%s\n",llist);kiirva=0;
-                                } else fputc('\n',flist);
-                                fprintf(flist,(all_mem==0xffff)?">%04lx\t ":">%06lx  ",address);lcol=25;
-			    }
-			    fprintf(flist,"%02x %02x ",(unsigned char)val,(unsigned char)(val>>8));
-			    lcol-=6;
-			}
-			pokeb((unsigned char)val);
-			pokeb((unsigned char)(val>>8));
-			ignore();if ((ch=get())==',') continue;
-			if (ch) err_msg(ERROR______EXPECTED,",");
-			break;
-		    }
-		}
-		if (prm==CMD_LONG) { // .long
-		    if (listing) {
-			if (lastl!=2) {fputc('\n',flist);lastl=2;}
-                        fprintf(flist,(all_mem==0xffff)?">%04lx\t ":">%06lx  ",address);
-			lcol=25;
-                        kiirva=1;
-		    }
-		    for (;;) {
-			val=get_exp(&w,&d,&c); //ellenorizve.
-			if (!c) break;
-                        if (c==2) {err_msg(ERROR_EXPRES_SYNTAX,NULL); break;}
-                        if (d) {
-                            if (val>0xffffff || val<0) {err_msg(ERROR_CONSTNT_LARGE,NULL); break;}
-                        }
-			if (listing) {
-			    if (lcol==1) {
-                                if (arguments.source && kiirva) {
-                                    if (nprm>=0) mtranslate(mprm,nprm,llist);
-                                    fprintf(flist,"\t%s\n",llist);kiirva=0;
-                                } else fputc('\n',flist);
-                                fprintf(flist,(all_mem==0xffff)?">%04lx\t ":">%06lx  ",address);lcol=25;
-			    }
-			    fprintf(flist,"%02x %02x %02x ",(unsigned char)val,(unsigned char)(val>>8),(unsigned char)(val>>16));
-			    lcol-=9;
-			    if (lcol==7) {fprintf(flist,"\t");lcol=1;}
-			}
-			pokeb((unsigned char)val);
-			pokeb((unsigned char)(val>>8));
-			pokeb((unsigned char)(val>>16));
-			ignore();if ((ch=get())==',') continue;
-			if (ch) err_msg(ERROR______EXPECTED,",");
-			break;
-		    }
-		}
-                if (prm<=CMD_LONG) { // .byte .text .rta .char .int .word .long
-		    if (listing)
-		    {
-			if (arguments.source && kiirva) {
-                            for (i=0; i<lcol; i++) fputc(' ',flist);
-                            if (nprm>=0) mtranslate(mprm,nprm,llist);
-			    fprintf(flist,"\t%s\n",llist);
-			} else fputc('\n',flist);
-		    }
-		    break;
-		}
-		if (prm==CMD_OFFS) {   // .offs
-		    val=get_exp(&w,&d,&c); //ellenorizve.
-		    if (!c) break;
-		    if (c==2) {err_msg(ERROR_EXPRES_SYNTAX,NULL); break;}
-                    ignore();if (here()) goto extrachar;
-                    if (d) {
-                        address+=val;
-                        if (address>all_mem) {
-                            if (fixeddig) err_msg(ERROR_TOP_OF_MEMORY,NULL);
-                            address&=all_mem;
-                        }
-                    }
-		    break;
-		}
-		if (prm==CMD_LOGICAL) { // .logical
-		    val=get_exp(&w,&d,&c);if (!d) fixeddig=0;
-		    if (!c) break;
-		    if (c==2) {err_msg(ERROR_EXPRES_SYNTAX,NULL); break;}
-		    ignore();if (here()) goto extrachar;
-		    if (val>all_mem || val<0) {err_msg(ERROR_CONSTNT_LARGE,NULL); break;}
-		    if (!(logitab=realloc(logitab,(logisave+1)*sizeof(*logitab)))) err_msg(ERROR_OUT_OF_MEMORY,NULL);
-		    logitab[logisave++]=l_address-address;
-		    l_address=(unsigned)val;
-		    break;
-		}
-		if (prm==CMD_HERE) { // .here
-		    if (here()) goto extrachar;
-		    if (!logisave) {err_msg(ERROR______EXPECTED,".LOGICAL"); break;}
-		    l_address=address+logitab[--logisave];
-		    logitab=realloc(logitab,logisave*sizeof(*logitab));
-		    break;
-		}
-		if (prm==CMD_AS) { // .as
-		    if (here()) goto extrachar;
-                    if (scpumode) longaccu=0;
-		    break;
-		}
-		if (prm==CMD_AL) { // .al
-		    if (here()) goto extrachar;
-                    if (scpumode) longaccu=1;
-		    break;
-		}
-		if (prm==CMD_XS) { // .xs
-		    if (here()) goto extrachar;
-		    if (scpumode) longindex=0;
-		    break;
-		}
-		if (prm==CMD_XL) { // .xl
-		    if (here()) goto extrachar;
-		    if (scpumode) longindex=1;
-		    break;
-		}
-		if (prm==CMD_ERROR) { // .error
-		    err_msg(ERROR__USER_DEFINED,&pline[lpoint]);
-		    break;
-		}
-		if (prm==CMD_PROC) { // .proc
-		    if (here()) goto extrachar;
-		    if (tmp) {
-			if (tmp->proclabel && pass!=1 && !procname[0]) wait_cmd(fin,CMD_PEND);//.pend
-                        else {
-                            strcpy(procname,ident);
-                            if (listing && arguments.source) {
-                                if (lastl==2) {fputc('\n',flist);lastl=1;}
-                                if (ident[0]!='-' && ident[0]!='+')
-                                    fprintf(flist,(all_mem==0xffff)?".%04lx\t\t\t\t\t%s\n":".%06lx\t\t\t\t\t%s\n",address,ident);
-                                else
-                                    fprintf(flist,(all_mem==0xffff)?".%04lx\t\t\t\t\t%c\n":".%06lx\t\t\t\t\t%c\n",address,ident[0]);
-                            }
-                        }
-		    }
-		    break;
-		}
-		if (prm==CMD_PEND) { //.pend
-		    if (here()) goto extrachar;
-                    procname[0]=0;
-		    break;
-		}
-		if (prm==CMD_DATABANK) { // .databank
-		    val=get_exp(&w,&d,&c);if (!d) fixeddig=0;
-		    if (!c) break;
-		    if (c==2) {err_msg(ERROR_EXPRES_SYNTAX,NULL); break;}
-		    ignore();if (here()) goto extrachar;
-		    if (val_length(val)) {err_msg(ERROR_CONSTNT_LARGE,NULL); break;}
-		    if (scpumode) databank=val;
-		    break;
-		}
-		if (prm==CMD_DPAGE) { // .dpage
-		    val=get_exp(&w,&d,&c);if (!d) fixeddig=0;
-		    if (!c) break;
-		    if (c==2) {err_msg(ERROR_EXPRES_SYNTAX,NULL); break;}
-		    ignore();if (here()) goto extrachar;
-                    if (val_length(val)>1) {err_msg(ERROR_CONSTNT_LARGE,NULL); break;}
-                    if (dtvmode) val&=0xff00;
-		    dpage=val;
-		    break;
-		}
-		if (prm==CMD_FILL) { // .fill
-                    long db;
-		    val=get_exp(&w,&d,&c);if (!d) fixeddig=0;
-		    if (!c) break;
-		    if (c==2) {err_msg(ERROR_EXPRES_SYNTAX,NULL); break;}
-		    if (val>all_mem || val<0) {err_msg(ERROR_CONSTNT_LARGE,NULL); break;}
-                    db=val;val=-1;
-                    ignore();
-                    if ((ch=get())) {
-                        if (ch!=',') goto extrachar;
-                        val=get_exp(&w,&d,&c);if (!d) fixeddig=0;
-                        if (!c) break;
-                        if (c==2) {err_msg(ERROR_EXPRES_SYNTAX,NULL); break;}
-                        if (val_length(val)) {err_msg(ERROR_CONSTNT_LARGE,NULL); break;}
-                        ignore();if (here()) goto extrachar;
-                    }
-                    if (val<0) {
-                        l_address+=db;l_address&=all_mem;
-                        address+=db;
-                        if (address>all_mem) {
-                            if (fixeddig) err_msg(ERROR_TOP_OF_MEMORY,NULL);
-                            address&=all_mem;
-                        }
-                        if ((fixeddig) && (scpumode || cpu64mode)) if (!(address & 0xffff) || !(l_address & 0xffff)) err_msg(ERROR___BANK_BORDER,NULL);
-                    } else
-                        while (db-->0) pokeb((unsigned char)val);
-		    break;
-		}
-		if (prm==CMD_ASSERT) { // .assert
-		    val=get_exp(&w,&d,&c);
-		    if (!c) break;
-		    if (c==2) {err_msg(ERROR_EXPRES_SYNTAX,NULL); break;}
-                    ignore();if (get()!=',') {err_msg(ERROR______EXPECTED,","); break;}
-                    if (d) current_provides=val; else current_provides=0xffffffff;
-		    val=get_exp(&w,&d,&c);
-		    if (!c) break;
-		    if (c==2) {err_msg(ERROR_EXPRES_SYNTAX,NULL); break;}
-                    ignore();if (get()!=',') {err_msg(ERROR______EXPECTED,","); break;}
-                    if (d) current_requires=val; else current_requires=0;
-		    val=get_exp(&w,&d,&c);
-		    if (!c) break;
-		    if (c==2) {err_msg(ERROR_EXPRES_SYNTAX,NULL); break;}
-                    ignore();if (here()) goto extrachar;
-                    if (d) current_conflicts=val; else current_conflicts=0;
-		    break;
-		}
-		if (prm==CMD_CHECK) { // .check
-		    val=get_exp(&w,&d,&c);
-		    if (!c) break;
-		    if (c==2) {err_msg(ERROR_EXPRES_SYNTAX,NULL); break;}
-                    ignore();if (get()!=',') {err_msg(ERROR______EXPECTED,","); break;}
-                    if (d && (val & current_provides)!=val) err_msg(ERROR_REQUIREMENTS_,".CHECK");
-		    val=get_exp(&w,&d,&c);
-		    if (!c) break;
-		    if (c==2) {err_msg(ERROR_EXPRES_SYNTAX,NULL); break;}
-                    ignore();if (here()) goto extrachar;
-                    if (d && (val & current_provides)) err_msg(ERROR______CONFLICT,".CHECK");
-		    break;
-		}
-		if (prm==CMD_GLOBAL) { //.global
-		    if (here()) goto extrachar;
-		    break;
-		}
-		if (prm==CMD_WARN) { // .warn
-		    err_msg(ERROR_WUSER_DEFINED,&pline[lpoint]);
-		    break;
-		}
-                if (prm==CMD_ENC) { // .enc
-                    get_path();
-                    if (!strcasecmp(path,"none")) encoding=0;
-                    else
-                        if (!strcasecmp(path,"screen")) encoding=1;
-                        else
-                            err_msg(ERROR_UNKNOWN_ENCOD,ident);
-		    break;
-		}
-                if (prm==CMD_CPU) { // .cpu
-                    int def;
-                    get_path();
-                    def=arguments.cpumode;
-                    if (!strcmp(path,"6502")) def=OPCODES_6502;
-                    else if (!strcasecmp(path,"65c02")) def=OPCODES_65C02;
-                    else if (!strcasecmp(path,"6502i")) def=OPCODES_6502i;
-                    else if (!strcmp(path,"65816")) def=OPCODES_65816;
-                    else if (!strcasecmp(path,"cpu64")) def=OPCODES_CPU64;
-                    else if (!strcasecmp(path,"65dtv02")) def=OPCODES_65DTV02;
-                    else if (strcasecmp(path,"default")) err_msg(ERROR___UNKNOWN_CPU,ident);
-                    set_cpumode(def);
-                    if (full_mem<all_mem) {
-                        if (!(mem64=realloc(mem64,all_mem+1))) err_msg(ERROR_OUT_OF_MEMORY,NULL);
-                        if (arguments.nonlinear) {
-                            if (!(mmap=realloc(mmap,(all_mem+1) >> 3))) err_msg(ERROR_OUT_OF_MEMORY,NULL);
-                            memset(mmap+full_mem,0,(all_mem-full_mem) >> 3);
-                        }
-                        full_mem=all_mem;
-                    }
-		    break;
-		}
-                if (prm==CMD_CERROR || prm==CMD_CWARN) { // .cerror
-		    val=get_exp(&w,&d,&c); //ellenorizve.
-		    if (!c) break;
-		    if (c==2) {err_msg(ERROR_EXPRES_SYNTAX,NULL); break;}
-                    ignore();
-                    if (here()==',') {
-                        lpoint++;ignore();
-                    } else if (here()) goto extrachar;
-                    if (d && val) err_msg((prm==CMD_CERROR)?ERROR__USER_DEFINED:ERROR_WUSER_DEFINED,&pline[lpoint]);
+static void byterecursion(struct byterecursion_s *brec, Obj *val) {
+    struct iter_s iter;
+    uint32_t ch2;
+    uval_t uv;
+    ival_t iv;
+    const Type *type = val->obj;
+
+    if (!type->iterable) {
+        if (type == GAP_OBJ) {
+            if (brec->p > 0) byterecursion_flush(brec);
+            brec->gaps += (unsigned int)abs(brec->bits) / 8;
+            return;
+        }
+        iter.data = NULL;
+        if (type == NONE_OBJ) goto donone;
+        goto doit;
+    }
+    iter.data = val; type->getiter(&iter);
+    while ((val = iter.next(&iter)) != NULL) {
+        if (val->obj->iterable) {
+            byterecursion(brec, val);
+            continue;
+        }
+        switch (val->obj->type) {
+        case T_GAP:
+            if (brec->p > 0) byterecursion_flush(brec);
+            brec->gaps += (unsigned int)abs(brec->bits) / 8;
+            continue;
+        default:
+        doit:
+            if (brec->prm == CMD_RTA || brec->prm == CMD_ADDR) {
+                atype_t am = val->obj->address(val);
+                if (touaddress(val, &uv, (am == A_KR) ? 16 : all_mem_bits, brec->epoint)) {
+                    ch2 = 0;
                     break;
                 }
-		if (prm==CMD_ENDM) { // .endm
-		    if (tpe==1 || tpe==3) { // .macro
-			if (here()) goto extrachar;
-                        goto end;
-		    } else {err_msg(ERROR______EXPECTED,".MACRO"); break;}
-		}
-		if (prm==CMD_NEXT) { // .next
-		    if (tpe==2) { //.rept .for
-			if (here()) goto extrachar;
-                        goto end;
-		    } else {err_msg(ERROR______EXPECTED,".FOR or .REPT"); break;}
-		}
-		if (prm==CMD_REPT) { // .rept
-		    val=get_exp(&w,&d,&c);if (!d) {err_msg(ERROR___NOT_DEFINED,"argument used for count");wait_cmd(fin,CMD_NEXT);break;}
-		    if (!c) break;
-		    if (c==2) {err_msg(ERROR_EXPRES_SYNTAX,NULL); break;}
-		    ignore();if (here()) goto extrachar;
-		    lin=sline;
-                    pos=ftell(fin);
-                    enterfile(nam,lin);
-                    for (cnt=0; cnt<val; cnt++) {
-			compile(nam,pos,2,mprm,nprm,fin);
-                        sline=lin;
-                    }
-                    exitfile();
-	            wait_cmd(fin,CMD_NEXT);
-		    break;
-		}
-                if (prm==CMD_ALIGN) { // .align
-                    int fill=-1;
-		    val=get_exp(&w,&d,&c);if (!d) fixeddig=0;
-		    if (!c) break;
-		    if (c==2) {err_msg(ERROR_EXPRES_SYNTAX,NULL); break;}
-                    ignore();
-                    if ((ch=get())) {
-                        if (ch!=',') goto extrachar;
-                        fill=get_exp(&w,&d,&c);if (!d) fixeddig=0;
-                        if (!c) break;
-                        if (c==2) {err_msg(ERROR_EXPRES_SYNTAX,NULL); break;}
-                        if (val_length(fill)) {err_msg(ERROR_CONSTNT_LARGE,NULL); break;}
-                        ignore();if (here()) goto extrachar;
-                    }
-                    if (d) {
-                        if (val<1 || val>all_mem) {err_msg(ERROR_CONSTNT_LARGE,NULL); break;}
-                        if (l_address % val) {
-                            if (fill>0)
-                                while (l_address % val) pokeb((unsigned char)fill);
+                uv &= all_mem;
+                switch (am) {
+                case A_NONE:
+                    if ((current_address->l_address ^ uv) > 0xffff) err_msg2(ERROR_CANT_CROSS_BA, val, brec->epoint);
+                    break;
+                case A_KR:
+                    break;
+                default:
+                    err_msg_output_and_destroy(err_addressing(am, brec->epoint, -1));
+                }
+                ch2 = (brec->prm == CMD_RTA) ? (uv - 1) : uv;
+                break;
+            }
+            if (brec->bits >= 0) {
+                if (touval(val, &uv, (unsigned int)brec->bits, brec->epoint)) {
+                    if (diagnostics.pitfalls) {
+                        if (brec->prm == CMD_BYTE && val->obj == STR_OBJ) err_msg_byte_note(brec->epoint2);
+                        else if (brec->prm != CMD_RTA && brec->prm != CMD_ADDR && err_msg_char_note_once != pass) {
+                            Error *err = val->obj->ival(val, &iv, (unsigned int)brec->bits, brec->epoint2);
+                            if (err != NULL) val_destroy(Obj(err));
                             else {
-                                val=val-(l_address % val);
-                                l_address+=val;l_address&=all_mem;
-                                address+=val;
-                                if (address>all_mem) {
-                                    if (fixeddig) err_msg(ERROR_TOP_OF_MEMORY,NULL);
-                                    address&=all_mem;
+                                const char *txt;
+                                switch (brec->prm) {
+                                case CMD_BYTE:  txt = ".char"; break;
+                                case CMD_LONG:  txt = ".lint"; break;
+                                case CMD_DWORD: txt = ".dint"; break;
+                                default:
+                                case CMD_WORD:  txt = ".sint"; break;
                                 }
-                                if ((fixeddig) && (scpumode || cpu64mode)) if (!(address & 0xffff) || !(l_address & 0xffff)) err_msg(ERROR___BANK_BORDER,NULL);
+                                err_msg_char_note(txt, brec->epoint2);
+                                err_msg_char_note_once = pass;
                             }
                         }
                     }
-		    break;
-		}
-		if (prm==CMD_ENDC) {err_msg(ERROR______EXPECTED,".COMMENT"); break;} // .endc
-		if (prm==CMD_COMMENT) { // .comment
-                    if (here()) goto extrachar;
-		    wait_cmd(fin,CMD_ENDC);
-		    break;
-		}
-		if (prm==CMD_INCLUDE) { // .include
-                    if (get_path()) break;
-                    if (here()) goto extrachar;
-                    lin=sline;
-                    enterfile(path,lin);
-                    sline=0;
-                    if (listing) {
-                        if (arguments.source) {
-                            if (nprm>=0) mtranslate(mprm,nprm,llist);
-                            fprintf(flist,"\t\t\t\t\t%s\n",llist);
-                        }
-                        fprintf(flist,"\n;******  Processing file \"%s\"\n\n",path);
-                    }
-                    compile(path,0,0,mprm,nprm,NULL);
-                    exitfile();
-                    if (listing) fprintf(flist,"\n;******  Return to file \"%s\"\n\n",&filenamelist->name);
-		    sline=lin;
-		    break;
-		}
-                if (prm==CMD_BINARY) { // .binary
-                    long foffset=0,fsize=all_mem+1;
-                    if (get_path()) break;
-                    if ((ch=get())) {
-                        if (ch!=',') goto extrachar;
-                        foffset=get_exp(&w,&d,&c);if (!d) fixeddig=0;
-                        if (!c) break;
-                        if (c==2) {err_msg(ERROR_EXPRES_SYNTAX,NULL); break;}
-                        if (d && foffset<0) {err_msg(ERROR_CONSTNT_LARGE,NULL); break;}
-                        ignore();
-                        if ((ch=get())) {
-                            if (ch!=',') goto extrachar;
-                            fsize=get_exp(&w,&d,&c);if (!d) fixeddig=0;
-                            if (!c) break;
-                            if (c==2) {err_msg(ERROR_EXPRES_SYNTAX,NULL); break;}
-                            if (d && (fsize<0 || fsize>all_mem)) {err_msg(ERROR_CONSTNT_LARGE,NULL); break;}
-                            ignore();if (here()) goto extrachar;
-                        }
-                    }
-#ifndef WIN32
-		    if (!fixeddig) {
-			if (stat(path,&filestat)) {err_msg(ERROR_CANT_FINDFILE,path);break;}
-			if (!filestat.st_ino) {err_msg(ERROR_CANT_FINDFILE,path);break;}
-                        fflen=filestat.st_size;
-                        if (fflen>foffset) fflen-=foffset; else fflen=0;
-			address+=(unsigned long)fflen;
-			l_address+=(unsigned long)fflen;
-			break;
-                    }
-#endif
-                    if ((fil=fopen(path,"rb"))==NULL) {err_msg(ERROR_CANT_FINDFILE,path);break;}
-                    fseek(fil,foffset,SEEK_SET);
-		    lcol=0;
-                    if (listing) {
-                        if (arguments.source) {
-                            if (nprm>=0) mtranslate(mprm,nprm,llist);
-                            fprintf(flist,"\t\t\t\t\t%s\n",llist);
-                        }
-                        fprintf(flist,"\n;******  Binary include \"%s\"\n",path);
-                    }
-		    for (;fsize;fsize--) {
-			int st=fread(&ch,1,1,fil);
-			if (feof(fil)) break;
-			if (!st) err_msg(ERROR_CANT_FINDFILE,path);
-			if (listing) {
-                            if (!lcol) {fprintf(flist,(all_mem==0xffff)?"\n>%04lx\t ":"\n>%06lx  ",address);lcol=16;}
-			    fprintf(flist,"%02x ",(unsigned char)ch);
-			    lcol--;
-			}
-			pokeb(ch);
-		    }
-		    if (listing) fputc('\n',flist);
-		    fclose(fil);
-		    break;
-		}
-		if (prm==CMD_FOR) { // .for
-		    int apoint=0;
-		    char expr[linelength];
-
-		    if ((wht=what(&prm))==WHAT_EXPRESSION && prm==1) { //label
-			if (get_ident('_')) break;
-			ignore();if (get()!='=') {err_msg(ERROR_GENERL_SYNTAX,NULL); break;}
-			strcpy(varname,ident);
-			val=get_exp(&w,&d,&c);
-			if (!c) break;
-			if (c==2) {err_msg(ERROR_EXPRES_SYNTAX,NULL); break;}
-			if (!d) {err_msg(ERROR___NOT_DEFINED,"argument used for start");break;}
-                        tmp=new_label(varname);
-                        tmp->requires=current_requires;
-                        tmp->conflicts=current_conflicts;
-			if (!labelexists) tmp->proclabel=0;
-			tmp->value=val;
-			tmp->ertelmes=1;tmp->used=0;
-			wht=what(&prm);
-		    }
-		    if (wht==WHAT_S || wht==WHAT_Y || wht==WHAT_X) lpoint--; else
-			if (wht!=WHAT_COMA) {err_msg(ERROR______EXPECTED,","); break;}
-
-		    strcpy(expr,&pline[lpoint]);
-		    strcpy(pline,expr);
-		    lin=sline;
-                    pos=ftell(fin);
-                    enterfile(nam,lin);
-		    for (;;) {
-			lpoint=0;
-			val=get_exp(&w,&d,&c);
-			if (!c) break;
-			if (c==2) {err_msg(ERROR_EXPRES_SYNTAX,NULL); break;}
-			if (!d) {err_msg(ERROR___NOT_DEFINED,"argument used in condition");break;}
-			if (!val) break;
-			if (!apoint) {
-                            ignore();if (get()!=',') {err_msg(ERROR______EXPECTED,","); break;}
-			    ignore();if (!get()) continue;
-			    lpoint--;
-			    if (get_ident('_')) break;
-			    ignore();if (get()!='=') {err_msg(ERROR_GENERL_SYNTAX,NULL); break;}
-			    apoint=lpoint;
-                            tmp=new_label(ident);
-                            tmp->requires=current_requires;
-                            tmp->conflicts=current_conflicts;
-			    if (!labelexists) tmp->proclabel=0;
-			    tmp->ertelmes=1;tmp->used=0;
-                        }
-			compile(nam,pos,2,mprm,nprm,fin);
-			sline=lin;
-			strcpy(pline,expr);
-			lpoint=apoint;
-			val=get_exp(&w,&d,&c);
-			if (!c) break;
-			if (c==2) {err_msg(ERROR_EXPRES_SYNTAX,NULL); break;}
-			ignore();if (here()) goto extrachar;
-			tmp->value=val;
-                    }
-                    exitfile();
-                    wait_cmd(fin,CMD_NEXT);
-		    break;
-		}
-		if (prm==CMD_ENDP) { // .endp
-		    if (here()) goto extrachar;
-		    if (pagelo==-1) {err_msg(ERROR______EXPECTED,".PAGE"); break;}
-		    if ((l_address>>8)!=pagelo) err_msg(ERROR____PAGE_ERROR,NULL);
-		    pagelo=-1;
-		    break;
-		}
-		if (prm==CMD_PAGE) { // .page
-		    if (here()) goto extrachar;
-		    if (pagelo!=-1) {err_msg(ERROR______EXPECTED,".ENDP"); break;}
-		    pagelo=(l_address>>8);
-		    break;
-		}
-		if (prm==CMD_OPTION) { // .option
-                    get_ident('_');
-                    ignore();if (get()!='=') {err_msg(ERROR______EXPECTED,"="); break;}
-                    val=get_exp(&w,&d,&c);
-		    if (!c) break;
-		    if (c==2) {err_msg(ERROR_EXPRES_SYNTAX,NULL); break;}
-		    ignore();if (here()) goto extrachar;
-                    if (!d) {err_msg(ERROR___NOT_DEFINED,"argument used for option");break;}
-                    if (!strcasecmp(ident,"allow_branch_across_page")) allowslowbranch=val;
-                    else if (!strcasecmp(ident,"auto_longbranch_as_jmp")) longbranchasjmp=val;
-                    else err_msg(ERROR_UNKNOWN_OPTIO,ident);
-		    break;
-		}
-	    }
-	case WHAT_HASHMARK:if (skipit[waitforp] & 1) //skip things if needed
-	    {                   //macro stuff
-		int ppoint;
-                if (get_ident2('_')) {err_msg(ERROR_GENERL_SYNTAX,NULL); break;}
-                if (!(tmp2=find_macro(ident))) {err_msg(ERROR___NOT_DEFINED,ident); break;}
-            as_macro:
-		ppoint=nprm=0;
-                ignore();
-		while ((ch=get())) {
-		    if (ch=='^') {
-			val=get_exp(&w,&d,&c);if (!d) fixeddig=0;
-			if (!c) break;
-			if (c==2) {err_msg(ERROR_EXPRES_SYNTAX,NULL); break;}
-
-			sprintf(snum,"%ld",val);
-
-			i=0;while (snum[i]) mparams[ppoint++]=snum[i++];
-		    }
-                    else if (ch=='"' || ch=='\'') {
-                        char quo=ch;
-			for (;;) {
-			    if (!(ch=get())) {err_msg(ERROR______EXPECTED,"End of string"); break;}
-			    if (ch==quo) {
-				if (pline[lpoint]!=quo) break;
-                                lpoint++;
-			    }
-			    mparams[ppoint++]=ch;
-			}
-		    }
-		    else {
-			do mparams[ppoint++]=ch; while ((ch=get())!=',' && ch);
-			lpoint--;
-		    }
-		    nprm++;
-                    mparams[ppoint++]=0;
-                    ignore();
-                    if (!(ch=get())) break;
-		    if (ch!=',') {err_msg(ERROR______EXPECTED,","); break;}
-		}
-                lin=sline;
-                sline=tmp2->lin;
-                macrecursion++;
-                if (macrecursion<100) {
-                    enterfile(tmp2->file,lin);
-                    if (strcmp(tmp2->file,nam)) compile(tmp2->file,tmp2->point,1,mparams,nprm,NULL);
-                    else compile(tmp2->file,tmp2->point,3,mparams,nprm,fin);
-                    exitfile();
-                } else {err_msg(ERROR__MACRECURSION,"!!!!"); break;}
-                macrecursion--;
-                sline=lin;
-		break;
-	    }
-	case WHAT_MNEMONIC:if (skipit[waitforp] & 1) {//skip things if needed
-            int opr,mnem=prm;
-            int oldlpoint=lpoint;
-	    const unsigned char* cnmemonic=&opcode[prm*25]; //current nmemonic
-	    char ln;
-	    unsigned char cod,longbranch=0;
-
-            ignore();
-	    if (!(wht=here())) {
-		if ((cod=cnmemonic[ADR_IMPLIED])==____) goto illegal_addressing;
-		opr=ADR_IMPLIED;w=ln=0;d=1;
-	    }  //clc
-	    // 1 Db
-	    else if (lowcase(wht)=='a' && pline[lpoint+1]==0)
-	    {
-		if (find_label("a")) err_msg(ERROR_A_USED_AS_LBL,NULL);
-		if ((cod=cnmemonic[ADR_ACCU])==____) goto illegal_addressing;
-		opr=ADR_ACCU;w=ln=0;d=1;// asl a
-                lpoint++;
-	    }
-	    // 2 Db
-	    else if (wht=='#') {
-                lpoint++;
-		val=get_exp(&w,&d,&c); //ellenorizve.
-		if (!c) break;
-		if (c==2) {err_msg(ERROR_GENERL_SYNTAX,NULL); break;}
-
-		ln=1;
-		if ((cod=cnmemonic[ADR_IMMEDIATE])==0xE0 || cod==0xC0 || cod==0xA2 || cod==0xA0) {// cpx cpy ldx ldy
-		    if (longindex) ln++;
-		}
-		else if (cod==0xF4) ln=2; //pea #$ffff
-		else if (cod!=0xC2 && cod!=0xE2) {//not sep rep=all accu
-		    if (longaccu) ln++;
+                    uv = 0;
                 }
-                if (dtvmode && cod==0x02) longbranch=0x40;//hack
-
-		if (d) {
-		    if (w==3) w=val_length(val);//auto length
-		    if (w>=ln) w=3; //const too large
-		    opr=ADR_IMMEDIATE;// lda #
-		} else fixeddig=0;
-	    }
-	    // 3 Db
-	    else if (wht=='[') {
-                lpoint++;
-		val=get_exp(&w,&d,&c); //ellenorizve.
-		if (!c) break;
-		if (c==2) {err_msg(ERROR_GENERL_SYNTAX,NULL); break;}
-		ignore();if (get()!=']') {err_msg(ERROR_GENERL_SYNTAX,NULL); break;}
-		if ((wht=what(&prm))==WHAT_Y) {
-		    if (d) {
-			val-=dpage;
-			if (w==3) w=val_length(val);//auto length
-			if (w) w=3;// there's no lda [$ffff],y lda [$ffffff],y!
-			opr=ADR_ZP_LI_Y;
-		    } else fixeddig=0;
-                    ln=1; // lda [$ff],y
-		}
-		else if (wht==WHAT_EOL) {
-		    if (cnmemonic[ADR_ADDR_LI]==0xDC) { // jmp [$ffff]
-			if (d) {
-			    if (w==3) {
-				w=val_length(val);//auto length
-				if (!w) w=1;
-			    }
-			    if (w!=1) w=3; // there's no jmp [$ffffff]!
-                            opr=ADR_ADDR_LI;
-			} else fixeddig=0;
-                        ln=2;// jmp [$ffff]
-		    }
-		    else {
-			if (d) {
-			    val-=dpage;
-			    if (w==3) w=val_length(val);//auto length
-			    if (w) w=3; // there's no lda [$ffff] lda [$ffffff]!
-                            opr=ADR_ZP_LI;
-			} else fixeddig=0;
-                        ln=1;// lda [$ff]
-		    }             
-                    lpoint--;
-		}
+                ch2 = uv;
+            } else {
+                if (toival(val, &iv, (unsigned int)-brec->bits, brec->epoint)) iv = 0;
+                ch2 = (uint32_t)iv;
             }
-            else if (wht=='.') {
-                wht=what(&prm);
-                if (wht==WHAT_COMMAND && prm==CMD_MACRO) {
-                    memcpy(ident,&mnemonic[mnem*3],3);
-                    ident[3]=0;goto do_macro;
-                }
-                err_msg(ERROR_GENERL_SYNTAX,NULL);break;
-            }
-	    else {
-		if (whatis[wht]!=WHAT_EXPRESSION && whatis[wht]!=WHAT_CHAR && wht!='_' && wht!='*') {err_msg(ERROR_GENERL_SYNTAX,NULL); break;}
-		val=get_exp(&w,&d,&c); //ellenorizve.
-		if (!c) break;
-            meg:
-		if (c==1) {
-		    if ((wht=what(&prm))==WHAT_X) {// lda $ff,x lda $ffff,x lda $ffffff,x
-                        if (cnmemonic[ADR_REL]!=____) {lpoint--;goto megint;}
-			if (w==3) {//auto length
-			    if (d) {
-				if (cnmemonic[ADR_ZP_X]!=____ && val>=dpage && val<(dpage+0x100)) {val-=dpage;w=0;}
-				else if (cnmemonic[ADR_ADDR_X]!=____ && databank==(((unsigned)val) >> 16)) w=1;
-				else {
-				    w=val_length(val);
-				    if (w<2) w=2;
-				}
-			    } else {fixeddig=0;w=1;}
-			} else if (val>=dpage && val<(dpage+0x100)) val-=dpage;
-			opr=ADR_ZP_X-w;ln=w+1;
-		    }// 6 Db
-		    else if (wht==WHAT_Y) {// lda $ff,y lda $ffff,y lda $ffffff,y
-                        if (cnmemonic[ADR_REL]!=____) {lpoint--;goto megint;}
-			if (w==3) {//auto length
-			    if (d) {
-				if (cnmemonic[ADR_ZP_Y]!=____ && val>=dpage && val<(dpage+0x100)) {val-=dpage;w=0;}
-				else if (cnmemonic[ADR_ADDR_Y]!=____ && databank==(((unsigned)val) >> 16)) w=1;
-				else {
-				    w=val_length(val);
-				    if (w<2) w=2;
-				}
-			    } else {fixeddig=0;w=1;}
-			} else if (val>=dpage && val<(dpage+0x100)) val-=dpage;
-			opr=ADR_ZP_Y-w;ln=w+1; // ldx $ff,y lda $ffff,y
-		    }// 8 Db
-		    else if (wht==WHAT_S) {
-                        if (cnmemonic[ADR_REL]!=____) {lpoint--;goto megint;}
-			if (d) {
-			    if (w==3) w=val_length(val);//auto length
-			    if (w) w=3; // there's no lda $ffffff,s or lda $ffff,s!
-			    opr=ADR_ZP_S;
-			} else fixeddig=0;
-			ln=1; // lda $ff,s
-		    }// 9 Db
-		    else if (wht==WHAT_COMA) { // mvp $10,$20
-			int w2,c2,d2;
-			long val2;
-                        d2=d;
-			megint:
-			if (!d) fixeddig=0;
-                        val2=get_exp(&w2,&d,&c2);
-                        if (!c2) break;
-                        if (c2==2) {err_msg(ERROR_GENERL_SYNTAX,NULL); break;}
-                        if (cnmemonic[ADR_REL]!=____) {
-                            long valx,valx2;
-                            if (d && d2) {
-                                valx=val-l_address-2;
-                                valx2=val2-l_address-2;
-                                if ((valx<-128 || valx>127) && valx2>=-128 && valx2<=127) {
-                                    val=val2;
-                                    c=c2;
-                                    w=w2;
-                                } else d=d2;
-                            } else {
-                                if (d2) d=d2;
-                                else {
-                                    val=val2;
-                                    c=c2;w=w2;
-                                }
-                            }
-                            goto meg;
-                        }
-                        if (d) {
-                            if (w==3) w=val_length(val);//auto length
-                            if (w2==3) w2=val_length(val2);//auto length
-                            if (w || w2) w=3; // only byte operands...
-                            opr=ADR_MOVE;
-                            val=(val << 8) | val2;
-                        } else fixeddig=0;
-			ln=2;
-		    }// 10 Db
-		    else if (wht==WHAT_EOL) {
-			if (cnmemonic[ADR_REL]!=____) {
-			    ln=1;
-			    if (d) {
-				if (fixeddig && (l_address >> 16)!=(((unsigned)val) >> 16)) {err_msg(ERROR_BRANCH_TOOFAR,NULL); break;}
-				val=(val-l_address-2) & 0xffff;
-				if (val<0xFF80 && val>0x007F) {
-				    if (arguments.longbranch && (cnmemonic[ADR_ADDR]==____)) {
-					if ((cnmemonic[ADR_REL] & 0x1f)==0x10) {//branch
-					    longbranch=0x20;ln=4;
-                                	    if (scpumode && !longbranchasjmp) {
-                                        	val=0x8203+(((val-3) & 0xffff) << 16);
-                                    	    } else {
-                                        	val=0x4C03+(((val+l_address+2) & 0xffff) << 16);
-                                    	    }
-					} else {//bra
-                                	    if (scpumode && !longbranchasjmp) {
-						longbranch=cnmemonic[ADR_REL]^0x82;
-						val=(val-1) & 0xffff;
-                                    		ln=2;
-                                    	    } else {
-						longbranch=cnmemonic[ADR_REL]^0x4C;
-                                        	val=(val+l_address+2) & 0xffff;ln=2;
-                                    	    }
-					}    
-					if (fixeddig) err_msg(ERROR___LONG_BRANCH,NULL);
-				    } else {
-					if (cnmemonic[ADR_ADDR]!=____) {
-					    val=(val+l_address+2) & 0xffff;
-					    opr=ADR_ADDR;w=1;ln=2;goto brancb;}
-					else if (cnmemonic[ADR_REL_L]!=____) {//gra
-					    val=(val-1) & 0xffff;
-					    opr=ADR_REL_L;w=1;ln=2;goto brancb;}
-					else if (fixeddig) err_msg(ERROR_BRANCH_TOOFAR,NULL);
-				    }
-				}
-                                if (fixeddig) {
-                                    if (!longbranch && ((l_address+2) & 0xff00)!=((l_address+2+val) & 0xff00)) {
-                                        if (!allowslowbranch) err_msg(ERROR__BRANCH_CROSS,NULL);
-                                    }
-                                }
-				opr=ADR_REL;w=0;// bne
-			    } else fixeddig=0;
-			}
-			else if (cnmemonic[ADR_REL_L]!=____) {
-			    if (d) {
-				if (fixeddig) {
-				    if ((l_address >> 16)!=(((unsigned)val) >> 16)) {err_msg(ERROR_BRANCH_TOOFAR,NULL); break;}
-				    val=(val-l_address-3) & 0xffff;
-				}
-				opr=ADR_REL_L;w=1;//brl
-			    } else fixeddig=0;
-			    ln=2;
-			}
-			else if (cnmemonic[ADR_LONG]==0x5C || cnmemonic[ADR_LONG]==0x22) {
-			    if (w==3) {
-				if (cnmemonic[ADR_ADDR]==____) w=2; // jml jsl
-				else {
-				    if (d) {
-					if ((l_address >> 16)==(((unsigned)val) >> 16)) w=1;
-					else {
-					    w=val_length(val);
-					    if (w<2) w=2; // in another bank
-					}
-				    } else {fixeddig=0;w=1;}
-				}
-			    }
-			    opr=ADR_ZP-w;ln=w+1;
-			}
-			else {
-			    if (w==3) {//auto length
-				if (d) {
-				    if (cnmemonic[ADR_ZP]!=____ && val>=dpage && val<(dpage+0x100)) {val-=dpage;w=0;}
-				    else if (cnmemonic[ADR_ADDR]!=____ && databank==(((unsigned)val) >> 16)) w=1;
-				    else {
-					w=val_length(val);
-					if (w<2) w=2;
-				    }
-				} else {fixeddig=0;w=1;}
-			    }
-			    opr=ADR_ZP-w;ln=w+1; // lda $ff lda $ffff lda $ffffff
-			}
-			brancb: lpoint--;
-		    }// 13+2 Db
-		}
-		else if (c==2) {
-		    if ((wht=what(&prm))==WHAT_SZ) {
-			if ((wht=what(&prm))!=WHAT_Y) {err_msg(ERROR_GENERL_SYNTAX,NULL); break;}
-			if (d) {
-			    if (w==3) w=val_length(val);//auto length
-			    if (w) w=3; // there's no lda ($ffffff,s),y or lda ($ffff,s),y!
-			    opr=ADR_ZP_S_I_Y;
-			} else fixeddig=0;
-			ln=1; // lda ($ff,s),y
-		    } // 16 Db
-		    else {
-			if (wht!=WHAT_XZ) {err_msg(ERROR_GENERL_SYNTAX,NULL); break;}
-			if (cnmemonic[ADR_ADDR_X_I]==0x7C || cnmemonic[ADR_ADDR_X_I]==0xFC) {// jmp ($ffff,x) jsr ($ffff,x)
-			    if (d) {
-				if ((l_address >> 16)==(((unsigned)val) >> 16)) w=1; else w=3; // only same program bank!
-				opr=ADR_ADDR_X_I;
-			    } else fixeddig=0;
-			    ln=2; // jmp ($ffff,x)
-			}
-			else {
-			    if (d) {
-				val-=dpage;
-				if (w==3) w=val_length(val);//auto length
-				if (w) w=3; // there's no lda ($ffff,x) lda ($ffffff,x)!
-				opr=ADR_ZP_X_I;
-			    } else fixeddig=0;
-			    ln=1; // lda ($ff,x)
-			}
-		    } // 18 Db
-		}
-		else {
-		    if ((wht=what(&prm))==WHAT_Y) {
-			if (d) {
-			    val-=dpage;
-			    if (w==3) w=val_length(val);
-			    if (w) w=3;
-			    opr=ADR_ZP_I_Y;
-			} else fixeddig=0;
-			ln=1; // lda ($ff),y
-		    } // 19 Db
-		    else if (wht==WHAT_EOL) {
-			if (cnmemonic[ADR_ADDR_I]==0x6C) {// jmp ($ffff)
-			    if (d) {
-				if (fixeddig) {
-				    if (w==3) {
-					w=val_length(val);//auto length
-					if (!w) w=1;
-				    }
-				    if (w!=1) w=3; // there's no jmp ($ffffff)!
-				    if (!scpumode && (val & 0xff)==0xff) err_msg(ERROR______JUMP_BUG,NULL);//jmp ($xxff)
-				} else w=1;
-				opr=ADR_ADDR_I;
-			    } else fixeddig=0;
-			    ln=2; // jmp ($ffff)
-			}
-			else {
-			    if (d) {
-				val-=dpage;
-				if (w==3) w=val_length(val);//auto length
-				if (w) w=3; // there's no lda ($ffff) lda ($ffffff)!
-				opr=ADR_ZP_I;
-			    } else fixeddig=0;
-			    ln=1; // lda ($ff)
-			}
-                        lpoint--;
-		    } // 21 Db
-		}
-	    } 
-	    if (here()) {extrachar:err_msg(ERROR_EXTRA_CHAR_OL,NULL); break;}
-
-	    if (d) {
-		if (w==3) {err_msg(ERROR_CONSTNT_LARGE,NULL); break;}
-                if ((cod=cnmemonic[opr])==____) {
-                illegal_addressing:
-                    memcpy(ident,&mnemonic[mnem*3],3);
-                    ident[3]=0;
-                    if ((tmp2=find_macro(ident))) {
-                        lpoint=oldlpoint;
-                        if (listing && arguments.source && ident2[0]) {
-                            if (lastl==2) {fputc('\n',flist);lastl=1;}
-                            if (ident2[0]!='-' && ident2[0]!='+')
-                                fprintf(flist,(all_mem==0xffff)?".%04lx\t\t\t\t\t%s\n":".%06lx\t\t\t\t\t%s\n",address,ident2);
-                            else
-                                fprintf(flist,(all_mem==0xffff)?".%04lx\t\t\t\t\t%c\n":".%06lx\t\t\t\t\t%c\n",address,ident2[0]);
-                        }
-                        goto as_macro;
-                    }
-                    err_msg(ERROR_ILLEGAL_OPERA,NULL);
-                    break;
-                }
-	    }
-	    {
-		long temp=val;
-		pokeb(cod ^ longbranch);
-		switch (ln)
-		{
-		case 4:pokeb((unsigned char)temp);temp>>=8;
-		case 3:pokeb((unsigned char)temp);temp>>=8;
-		case 2:pokeb((unsigned char)temp);temp>>=8;
-		case 1:pokeb((unsigned char)temp);
-		}
-	    }
-
-	    if (listing) {
-		long temp=val;
-		int i;
-
-		if (lastl!=1) {fputc('\n',flist);lastl=1;}
-                fprintf(flist,(all_mem==0xffff)?".%04lx\t %02x":".%06lx  %02x",address-ln-1,(unsigned char)(cod ^ longbranch));
-
-                for (i=0;i<ln;i++) {fprintf(flist," %02x",(unsigned char)temp);temp>>=8;}
-                if (ln<2) fputc('\t',flist);
-                fputc('\t',flist);
-
-                if (arguments.monitor) {
-                    for (i=0;i<3;i++) fputc(mnemonic[mnem*3+i],flist);
-
-		    switch (opr) {
-		    case ADR_IMPLIED: fprintf(flist,"\t"); break;
-		    case ADR_ACCU: fprintf(flist," a\t"); break;
-		    case ADR_IMMEDIATE:
-			{
-			    if (ln==1) fprintf(flist," #$%02x",(unsigned char)val);
-			    else fprintf(flist," #$%04x",(unsigned)(val&0xffff));
-			    break;
-			}
-		    case ADR_LONG: fprintf(flist," $%06x",(unsigned)(val&0xffffff)); break;
-		    case ADR_ADDR: 
-		        if (cnmemonic[ADR_LONG]==0x5C || cnmemonic[ADR_LONG]==0x22)
-		            fprintf(flist," $%06x",(unsigned)(val&0xffff)+(l_address&0xff0000));
-			else
-		            fprintf(flist," $%04x",(unsigned)(val&0xffff));
-			break;
-		    case ADR_ZP: fprintf(flist," $%02x\t",(unsigned char)val); break;
-		    case ADR_LONG_X: fprintf(flist," $%06x,x",(unsigned)(val&0xffffff)); break;
-		    case ADR_ADDR_X: fprintf(flist," $%04x,x",(unsigned)(val&0xffff)); break;
-		    case ADR_ZP_X: fprintf(flist," $%02x,x",(unsigned char)val); break;
-		    case ADR_ADDR_X_I: fprintf(flist,(all_mem==0xffff)?" ($%04x,x)":" ($%06x,x)",(unsigned)(val&0xffff)+(l_address&0xff0000)); break;
-		    case ADR_ZP_X_I: fprintf(flist," ($%02x,x)",(unsigned char)val); break;
-		    case ADR_ZP_S: fprintf(flist," $%02x,s",(unsigned char)val); break;
-		    case ADR_ZP_S_I_Y: fprintf(flist," ($%02x,s),y",(unsigned char)val); break;
-		    case ADR_LONG_Y: fprintf(flist," $%06x,y",(unsigned)(val&0xffffff)); break;
-		    case ADR_ADDR_Y: fprintf(flist," $%04x,y",(unsigned)(val&0xffff)); break;
-		    case ADR_ZP_Y: fprintf(flist," $%02x,y",(unsigned char)val); break;
-		    case ADR_ZP_LI_Y: fprintf(flist," [$%02x],y",(unsigned char)val); break;
-		    case ADR_ZP_I_Y: fprintf(flist," ($%02x),y",(unsigned char)val); break;
-		    case ADR_ADDR_LI: fprintf(flist," [$%04x]",(unsigned)(val&0xffff)); break;
-		    case ADR_ZP_LI: fprintf(flist," [$%02x]",(unsigned char)val); break;
-		    case ADR_ADDR_I: fprintf(flist," ($%04x)",(unsigned)(val&0xffff)); break;
-		    case ADR_ZP_I: fprintf(flist," ($%02x)",(unsigned char)val); break;
-		    case ADR_REL:
-                        if (ln==1) fprintf(flist,(all_mem==0xffff)?" $%04x":" $%06x",(unsigned)((((signed char)val)+l_address)&all_mem));
-                        else if (ln==2) {
-			    if (cod ^ longbranch==0x4C)
-				fprintf(flist,(all_mem==0xffff)?" $%04x":" $%06x",(unsigned)((val&0xffff)+(l_address&0xff0000)));
-			    else
-				fprintf(flist,(all_mem==0xffff)?" $%04x":" $%06x",(unsigned)((((signed short int)val)+l_address)&all_mem));
-		        }
-                        else fprintf(flist,(all_mem==0xffff)?" $%04x":" $%06x",(unsigned)(((val >> 16)&0xffff)+(l_address&0xff0000)));
-			break;
-		    case ADR_REL_L: fprintf(flist," $%06x",(unsigned)((((signed short)val)+l_address)&0xffffff)); break;
-		    case ADR_MOVE: fprintf(flist," $%02x,$%02x",(unsigned char)val,(unsigned char)(val>>8));
-		    }
-		} else if (arguments.source) fputc('\t',flist);
-                if (arguments.source) {
-                    if (nprm>=0) mtranslate(mprm,nprm,llist);
-                    fprintf(flist,"\t%s\n",llist);
-                } else fputc('\n',flist);
-	    }
-	    break;
+            break;
+        case T_NONE:
+        donone:
+            brec->warn = true;
+            ch2 = 0;
         }
-        case WHAT_EXPRESSION:
-            if (skipit[waitforp] & 1) {
-                get_ident2('_');
-                if ((tmp2=find_macro(ident))) goto as_macro;
+        if (brec->gaps > 0) byterecursion_gaps(brec);
+        else if (brec->p >= (sizeof brec->buff) - 4) byterecursion_flush(brec);
+        ch2 ^= outputeor;
+        brec->buff[brec->p++] = (uint8_t)ch2;
+        if (brec->prm >= CMD_RTA) {
+            brec->buff[brec->p++] = (uint8_t)(ch2 >> 8);
+            if (brec->prm >= CMD_LINT) {
+                brec->buff[brec->p++] = (uint8_t)(ch2 >> 16);
+                if (brec->prm >= CMD_DINT) brec->buff[brec->p++] = (uint8_t)(ch2 >> 24);
             }
-            // fall through
-	default: if (skipit[waitforp] & 1) err_msg(ERROR_GENERL_SYNTAX,NULL); //skip things if needed
-	}
+        }
+        if (iter.data == NULL) return;
     }
-end:
-    if (oldpos==-1) closefile(fin); else fseek(fin,oldpos,SEEK_SET);
-    if (tpe==0) {
-        backr=backr_old;
-        forwr=forwr_old;
-        reffile=reffile_old;
-    }
-    return;
+    iter_destroy(&iter);
 }
 
-int main(int argc,char *argv[]) {
-    time_t t;
-
-    FILE* fout;
-
-    {
-        unsigned char i=0;
-        do {
-            tolower_tab[i]=(i>='A' && i<='Z')?i+0x20:i;
-            i++;
-        } while (i);
+static void logical_close(linepos_t epoint) {
+    address_t diff;
+    if (current_address->unionmode) {
+        current_address->l_union = waitfor->u.cmd_logical.laddr;
+        diff = 0;
+    } else {
+        diff = (current_address->address - waitfor->u.cmd_logical.addr) & all_mem2;
+        if (diff > (~waitfor->u.cmd_logical.laddr & 0xffff)) {
+            current_address->bankwarn = (0x10000 - (waitfor->u.cmd_logical.laddr & 0xffff) == diff);
+            if (epoint != NULL && !current_address->bankwarn) err_msg_pc_bank(epoint);
+            current_address->l_address = (waitfor->u.cmd_logical.laddr + diff) & all_mem;
+        } else {
+            current_address->bankwarn = false;
+            current_address->l_address = waitfor->u.cmd_logical.laddr + diff;
+        }
     }
+    val_destroy(current_address->l_address_val);
+    current_address->l_address_val = waitfor->u.cmd_logical.val;
+    if (waitfor->u.cmd_logical.label != NULL) {
+        set_size(waitfor->u.cmd_logical.label, diff, current_address->mem, waitfor->u.cmd_logical.addr, waitfor->u.cmd_logical.membp);
+        val_destroy(Obj(waitfor->u.cmd_logical.label));
+    }
+    current_section->logicalrecursion--;
+}
 
-    testarg(argc,argv);
+static void virtual_close(linepos_t epoint) {
+    if (waitfor->u.cmd_virtual.label != NULL) {
+        address_t end = (current_address->end < current_address->address) ? current_address->address : current_address->end;
+        set_size(waitfor->u.cmd_virtual.label, end - current_address->start, current_address->mem, current_address->start, waitfor->u.cmd_virtual.membp);
+        val_destroy(Obj(waitfor->u.cmd_virtual.label));
+    }
+    val_destroy(current_address->l_address_val);
+    val_destroy(Obj(current_address->mem));
+    free(current_address);
+    current_address = waitfor->u.cmd_virtual.section_address;
+    if (current_address->l_address > all_mem) {
+        if (epoint != NULL) err_msg_big_address(epoint);
+        current_address->l_address &= all_mem;
+    }
+}
 
-    if (arguments.quiet)
-    fprintf(stdout,"6502/65C02 Turbo Assembler Version 1.3  Copyright (c) 1997 Taboo Productions\n"
-                   "6502/65C02 Turbo Assembler Version 1.35 ANSI C port by [BiGFooT/BReeZe^2000]\n"
-                   "6502/65C02/65816/CPU64/DTV TASM Version 1.46 r38 Fixing by Soci/Singular 2001-2010\n"
-                   "64TASS comes with ABSOLUTELY NO WARRANTY; This is free software, and you\n"
-                   "are welcome to redistribute it under certain conditions; See LICENSE!\n");
-    
-    if (arguments.cpumode==OPCODES_65816 || arguments.cpumode==OPCODES_CPU64) all_mem=0xffffff;
-    else all_mem=0x00ffff;
-    full_mem=all_mem;
+static void section_close(linepos_t epoint) {
+    if (waitfor->u.cmd_section.label != NULL) {
+        set_size(waitfor->u.cmd_section.label, current_address->address - waitfor->u.cmd_section.addr, current_address->mem, waitfor->u.cmd_section.addr, waitfor->u.cmd_section.membp);
+        val_destroy(Obj(waitfor->u.cmd_section.label));
+    }
+    current_section = waitfor->u.cmd_section.section;
+    current_address = waitfor->u.cmd_section.section_address;
+    if (current_address->l_address > all_mem) {
+        if (epoint != NULL) err_msg_big_address(epoint);
+        current_address->l_address &= all_mem;
+    }
+}
 
-    if (arguments.quiet) fprintf(stdout,"\nAssembling file:   %s\n",arguments.input);
+static void union_close(linepos_t epoint) {
+    address_t end;
+    current_address->unionmode = waitfor->u.cmd_union.unionmode;
+    current_address->l_union = waitfor->u.cmd_union.laddr;
+    current_address->start = waitfor->u.cmd_union.addr;
+    end = (current_address->address < current_address->end) ? current_address->end : current_address->address;
+    current_address->end = (waitfor->u.cmd_union.addr2 > end) ? waitfor->u.cmd_union.addr2 : end;
+    if (end > current_address->address) {
+        current_address->wrapwarn = false;
+        current_address->bankwarn = false;
+        memskip(end - current_address->address, epoint);
+    }
+}
 
-    if (!(mem64=malloc(all_mem+1))) err_msg(ERROR_OUT_OF_MEMORY,NULL);
-    if (arguments.nonlinear) if (!(mmap=malloc((all_mem+1) >> 3))) err_msg(ERROR_OUT_OF_MEMORY,NULL);
-//   memset(mem64,0,all_mem+1);
-    if (arguments.nonlinear) memset(mmap,0,(all_mem+1) >> 3);
+static void encode_close(void) {
+    val_destroy(Obj(actual_encoding));
+    actual_encoding = waitfor->u.cmd_encode.enc;
+}
+
+static const char *check_waitfor(void) {
+    switch (waitfor->what) {
+    case W_FI2:
+    case W_FI: 
+        if (waitfor->u.cmd_if.label != NULL) {set_size(waitfor->u.cmd_if.label, current_address->address - waitfor->u.cmd_if.addr, current_address->mem, waitfor->u.cmd_if.addr, waitfor->u.cmd_if.membp);val_destroy(Obj(waitfor->u.cmd_if.label));}
+        return ".endif";
+    case W_SWITCH2:
+    case W_SWITCH:
+        if (waitfor->u.cmd_switch.label != NULL) {set_size(waitfor->u.cmd_switch.label, current_address->address - waitfor->u.cmd_switch.addr, current_address->mem, waitfor->u.cmd_switch.addr, waitfor->u.cmd_switch.membp);val_destroy(Obj(waitfor->u.cmd_switch.label));}
+        if (waitfor->u.cmd_switch.val != NULL) val_destroy(waitfor->u.cmd_switch.val);
+        return ".endswitch";
+    case W_WEAK2:
+        if (waitfor->u.cmd_weak.label != NULL) {set_size(waitfor->u.cmd_weak.label, current_address->address - waitfor->u.cmd_weak.addr, current_address->mem, waitfor->u.cmd_weak.addr, waitfor->u.cmd_weak.membp);val_destroy(Obj(waitfor->u.cmd_weak.label));}
+        strength--;
+        FALL_THROUGH; /* fall through */
+    case W_WEAK: return ".endweak";
+    case W_ENDP2:
+        if (waitfor->u.cmd_page.label != NULL) {set_size(waitfor->u.cmd_page.label, current_address->address - waitfor->u.cmd_page.addr, current_address->mem, waitfor->u.cmd_page.addr, waitfor->u.cmd_page.membp);val_destroy(Obj(waitfor->u.cmd_page.label));}
+        FALL_THROUGH; /* fall through */
+    case W_ENDP: return ".endpage";
+    case W_ENDSEGMENT:
+        if (waitfor->u.cmd_macro.val != NULL) val_destroy(waitfor->u.cmd_macro.val);
+        return ".endsegment";
+    case W_ENDMACRO:
+        if (waitfor->u.cmd_macro.val != NULL) val_destroy(waitfor->u.cmd_macro.val);
+        return ".endmacro";
+    case W_ENDF: 
+        if (waitfor->u.cmd_function.val != NULL) val_destroy(waitfor->u.cmd_function.val);
+        return ".endfunction";
+    case W_ENDFOR3:
+        pop_context();
+        FALL_THROUGH; /* fall through */
+    case W_ENDFOR: return ".endfor";
+    case W_ENDREPT3:
+        pop_context();
+        FALL_THROUGH; /* fall through */
+    case W_ENDREPT: return ".endrept";
+    case W_ENDWHILE3:
+        pop_context();
+        FALL_THROUGH; /* fall through */
+    case W_ENDWHILE: return ".endwhile";
+    case W_PEND:
+        pop_context();
+        if (waitfor->u.cmd_proc.label != NULL) {set_size(waitfor->u.cmd_proc.label, current_address->address - waitfor->u.cmd_proc.addr, current_address->mem, waitfor->u.cmd_proc.addr, waitfor->u.cmd_proc.membp);val_destroy(Obj(waitfor->u.cmd_proc.label));}
+        return ".endproc";
+    case W_BEND2:
+        if (waitfor->u.cmd_block.label != NULL) {set_size(waitfor->u.cmd_block.label, current_address->address - waitfor->u.cmd_block.addr, current_address->mem, waitfor->u.cmd_block.addr, waitfor->u.cmd_block.membp);val_destroy(Obj(waitfor->u.cmd_block.label));}
+        FALL_THROUGH; /* fall through */
+    case W_BEND:
+        pop_context();
+        return ".endblock";
+    case W_ENDN2:
+    case W_ENDN:
+        pop_context();
+        return ".endnamespace";
+    case W_ENDWITH2:
+        pop_context2();
+        FALL_THROUGH; /* fall through */
+    case W_ENDWITH:
+        if (waitfor->u.cmd_with.label != NULL) {set_size(waitfor->u.cmd_with.label, current_address->address - waitfor->u.cmd_with.addr, current_address->mem, waitfor->u.cmd_with.addr, waitfor->u.cmd_with.membp);val_destroy(Obj(waitfor->u.cmd_with.label));}
+        return ".endwith";
+    case W_ENDENCODE2:
+        encode_close();
+        FALL_THROUGH; /* fall through */
+    case W_ENDENCODE: return ".endencode";
+    case W_ENDC: return ".endcomment";
+    case W_ENDS:
+        if ((waitfor->skip & 1) != 0) current_address->unionmode = waitfor->u.cmd_struct.unionmode;
+        FALL_THROUGH; /* fall through */
+    case W_ENDS2: return ".endstruct";
+    case W_SEND2:
+        section_close(NULL);
+        FALL_THROUGH; /* fall through */
+    case W_SEND: return ".endsection";
+    case W_ENDU:
+        if ((waitfor->skip & 1) != 0) union_close(&lpoint);
+        FALL_THROUGH; /* fall through */
+    case W_ENDU2: return ".endunion";
+    case W_HERE2:
+        logical_close(NULL);
+        FALL_THROUGH; /* fall through */
+    case W_HERE: return ".endlogical";
+    case W_ENDV2:
+        virtual_close(NULL);
+        FALL_THROUGH; /* fall through */
+    case W_ENDV: return ".endvirtual";
+    case W_ENDU3:
+    case W_ENDS3:
+    case W_ENDSEGMENT2:
+    case W_ENDMACRO2:
+    case W_ENDF2:
+    case W_ENDF3:
+    case W_ENDFOR2:
+    case W_ENDREPT2:
+    case W_ENDWHILE2:
+    case W_NONE:
+        break;
+    }
+    return NULL;
+}
+
+static bool section_start(linepos_t epoint) {
+    struct section_s *tmp;
+    str_t sectionname;
+    struct linepos_s opoint;
+
+    new_waitfor(W_SEND, epoint);waitfor->u.cmd_section.section = current_section;waitfor->u.cmd_section.section_address = current_address;
+    opoint = lpoint;
+    sectionname.data = pline + lpoint.pos; sectionname.len = get_label(sectionname.data);
+    if (sectionname.len == 0) {err_msg2(ERROR_LABEL_REQUIRE, NULL, &opoint); return true;}
+    lpoint.pos += (linecpos_t)sectionname.len;
+    tmp = find_new_section(&sectionname);
+    if (tmp->usepass == 0 || tmp->defpass < pass - 1) {
+        address_t ln = tmp->address.mem->mem.p;
+        size_t ln2 = tmp->address.mem->p;
+        tmp->address.end = tmp->address.start = tmp->restart = tmp->address.address = current_address->address;
+        tmp->size = 0; tmp->l_restart = tmp->address.l_address = current_address->l_address;
+        if (tmp->usepass != 0 && tmp->usepass >= pass - 1) err_msg_not_defined(&sectionname, &opoint);
+        else {
+            if (fixeddig && pass > max_pass) err_msg_cant_calculate(&sectionname, epoint);
+            fixeddig = false;
+        }
+        tmp->defpass = (uint8_t)(pass - 1);
+        val_destroy(Obj(tmp->address.mem));
+        tmp->address.mem = new_memblocks(ln, ln2);
+        tmp->address.mem->lastaddr = tmp->address.address;
+        tmp->address.mem->section = tmp;
+        if (diagnostics.optimize) cpu_opt_invalidate();
+    } else if (tmp->usepass != pass) {
+        address_t ln = tmp->address.mem->mem.p;
+        size_t ln2 = tmp->address.mem->p;
+        if (!tmp->address.moved) {
+            if (tmp->address.end < tmp->address.address) tmp->address.end = tmp->address.address;
+            tmp->address.moved = true;
+        }
+        tmp->size = tmp->address.end - tmp->address.start;
+        tmp->address.end = tmp->address.start = tmp->restart;
+        tmp->address.wrapwarn = false;
+        tmp->address.bankwarn = false;
+        tmp->address.address = tmp->restart;
+        tmp->address.l_address = tmp->l_restart;
+        val_destroy(Obj(tmp->address.mem));
+        tmp->address.mem = new_memblocks(ln, ln2);
+        tmp->address.mem->lastaddr = tmp->address.address;
+        tmp->address.mem->section = tmp;
+        if (diagnostics.optimize) cpu_opt_invalidate();
+    }
+    tmp->usepass = pass;
+    waitfor->what = W_SEND2;
+    waitfor->u.cmd_section.label = NULL;
+    current_section = tmp;
+    current_address = &tmp->address;
+    return false;
+}
+
+static void address_update(struct section_address_s *section_address, Obj *val) {
+    Obj *tmp = get_star_value(0, val);
+    if (tmp->obj->same(tmp, section_address->l_address_val)) {
+        val_destroy(tmp);
+        return;
+    }
+    val_destroy(section_address->l_address_val);
+    section_address->l_address_val = tmp;
+}
+
+static bool virtual_start(linepos_t epoint) {
+    struct section_address_s *section_address;
+    Obj *tmp = NULL;
+    bool retval = false;
+
+    if (diagnostics.optimize) cpu_opt_invalidate();
+    listing_line(epoint->pos);
+    new_waitfor(W_ENDV2, epoint); waitfor->u.cmd_virtual.section_address = current_address; waitfor->u.cmd_virtual.label = NULL;
+    new_instance(&section_address);
+    section_address->wrapwarn = section_address->moved = false;
+    section_address->bankwarn = false;
 
     do {
-        if (pass++>20) {fprintf(stderr,"Ooops! Too many passes...\n");exit(1);}
-        set_cpumode(arguments.cpumode);
-	address=l_address=databank=dpage=longaccu=longindex=0;low_mem=full_mem;top_mem=0;encoding=0;wrapwarn=0;wrapwarn2=0;
-        current_provides=0xffffffff;current_requires=0;current_conflicts=0;macrecursion=0;allowslowbranch=1;
-        fixeddig=1;waitfor[waitforp=0]=0;skipit[0]=1;sline=0;procname[0]=0;conderrors=warnings=0;freeerrorlist(0);
-        /*	listing=1;flist=stderr;*/
-        enterfile(arguments.input,0);
-        sline=0;
-        compile(arguments.input,0,0,"",-1,NULL);
-        exitfile();
-        if (errors) {status();return 1;}
-        if (conderrors && !arguments.list && pass==1) fixeddig=0;
-    } while (!fixeddig || (pass==1 && !arguments.list));
+        struct values_s *vs;
+        atype_t am;
+        uval_t uval;
 
-    if (arguments.list) {
-        listing=1;
-        if (!(flist=fopen(arguments.list,"wt"))) err_msg(ERROR_CANT_DUMP_LST,arguments.list);
-	fprintf(flist,"\n;6502/65C02/65816/CPU64/DTV Turbo Assembler V1.46 r38 listing file of \"%s\"\n",arguments.input);
-	time(&t);
-        fprintf(flist,";done on %s\n",ctime(&t));
+        if (!get_exp(0, 0, 1, epoint)) {retval = true;break;}
+        vs = get_val();
+        if (vs == NULL) break;
+        if (touaddress(vs->val, &uval, all_mem_bits, &vs->epoint)) {retval = true; break;}
+        am = vs->val->obj->address(vs->val);
+        if (am != A_NONE && check_addr(am)) {
+            err_msg_output_and_destroy(err_addressing(am, &vs->epoint, -1));
+            retval = true;
+            break;
+        }
+        tmp = vs->val;
+        section_address->address = uval;
+        section_address->l_address = uval & all_mem;
+        section_address->l_address_val = get_star_value(0, tmp);
+    } while (false);
 
-        pass++;
-        set_cpumode(arguments.cpumode);
-	address=l_address=databank=dpage=longaccu=longindex=0;low_mem=full_mem;top_mem=0;encoding=0;wrapwarn=0;wrapwarn2=0;
-        current_provides=0xffffffff;current_requires=0;current_conflicts=0;macrecursion=0;allowslowbranch=1;
-        fixeddig=1;waitfor[waitforp=0]=0;skipit[0]=1;sline=0;procname[0]=0;conderrors=warnings=0;freeerrorlist(0);
-        enterfile(arguments.input,0);
-        sline=0;
-        compile(arguments.input,0,0,"",-1,NULL);
-        exitfile();
+    if (tmp == NULL) {
+        section_address->address = current_address->address;
+        section_address->l_address = current_address->l_address;
+        section_address->l_address_val = val_reference(current_address->l_address_val);
+    }
+    section_address->unionmode = current_address->unionmode;
+    section_address->l_start = current_address->l_start;
+    section_address->l_union = current_address->l_union;
+    section_address->start = section_address->end = section_address->address;
+    section_address->mem = new_memblocks(0, 0);
+    section_address->mem->lastaddr = section_address->address;
+    current_address = section_address;
+    return retval;
+}
 
-	fprintf(flist,"\n;******  end of code\n");
-	fclose(flist);
+static void starhandle(Obj *val, linepos_t epoint, linepos_t epoint2) {
+    uval_t uval;
+    atype_t am;
+    address_t addr, laddr;
+
+    current_address->wrapwarn = false;
+    current_address->bankwarn = false;
+    if (!current_address->moved) {
+        if (current_address->end < current_address->address) current_address->end = current_address->address;
+        current_address->moved = true;
+    }
+    listing_line(epoint->pos);
+    do {
+        {
+            address_t max = (all_mem2 == 0xffffffff && current_section->logicalrecursion == 0) ? all_mem2 : all_mem;
+            if (touaddress(val, &uval, (max == 0xffff) ? 16 : (max == 0xffffff) ? 24 : 32, epoint2)) {
+                break;
+            }
+        }
+        am = val->obj->address(val);
+        if (am != A_NONE && check_addr(am)) {
+            err_msg_output_and_destroy(err_addressing(am, epoint2, -1));
+            break;
+        }
+        if (all_mem2 == 0xffffffff && current_section->logicalrecursion == 0) {
+            current_address->l_address = uval & all_mem;
+            address_update(current_address, val);
+            val_destroy(val);
+            addr = uval & all_mem2;
+            if (current_address->address != addr) {
+                current_address->address = addr;
+                memjmp(current_address->mem, current_address->address);
+            }
+            return;
+        }
+        laddr = current_address->l_address;
+        addr = uval & all_mem;
+        if (arguments.tasmcomp) addr = (uint16_t)addr;
+        else if (addr >= laddr) {
+            addr = (current_address->address + (addr - laddr)) & all_mem2;
+        } else {
+            addr = (current_address->address - (laddr - addr)) & all_mem2;
+        }
+        if (current_address->address != addr) {
+            current_address->address = addr;
+            memjmp(current_address->mem, current_address->address);
+        }
+        current_address->l_address = uval & all_mem;
+        address_update(current_address, val);
+        val_destroy(val);
+        return;
+    } while (false);
+    val_destroy(val);
+}
+
+static Oper_types oper_from_token(int wht) {
+    switch (wht) {
+    case 'X':
+        if (arguments.caseinsensitive == 0) {
+            return O_NONE;
+        }
+        FALL_THROUGH; /* fall through */
+    case 'x': return O_X;
+    case '*': return O_MUL;
+    case '+': return O_ADD;
+    case '-': return O_SUB;
+    case '/': return O_DIV;
+    case '%': return O_MOD;
+    case '|': return O_OR;
+    case '&': return O_AND;
+    case '^': return O_XOR;
+    case '.': return O_MEMBER;
+    default: return O_NONE;
+    }
+}
+
+static Oper_types oper_from_token2(int wht, int wht2) {
+    if (wht == wht2) {
+        switch (wht) {
+        case '&': return O_LAND;
+        case '|': return O_LOR;
+        case '>': return O_RSHIFT;
+        case '<': return O_LSHIFT;
+        case '.': return O_CONCAT;
+        case '*': return O_EXP;
+        case ':': return O_REASSIGN;
+        default: return O_NONE;
+        }
+    }
+    if (wht2 == '?') {
+        switch (wht) {
+        case '<': return O_MIN;
+        case '>': return O_MAX;
+        case ':': return O_COND;
+        default: return O_NONE;
+        }
+    }
+    return O_NONE;
+}
+
+static MUST_CHECK Obj *tuple_scope_light(Obj **o, linepos_t epoint) {
+    Obj *nf, *val = *o;
+    if (val->obj != NAMESPACE_OBJ) {
+        val_destroy(val);
+        *o = val = Obj(new_namespace(current_file_list, epoint));
+    } else {
+        Namespace *names = Namespace(val);
+        names->backr = names->forwr = 0;
+        names->file_list = current_file_list;
+        names->epoint = *epoint;
+    }
+    push_context(Namespace(val));
+    nf = compile();
+    pop_context();
+    return nf;
+}
+
+static void update_code(Label *newlabel, Code *code) {
+    Obj *tmp;
+    if (current_address->bankwarn) {err_msg_pc_bank(&newlabel->epoint);current_address->bankwarn = false;}
+    tmp = current_address->l_address_val;
+    if (!tmp->obj->same(tmp, code->typ)) {
+        val_destroy(code->typ); code->typ = val_reference(tmp);
+        if (newlabel->usepass >= pass) {
+            if (fixeddig && pass > max_pass) err_msg_cant_calculate(&newlabel->name, &newlabel->epoint);
+            fixeddig = false;
+        }
+    }
+    if (code->addr != star || code->requires != current_section->requires || code->conflicts != current_section->conflicts || code->offs != 0) {
+        code->addr = star;
+        code->requires = current_section->requires;
+        code->conflicts = current_section->conflicts;
+        code->offs = 0;
+        if (newlabel->usepass >= pass) {
+            if (fixeddig && pass > max_pass) err_msg_cant_calculate(&newlabel->name, &newlabel->epoint);
+            fixeddig = false;
+        }
+    }
+    code->names->backr = code->names->forwr = 0;
+    code->names->file_list = current_file_list;
+    code->names->epoint = newlabel->epoint;
+    code->apass = pass;
+}
+
+static MUST_CHECK Code *create_code(linepos_t epoint) {
+    Code *code;
+    if (current_address->bankwarn) {err_msg_pc_bank(epoint);current_address->bankwarn = false;}
+    code = new_code();
+    code->addr = star;
+    code->typ = val_reference(current_address->l_address_val);
+    code->size = 0;
+    code->offs = 0;
+    code->dtype = D_NONE;
+    code->pass = 0;
+    code->apass = pass;
+    code->memblocks = ref_memblocks(current_address->mem);
+    code->names = new_namespace(current_file_list, epoint);
+    code->requires = current_section->requires;
+    code->conflicts = current_section->conflicts;
+    return code;
+}
+
+static MUST_CHECK Obj *tuple_scope(Label *newlabel, Obj **o) {
+    Obj *nf;
+    address_t size;
+    Code *code;
+    address_t oaddr;
+    size_t newmembp;
+    Obj *val = *o;
+
+    if (diagnostics.optimize && newlabel->ref) cpu_opt_invalidate();
+    oaddr = current_address->address;
+    if (val->obj == CODE_OBJ) {
+        code = Code(val);
+        update_code(newlabel, code);
+    } else {
+        val_destroy(val);
+        code = create_code(&newlabel->epoint);
+        *o = Obj(code);
+    }
+    newmembp = get_mem(current_address->mem);
+    push_context(code->names);
+    nf = compile();
+    pop_context();
+    size = (current_address->address - oaddr) & all_mem2;
+    if (code->size != size) {
+        code->size = size;
+        if (code->pass != 0) {
+            if (fixeddig && pass > max_pass) err_msg_cant_calculate(&newlabel->name, &newlabel->epoint);
+            fixeddig = false;
+        }
+    }
+    code->pass = pass;
+    if (code->memblocks != current_address->mem) {
+        val_destroy(Obj(code->memblocks));
+        code->memblocks = ref_memblocks(current_address->mem);
+    }
+    code->memaddr = oaddr;
+    code->membp = newmembp;
+    return nf;
+}
+
+static MUST_CHECK bool list_extend2(List *lst) {
+    size_t o;
+    Obj **vals;
+    if (list_extend(lst)) return true;
+    o = lst->len;
+    vals = lst->data;
+    while (o < lst->u.s.max) vals[o++] = ref_none();
+    lst->len = o;
+    return false;
+}
+
+static size_t for_command(Label *newlabel, List *lst, linepos_t epoint) {
+    int wht;
+    linenum_t lin;
+    int nopos = -1;
+    struct linepos_s epoint2, epoint3;
+    uint8_t *expr, *expr2;
+    struct {
+        size_t p, len;
+        Label **data;
+        Label *val[4];
+    } labels;
+    Label *label;
+    Obj *val, *nf = NULL;
+    struct star_s *s, *stree_old;
+    bool foreach = false;
+    struct iter_s iter;
+    size_t i = 0;
+    labels.p = 0;
+    iter.data = NULL;
+
+    if (diagnostics.optimize) cpu_opt_invalidate();
+    if (lst != NULL && newlabel != NULL) listing_equal2(Obj(lst), epoint->pos);
+    else listing_line(epoint->pos);
+
+    do { /* label */
+        str_t varname;
+        epoint2 = lpoint;
+
+        varname.data = pline + lpoint.pos; varname.len = get_label(varname.data);
+        if (varname.len == 0) break;
+        lpoint.pos += (linecpos_t)varname.len;
+        if (varname.len > 1 && varname.data[0] == '_' && varname.data[1] == '_') {err_msg2(ERROR_RESERVED_LABL, &varname, &epoint2); goto error;}
+        ignore(); wht = here();
+        if (wht == ',') {
+            lpoint.pos++;
+            foreach = true;
+            val = ref_none();
+        } else {
+            if (wht != '=' || foreach) {
+                if (wht == ':' && pline[lpoint.pos + 1] == '=' && !arguments.tasmcomp && !foreach) lpoint.pos += 2;
+                else {
+                    if ((pline[lpoint.pos] | arguments.caseinsensitive) != 'i' || (pline[lpoint.pos+1] | arguments.caseinsensitive) != 'n' || get_label(pline + lpoint.pos) != 2) {
+                        err_msg(ERROR______EXPECTED, foreach ? "',' or 'in'" : "':=' or ',' or 'in'"); goto error;
+                    }
+                    lpoint.pos += 2;
+                    foreach = true;
+                }
+            } else lpoint.pos++;
+            if (foreach) {
+                ignore();
+                epoint3 = lpoint;
+                if (!get_exp(0, 1, 0, &epoint3)) goto error;
+                val = get_vals_tuple();
+                if (val->obj == ERROR_OBJ) {
+                    err_msg_output(Error(val));
+                } else if (val->obj->getiter == DEFAULT_OBJ->getiter) {
+                    if (val != none_value) {
+                        Obj *err = new_error_obj(ERROR______NOT_ITER, val, &epoint3);
+                        val_destroy(val); val = err;
+                        err_msg_output(Error(val));
+                    }
+                } else {
+                    iter.data = val; val->obj->getiter(&iter);
+                }
+                val_destroy(val); val = ref_none();
+            } else {
+                if (!get_exp(1, 1, 1, &lpoint)) goto error;
+                val = pull_val();
+            }
+        }
+        label = new_label(&varname, (varname.data[0] == '_') ? cheap_context : current_context, strength, current_file_list);
+        if (label->value != NULL) {
+            if (label->constant) {
+                err_msg_double_defined(label, &varname, &epoint2);
+                val_destroy(val);
+            } else {
+                if (label->defpass != pass) {
+                    label->ref = false;
+                    label->defpass = pass;
+                } else {
+                    if (diagnostics.unused.variable && label->usepass != pass) err_msg_unused_variable(label);
+                }
+                label->owner = false;
+                if (label->file_list != current_file_list) {
+                    label_move(label, &varname, current_file_list);
+                }
+                label->epoint = epoint2;
+                val_destroy(label->value);
+                label->value = val;
+                label->usepass = 0;
+            }
+        } else {
+            label->constant = false;
+            label->owner = false;
+            label->value = val;
+            label->epoint = epoint2;
+        }
+        if (foreach) {
+            if (labels.p == 0) {
+                labels.len = lenof(labels.val);
+                labels.data = labels.val;
+            } else if (labels.p >= labels.len) {
+                if (inc_overflow(&labels.len, 16)) err_msg_out_of_memory();
+                if (labels.data == labels.val) {
+                    new_array(&labels.data, labels.len);
+                    memcpy(labels.data, labels.val, sizeof labels.val);
+                } else {
+                    resize_array(&labels.data, labels.len);
+                }
+            }
+            labels.data[labels.p++] = label;
+        }
+        ignore();
+    } while (wht == ',');
+    
+    if (foreach) {
+        if (here() != 0 && here() != ';') err_msg(ERROR_EXTRA_CHAR_OL,NULL);
+    } else {
+        if (here() != ',') {err_msg(ERROR______EXPECTED, "','");
+        error:
+            if (labels.p != 0 && labels.data != labels.val) free(labels.data);
+            new_waitfor(W_ENDFOR, epoint); waitfor->skip = 0;
+            return i;
+        }
+        lpoint.pos++;ignore();
     }
 
-    set_cpumode(arguments.cpumode);
-
-    if (arguments.label) labelprint();
-
-    if (errors || conderrors) {status();return 1;}
-
-    if (low_mem<=top_mem) {
-	if ((fout=fopen(arguments.output,"wb"))==NULL) err_msg(ERROR_CANT_WRTE_OBJ,arguments.output);
-	if (arguments.nonlinear) {
-	    unsigned long bl_adr=low_mem, bl_len;
-	    while (bl_adr<=top_mem) {
-		while (bl_adr<full_mem && !(mmap[(bl_adr)>>3] & (1<<((bl_adr) & 7)))) bl_adr++;
-		bl_len=bl_adr;
-		while (bl_len<full_mem && (mmap[(bl_len)>>3] & (1<<((bl_len) & 7)))) bl_len++;
-		bl_len-=bl_adr;
-		fputc(bl_len,fout);
-		fputc(bl_len >> 8,fout);
-		if (scpumode || cpu64mode) fputc(bl_len >> 16,fout);
-		fputc(bl_adr,fout);
-		fputc(bl_adr >> 8,fout);
-		if (scpumode || cpu64mode) fputc(bl_adr >> 16,fout);
-		if (fwrite(mem64+bl_adr,bl_len,1,fout)==0) err_msg(ERROR_CANT_WRTE_OBJ,arguments.output);
-		bl_adr+=bl_len;
-	    }
-	    bl_len=0;
-	    fwrite(&bl_len,2+scpumode+cpu64mode,1,fout);
-	}
-	else {
-	    if (!arguments.stripstart) {
-		fputc(low_mem,fout);
-		fputc(low_mem >> 8,fout);
-		if ((scpumode || cpu64mode) && arguments.wordstart) fputc(low_mem >> 16,fout);
-	    }
-	    if (fwrite(mem64+low_mem,top_mem-low_mem+1,1,fout)==0) err_msg(ERROR_CANT_WRTE_OBJ,arguments.output);
-	}
-	if (fclose(fout)) err_msg(ERROR_CANT_WRTE_OBJ,arguments.output);
-	status();
-	return 0;
+    s = new_star(vline); stree_old = star_tree;
+    if (s->pass != 0 && s->addr != star) {
+        if (fixeddig && pass > max_pass) err_msg_cant_calculate(NULL, epoint);
+        fixeddig = false;
     }
-    return 0;
+    s->addr = star;
+    star_tree->vline = vline; star_tree = s; vline = s->vline;
+    lin = lpoint.line;
+
+    new_waitfor(W_ENDFOR2, epoint);
+    if (foreach) {
+        waitfor->u.cmd_rept.breakout = false;
+        if (iter.data != NULL) {
+            Obj *val2;
+
+            while ((val2 = iter.next(&iter)) != NULL) {
+                if (nopos < 0) nopos = 0;
+                else if ((waitfor->skip & 1) != 0) listing_line_cut(waitfor->epoint.pos);
+                if (labels.p == 1) {
+                    val_destroy(label->value);
+                    label->value = val_reference(val2);
+                } else {
+                    struct iter_s iter2;
+                    size_t j;
+                    iter2.data = val2; val2->obj->getiter(&iter2);
+                    for (j = 0; j < labels.p && (val2 = iter2.next(&iter2)) != NULL; j++) {
+                        val_destroy(labels.data[j]->value);
+                        labels.data[j]->value = val_reference(val2);
+                    }
+                    if (iter2.len != labels.p) err_msg_cant_unpack(labels.p, iter2.len, epoint);
+                    iter_destroy(&iter2);
+                }
+                lpoint.line = lin;
+                waitfor->skip = 1;
+                if (lst != NULL) {
+                    if (i >= lst->len && list_extend2(lst)) {i = lst->len - 1; err_msg2(ERROR_OUT_OF_MEMORY, NULL, epoint); nf = NULL;}
+                    else if (newlabel == NULL) nf = tuple_scope_light(&lst->data[i], epoint);
+                    else nf = tuple_scope(newlabel, &lst->data[i]);
+                    i++;
+                } else nf = compile();
+                if (nf == NULL || waitfor->u.cmd_rept.breakout) {
+                    break;
+                }
+            }
+            iter_destroy(&iter);
+        }
+        if (labels.p != 0 && labels.data != labels.val) free(labels.data);
+        expr = expr2 = NULL;
+    } else {
+        struct linepos_s apoint = lpoint, bpoint = {0, 0};
+        linenum_t xlin = lpoint.line;
+        struct oper_s tmp;
+        const uint8_t *oldpline = pline, *oldpline2 = pline;
+        uint8_t skip = 0;
+        expr2 = (uint8_t *)oldpline2;
+        if (not_in_file(pline, current_file_list->file)) {
+            size_t lentmp = strlen((const char *)pline) + 1;
+            new_array(&expr, lentmp);
+            memcpy(expr, pline, lentmp);
+            pline = expr;
+        } else expr = (uint8_t *)oldpline;
+        label = NULL;
+        waitfor->u.cmd_rept.breakout = false;
+        tmp.op = O_NONE;
+        for (;;) {
+            if (here() != ',' && here() != 0) {
+                bool truth;
+                if (!get_exp(1, 1, 1, &apoint) || tobool(get_val(), &truth) || !truth) {
+                    waitfor->skip = skip;
+                    break;
+                }
+            }
+            if (nopos < 0) {
+                ignore();if (here() != ',') {err_msg(ERROR______EXPECTED, "','"); waitfor->skip = skip; break;}
+                lpoint.pos++;ignore();
+                oldpline2 = pline;
+                if (pline != expr && not_in_file(pline, current_file_list->file)) {
+                    size_t lentmp = strlen((const char *)pline) + 1;
+                    new_array(&expr2, lentmp);
+                    memcpy(expr2, pline, lentmp);
+                    pline = expr2;
+                } else expr2 = (uint8_t *)oldpline2;
+                if (here() == 0 || here() == ';') {bpoint.pos = 0; nopos = 0;}
+                else bpoint = lpoint;
+            } else {
+                if ((skip & 1) != 0) listing_line_cut(waitfor->epoint.pos);
+            }
+            if (lst != NULL) {
+                if (i >= lst->len && list_extend2(lst)) { i = lst->len - 1; err_msg2(ERROR_OUT_OF_MEMORY, NULL, epoint); nf = NULL; }
+                else if (newlabel == NULL) nf = tuple_scope_light(&lst->data[i], epoint);
+                else nf = tuple_scope(newlabel, &lst->data[i]);
+                i++;
+            } else nf = compile();
+            xlin = lpoint.line;
+            if (nf == NULL || waitfor->u.cmd_rept.breakout) break;
+            pline = expr2;
+            if (nopos < 0) {
+                str_t varname;
+                Namespace *context;
+                lpoint = bpoint;
+                varname.data = pline + lpoint.pos; varname.len = get_label(varname.data);
+                if (varname.len == 0) {err_msg2(ERROR_LABEL_REQUIRE, NULL, &bpoint);break;}
+                lpoint.pos += (linecpos_t)varname.len;
+                if (varname.len > 1 && varname.data[0] == '_' && varname.data[1] == '_') {err_msg2(ERROR_RESERVED_LABL, &varname, &bpoint); break;}
+                ignore(); wht = here();
+                while (wht != 0 && !arguments.tasmcomp) {
+                    int wht2 = pline[lpoint.pos + 1];
+                    if (wht2 == '=') {
+                        Oper_types op;
+                        if (wht == ':') {
+                            wht = '=';
+                            lpoint.pos++;
+                            break;
+                        }
+                        op = oper_from_token(wht);
+                        if (op == O_NONE) break;
+                        tmp.op = op;
+                        epoint3 = lpoint;
+                        lpoint.pos += 2;
+                    } else if (wht2 != 0 && pline[lpoint.pos + 2] == '=') {
+                        Oper_types op;
+                        op = oper_from_token2(wht, wht2);
+                        if (op == O_COND) op = O_NONE;
+                        if (op == O_NONE) break;
+                        tmp.op = op;
+                        epoint3 = lpoint;
+                        lpoint.pos += 3;
+                    } else break;
+
+                    ignore();
+                    epoint2 = lpoint;
+                    tmp.epoint = &bpoint;
+                    tmp.epoint2 = &epoint2;
+                    tmp.epoint3 = &epoint3;
+                    break;
+                }
+                context = (varname.data[0] == '_') ? cheap_context : current_context;
+                if (tmp.op == O_NONE) {
+                    if (wht != '=') {err_msg(ERROR______EXPECTED, "':='"); break;}
+                    lpoint.pos++;ignore();
+                    label = new_label(&varname, context, strength, current_file_list);
+                    if (label->value != NULL) {
+                        if (label->constant) { err_msg_double_defined(label, &varname, &bpoint); break; }
+                        if (label->defpass != pass) {
+                            label->ref = false;
+                            label->defpass = pass;
+                        } else {
+                            if (diagnostics.unused.variable && label->usepass != pass) err_msg_unused_variable(label);
+                        }
+                        label->owner = false;
+                        if (label->file_list != current_file_list) {
+                            label_move(label, &varname, current_file_list);
+                        }
+                        label->epoint = bpoint;
+                    } else {
+                        label->constant = false;
+                        label->owner = false;
+                        label->value = ref_none();
+                        label->epoint = bpoint;
+                    }
+                } else {
+                    label = (varname.data[0] == '_') ? find_label2(&varname, context) : find_label(&varname, NULL);
+                    if (label == NULL) {err_msg_not_defined2(&varname, context, false, &bpoint); break;}
+                    if (label->constant) {err_msg_not_variable(label, &varname, &bpoint); break;}
+                    if (diagnostics.case_symbol && str_cmp(&varname, &label->name) != 0) err_msg_symbol_case(&varname, label, &bpoint);
+                }
+                bpoint = lpoint; nopos = 1;
+            }
+            skip = waitfor->skip;
+            waitfor->skip = 1;
+            if (nopos > 0) {
+                lpoint = bpoint;
+                if (here() == 0 || here() == ';') {
+                    err_msg(ERROR______EXPECTED, "an expression is");
+                    break;
+                }
+                if (!get_exp(0, 1, 0, &bpoint)) break;
+                val = get_vals_tuple();
+                if (tmp.op != O_NONE && tmp.op != O_REASSIGN) {
+                    bool minmax = (tmp.op == O_MIN) || (tmp.op == O_MAX);
+                    Obj *result2, *val1 = label->value;
+                    tmp.v1 = val1;
+                    tmp.v2 = val;
+                    tmp.inplace = (tmp.v1->refcount == 1 && !minmax) ? tmp.v1 : NULL;
+                    result2 = tmp.v1->obj->calc2(&tmp);
+                    if (minmax) {
+                        if (result2 == true_value) val_replace(&result2, val1);
+                        else if (result2 == false_value) val_replace(&result2, val);
+                    }
+                    val_destroy(val);
+                    val = result2;
+                }
+                val_destroy(label->value);
+                label->value = val;
+                label->usepass = 0;
+            }
+            pline = expr;
+            lpoint = apoint;
+        }
+        pline = oldpline;
+        if (expr == oldpline) expr = NULL;
+        if (expr2 == oldpline2) expr2 = NULL;
+        lpoint.line = xlin;
+    }
+    if (nf != NULL) {
+        if ((waitfor->skip & 1) != 0) listing_line(waitfor->epoint.pos);
+        else listing_line_cut2(waitfor->epoint.pos);
+        close_waitfor(W_ENDFOR2);
+    } else {
+        waitfor->what = W_ENDFOR; waitfor->skip = 0;
+    }
+    free(expr);
+    free(expr2);
+    s->vline = vline; star_tree = stree_old; vline = star_tree->vline + lpoint.line - lin;
+    return i;
+}
+
+static size_t rept_command(Label *newlabel, List *lst, linepos_t epoint) {
+    uval_t cnt;
+    Obj *nf;
+    size_t i = 0;
+
+    if (diagnostics.optimize) cpu_opt_invalidate();
+    if (lst != NULL && newlabel != NULL) listing_equal2(Obj(lst), epoint->pos);
+    else listing_line(epoint->pos);
+    if (!get_exp(0, 1, 1, epoint)) cnt = 0;
+    else {
+        if (touval2(get_val(), &cnt, 8 * sizeof cnt)) cnt = 0;
+    }
+    if (cnt == 0) {
+        new_waitfor(W_ENDREPT, epoint); waitfor->skip = 0;
+    } else {
+        linenum_t lin = lpoint.line;
+        struct star_s *s = new_star(vline);
+        struct star_s *stree_old = star_tree;
+
+        if (s->pass != 0 && s->addr != star) {
+            if (fixeddig && pass > max_pass) err_msg_cant_calculate(NULL, epoint);
+            fixeddig = false;
+        }
+        s->addr = star;
+        star_tree->vline = vline; star_tree = s; vline = s->vline;
+        new_waitfor(W_ENDREPT2, epoint);
+        waitfor->u.cmd_rept.breakout = false;
+        for (;;) {
+            lpoint.line = lin;
+            if (lst != NULL) {
+                if (i >= lst->len && list_extend2(lst)) { i = lst->len - 1; err_msg2(ERROR_OUT_OF_MEMORY, NULL, epoint); nf = NULL; }
+                else if (newlabel == NULL) nf = tuple_scope_light(&lst->data[i], epoint);
+                else nf = tuple_scope(newlabel, &lst->data[i]);
+                i++;
+            } else nf = compile();
+            if (nf == NULL || waitfor->u.cmd_rept.breakout || (--cnt) == 0) {
+                break;
+            }
+            if ((waitfor->skip & 1) != 0) listing_line_cut(waitfor->epoint.pos);
+            waitfor->skip = 1;
+        }
+        if (nf != NULL) {
+            if ((waitfor->skip & 1) != 0) listing_line(waitfor->epoint.pos);
+            else listing_line_cut2(waitfor->epoint.pos);
+            close_waitfor(W_ENDREPT2);
+        } else {
+            waitfor->what = W_ENDREPT; waitfor->skip = 0;
+        }
+        s->vline = vline; star_tree = stree_old; vline = star_tree->vline + lpoint.line - lin;
+    }
+    return i;
+}
+
+static size_t while_command(Label *newlabel, List *lst, linepos_t epoint) {
+    uint8_t *expr;
+    Obj *nf = NULL;
+    struct star_s *s, *stree_old;
+    size_t i = 0;
+    struct linepos_s apoint;
+    linenum_t xlin;
+    const uint8_t *oldpline;
+    uint8_t skip = 0;
+
+    if (diagnostics.optimize) cpu_opt_invalidate();
+    if (lst != NULL && newlabel != NULL) listing_equal2(Obj(lst), epoint->pos);
+    else listing_line(epoint->pos);
+
+    s = new_star(vline); stree_old = star_tree;
+    if (s->pass != 0 && s->addr != star) {
+        if (fixeddig && pass > max_pass) err_msg_cant_calculate(NULL, epoint);
+        fixeddig = false;
+    }
+    s->addr = star;
+    star_tree->vline = vline; star_tree = s; vline = s->vline;
+
+    apoint = lpoint;
+    xlin = lpoint.line;
+    oldpline = pline;
+    if (not_in_file(pline, current_file_list->file)) {
+        size_t lentmp = strlen((const char *)pline) + 1;
+        new_array(&expr, lentmp);
+        memcpy(expr, pline, lentmp);
+        pline = expr;
+    } else expr = (uint8_t *)oldpline;
+    new_waitfor(W_ENDWHILE2, epoint);
+    waitfor->u.cmd_rept.breakout = false;
+    for (;;) {
+        bool truth;
+        if (!get_exp(1, 1, 1, &apoint) || tobool(get_val(), &truth) || !truth) {
+            waitfor->skip = skip;
+            break;
+        }
+        if ((skip & 1) != 0) listing_line_cut(waitfor->epoint.pos);
+        if (lst != NULL) {
+            if (i >= lst->len && list_extend2(lst)) { i = lst->len - 1; err_msg2(ERROR_OUT_OF_MEMORY, NULL, epoint); nf = NULL; }
+            else if (newlabel == NULL) nf = tuple_scope_light(&lst->data[i], epoint);
+            else nf = tuple_scope(newlabel, &lst->data[i]);
+            i++;
+        } else nf = compile();
+        xlin = lpoint.line;
+        if (nf == NULL || waitfor->u.cmd_rept.breakout) break;
+        skip = waitfor->skip;
+        waitfor->skip = 1;
+        pline = expr;
+        lpoint = apoint;
+    }
+    pline = oldpline;
+    lpoint.line = xlin;
+    
+    if (nf != NULL) {
+        if ((waitfor->skip & 1) != 0) listing_line(waitfor->epoint.pos);
+        else listing_line_cut2(waitfor->epoint.pos);
+        close_waitfor(W_ENDWHILE2);
+    } else {
+        waitfor->what = W_ENDWHILE; waitfor->skip = 0;
+    }
+    if (expr != oldpline) free(expr);
+    s->vline = vline; star_tree = stree_old; vline = star_tree->vline + lpoint.line - apoint.line;
+    return i;
+}
+
+
+static bool cdef_command(linepos_t epoint) {
+    Obj *val;
+    struct character_range_s tmp;
+    Enc *old = actual_encoding;
+    bool rc;
+    argcount_t len;
+    listing_line(epoint->pos);
+    actual_encoding = NULL;
+    rc = get_exp(0, 2, 0, epoint);
+    actual_encoding = old;
+    len = get_val_remaining();
+    if (!rc) return true;
+    for (;;) {
+        bool endok = false;
+        size_t i;
+        bool tryit = true;
+        uval_t uval;
+        struct values_s *vs;
+        linepos_t opoint;
+
+        vs = get_val();
+        if (vs == NULL) break;
+
+        opoint = &vs->epoint;
+        val = vs->val;
+        if (val->obj == STR_OBJ) {
+            Str *str = Str(val);
+            if (str->len == 0) {err_msg2(ERROR__EMPTY_STRING, NULL, &vs->epoint); tryit = false;}
+            else {
+                unichar_t ch = str->data[0];
+                if ((ch & 0x80) != 0) i = utf8in(str->data, &ch); else i = 1;
+                tmp.start = ch;
+                if (str->len > i) {
+                    ch = str->data[i];
+                    if ((ch & 0x80) != 0) i += utf8in(str->data + i, &ch); else i++;
+                    tmp.end = ch & 0xffffff;
+                    endok = true;
+                    if (str->len > i) {err_msg2(ERROR_NOT_TWO_CHARS, NULL, &vs->epoint); tryit = false;}
+                }
+            }
+        } else {
+            if (touval2(vs, &uval, 24)) tryit = false;
+            else tmp.start = uval & 0xffffff;
+        }
+        if (!endok) {
+            vs = get_val();
+            if (vs == NULL) { err_msg_argnum(len, len + 2, 0, epoint); return true; }
+
+            val = vs->val;
+            if (val->obj == STR_OBJ) {
+                Str *str = Str(val);
+                if (str->len == 0) {err_msg2(ERROR__EMPTY_STRING, NULL, &vs->epoint); tryit = false;}
+                else {
+                    unichar_t ch = str->data[0];
+                    if ((ch & 0x80) != 0) i = utf8in(str->data, &ch); else i = 1;
+                    tmp.end = ch & 0xffffff;
+                    if (str->len > i) {err_msg2(ERROR__NOT_ONE_CHAR, NULL, &vs->epoint); tryit = false;}
+                }
+            } else {
+                if (touval2(vs, &uval, 24)) tryit = false;
+                else tmp.end = uval & 0xffffff;
+            }
+        }
+        vs = get_val();
+        if (vs == NULL) { err_msg_argnum(len, len + 1, 0, epoint); return true;}
+        if (touval2(vs, &uval, 8)) {}
+        else if (tryit) {
+            tmp.offset = uval & 0xff;
+            if (tmp.start > tmp.end) {
+                unichar_t tmpe = tmp.start;
+                tmp.start = tmp.end;
+                tmp.end = tmpe & 0xffffff;
+            }
+            if (enc_trans_add(actual_encoding, &tmp, epoint)) {
+                err_msg2(ERROR__DOUBLE_RANGE, NULL, opoint); return true;
+            }
+        }
+    }
+    return false;
+}
+
+static bool edef_command(linepos_t epoint) {
+    Obj *val;
+    Enc *old = actual_encoding;
+    bool rc;
+    argcount_t len;
+    listing_line(epoint->pos);
+    actual_encoding = NULL;
+    rc = get_exp(0, 2, 0, epoint);
+    actual_encoding = old;
+    if (!rc) return true;
+    len = get_val_remaining();
+    for (;;) {
+        struct values_s *vs, *vs2;
+        bool tryit;
+        str_t escape;
+
+        vs = get_val();
+        if (vs == NULL) break;
+        tryit = !tostr(vs, &escape);
+
+        if (tryit && (escape.len == 0 || escape.len > 1024)) {
+            err_msg2(escape.len == 0 ? ERROR__EMPTY_STRING : ERROR_OUT_OF_MEMORY, NULL, &vs->epoint);
+            tryit = false;
+        }
+        vs2 = get_val();
+        if (vs2 == NULL) { err_msg_argnum(len, len + 1, 0, epoint); return true; }
+        val = vs2->val;
+        if (val == none_value) err_msg_still_none(NULL, &vs2->epoint);
+        else if (tryit && enc_escape_add(actual_encoding, &escape, val, &vs2->epoint)) {
+            err_msg2(ERROR_DOUBLE_ESCAPE, NULL, &vs->epoint); return true;
+        }
+    }
+    return false;
+}
+
+static bool tdef_command(linepos_t epoint) {
+    Obj *val;
+    Enc *old = actual_encoding;
+    bool rc;
+    argcount_t len;
+    listing_line(epoint->pos);
+    actual_encoding = NULL;
+    rc = get_exp(0, 2, 0, epoint);
+    actual_encoding = old;
+    if (!rc) return true;
+    len = get_val_remaining();
+    for (;;) {
+        struct character_range_s tmp;
+        struct iter_s iter, iter2;
+        struct values_s *vs, *vs2;
+        bool doublerange;
+        uval_t uval;
+
+        vs = get_val();
+        if (vs == NULL) break;
+        val = vs->val;
+
+        vs2 = get_val();
+        if (vs2 == NULL) { err_msg_argnum(len, len + 1, 0, epoint); return true; }
+        if (vs2->val->obj->iterable) {
+            iter2.data = vs2->val; iter2.data->obj->getiter(&iter2);
+        } else if (touval2(vs2, &uval, 8)) {
+            continue;
+        } else {
+            uval &= 0xff;
+            iter2.data = NULL;
+        }
+        doublerange = false;
+        iter.data = val; 
+        if (val->obj->iterable || val->obj == STR_OBJ) {
+            val->obj->getiter(&iter);
+        } else {
+            DEFAULT_OBJ->getiter(&iter);
+        }
+        if (iter2.data != NULL && iter.len != iter2.len) {
+            Error *err = new_error(ERROR_CANT_BROADCAS, &vs->epoint);
+            err->u.broadcast.v1 = iter.len;
+            err->u.broadcast.v2 = iter2.len;
+            err_msg_output_and_destroy(err);
+        }
+        while ((val = iter.next(&iter)) != NULL) {
+            uval_t uval2;
+            bool ret;
+            actual_encoding = NULL;
+            ret = touval(val, &uval2, 24, &vs->epoint);
+            if (iter2.data != NULL) {
+                val = iter2.next(&iter2);
+                if (val != NULL) {
+                    if (touval(val, &uval, 8, &vs2->epoint)) ret = true;
+                }
+            } else if (uval > 255) {
+                if (uval == 256) {
+                    val = int_from_uval(uval);
+                    if (touval(val, &uval, 8, &vs2->epoint)) ret = true;
+                    val_destroy(val);
+                }
+                ret = true;
+            }
+            actual_encoding = old;
+            if (val == NULL) break;
+            if (!ret) {
+                tmp.offset = uval & 0xff;
+                tmp.end = uval2 & 0xffffff;
+                tmp.start = tmp.end;
+                if (enc_trans_add(actual_encoding, &tmp, &vs2->epoint)) doublerange = true;
+            }
+            uval++;
+        }
+        iter_destroy(&iter);
+        if (iter2.data != NULL) iter_destroy(&iter2);
+        if (doublerange) {
+            err_msg2(ERROR__DOUBLE_RANGE, NULL, &vs->epoint);
+        }
+    }
+    return false;
+}
+
+static Namespace *anonlabel(Namespace *mycontext, uint8_t type, linepos_t epoint) {
+    struct {
+        uint8_t type;
+        uint8_t padding[3];
+        linenum_t vline;
+        struct star_s *star_tree;
+    } anonsymbol;
+    Label *label;
+    str_t tmpname;
+    if (sizeof(anonsymbol) != sizeof(anonsymbol.type) + sizeof(anonsymbol.padding) + sizeof(anonsymbol.star_tree) + sizeof(anonsymbol.vline)) memset(&anonsymbol, 0, sizeof anonsymbol);
+    else anonsymbol.padding[0] = anonsymbol.padding[1] = anonsymbol.padding[2] = 0;
+    anonsymbol.type = type;
+    anonsymbol.star_tree = star_tree;
+    anonsymbol.vline = vline;
+    tmpname.data = (const uint8_t *)&anonsymbol; tmpname.len = sizeof anonsymbol;
+    label = new_label(&tmpname, mycontext, strength, current_file_list);
+    if (label->value != NULL) {
+        if (label->defpass == pass) err_msg_double_defined(label, &tmpname, epoint);
+        else if (label->fwpass == pass) fwcount--;
+        label->constant = true;
+        label->owner = true;
+        label->defpass = pass;
+        if (label->value->obj != NAMESPACE_OBJ) {
+            val_destroy(label->value);
+            label->value = Obj(new_namespace(current_file_list, epoint));
+        } else {
+            Namespace *names = Namespace(label->value);
+            names->backr = names->forwr = 0;
+            names->file_list = current_file_list;
+            names->epoint = *epoint;
+        }
+    } else {
+        label->constant = true;
+        label->owner = true;
+        label->value = Obj(new_namespace(current_file_list, epoint));
+        label->epoint = *epoint;
+    }
+    return Namespace(label->value);
+}
+
+static MUST_CHECK Label *new_anonlabel(Namespace *context) {
+    struct {
+        uint8_t type;
+        uint8_t padding[3];
+        linenum_t vline;
+        struct star_s *star_tree;
+    } anonsymbol;
+    str_t tmpname;
+    if (sizeof(anonsymbol) != sizeof(anonsymbol.type) + sizeof(anonsymbol.padding) + sizeof(anonsymbol.star_tree) + sizeof(anonsymbol.vline)) memset(&anonsymbol, 0, sizeof anonsymbol);
+    else anonsymbol.padding[0] = anonsymbol.padding[1] = anonsymbol.padding[2] = 0;
+    anonsymbol.type = '.';
+    anonsymbol.star_tree = star_tree;
+    anonsymbol.vline = vline;
+    tmpname.data = (const uint8_t *)&anonsymbol; tmpname.len = sizeof anonsymbol;
+    return new_label(&tmpname, context, strength, current_file_list);
+}
+
+MUST_CHECK Obj *compile(void)
+{
+    int wht;
+    int prm = 0;
+    Obj *val;
+
+    Label *newlabel = NULL;
+    size_t newmembp = 0;
+    Label *tmp2 = NULL;
+    Namespace *mycontext;
+    address_t oaddr = 0;
+    Obj *retval = NULL;
+
+    size_t oldwaitforp = waitfor_p;
+    bool nobreak = true;
+    str_t labelname;
+    struct anonsymbol_s {
+        uint8_t dir, pad;
+        uint8_t count[sizeof(uint32_t)];
+    } anonsymbol;
+    struct linepos_s epoint;
+
+    while (nobreak) {
+        if (mtranslate()) {
+            if (signal_received) err_msg_signal();
+            break;
+        }
+        newlabel = NULL;
+        labelname.len = 0;ignore();epoint = lpoint; mycontext = current_context;
+        if (current_address->unionmode) {
+            if (current_address->l_address != current_address->l_union) {
+                current_address->l_address = current_address->l_union;
+                if (current_address->l_address > all_mem) {
+                    err_msg_big_address(&epoint);
+                    current_address->l_address &= all_mem;
+                }
+                current_address->bankwarn = false;
+            }
+            if (current_address->address != current_address->start) {
+                if (!current_address->moved) {
+                    if (current_address->address > current_address->end) current_address->end = current_address->address;
+                    current_address->moved = true;
+                }
+                current_address->wrapwarn = false;
+                current_address->address = current_address->start;
+                memjmp(current_address->mem, current_address->address);
+            }
+        }
+        star = current_address->l_address;
+        wht = here();
+        if (wht >= 'A') {
+            labelname.data = pline + lpoint.pos; 
+            labelname.len = get_label(labelname.data);
+            if (labelname.len != 0) {
+                struct linepos_s cmdpoint;
+                bool islabel, tcontext, error;
+                lpoint.pos += (linecpos_t)labelname.len;
+                islabel = false; error = (waitfor->skip & 1) == 0;
+                while (here() == '.' && pline[lpoint.pos+1] != '.') {
+                    if (!error) {
+                        if (!islabel) {
+                            if (labelname.data[0] != '_') {
+                                tmp2 = find_label(&labelname, NULL);
+                                if (tmp2 == NULL) {err_msg_not_defined2(&labelname, mycontext, true, &epoint); error = true;}
+                            } else {
+                                tmp2 = find_label2(&labelname, cheap_context);
+                                if (tmp2 == NULL) {err_msg_not_defined2(&labelname, cheap_context, false, &epoint); error = true;}
+                            }
+                        } else {
+                            tmp2 = find_label2(&labelname, mycontext);
+                            if (tmp2 == NULL) {err_msg_not_defined2(&labelname, mycontext, false, &epoint); error = true;}
+                        }
+                        if (tmp2 != NULL) {
+                            if (diagnostics.case_symbol && str_cmp(&labelname, &tmp2->name) != 0) err_msg_symbol_case(&labelname, tmp2, &epoint);
+                            tmp2->usepass = pass; /* touch_label(tmp2) */
+                        }
+                    }
+                    lpoint.pos++; islabel = true; epoint = lpoint;
+                    labelname.data = pline + lpoint.pos; labelname.len = get_label(labelname.data);
+                    if (labelname.len == 0) {
+                        if (!error) err_msg2(ERROR______EXPECTED, "a symbol is", &lpoint);
+                        goto breakerr;
+                    }
+                    lpoint.pos += (linecpos_t)labelname.len;
+                    if (!error) {
+                        Namespace *context = get_namespace(tmp2->value);
+                        if (context == NULL) {
+                            epoint.pos--;
+                            if (tmp2->value == none_value) err_msg_still_none(NULL, &epoint);
+                            else if (tmp2->value->obj == ERROR_OBJ) err_msg_output(Error(tmp2->value));
+                            else {
+                                Error *err = new_error(ERROR__INVALID_OPER, &epoint);
+                                err->u.invoper.op = O_MEMBER;
+                                err->u.invoper.v1 = val_reference(tmp2->value);
+                                err->u.invoper.v2 = new_symbol(&labelname, &epoint);
+                                err_msg_output_and_destroy(err);
+                            }
+                            error = true;
+                        } else mycontext = context;
+                    }
+                }
+                if (!islabel && labelname.data[0] == '_') {
+                    tcontext = true;
+                    mycontext = cheap_context;
+                } else tcontext = islabel;
+                if (here() == ':' && pline[lpoint.pos + 1] != '=') {islabel = true; lpoint.pos++;}
+                if (!islabel && labelname.len == 3 && (prm = lookup_opcode(labelname.data)) >=0) {
+                    if (!error) goto as_opcode; else continue;
+                }
+                if (false) {
+                hh: islabel = true; tcontext = false; error = (waitfor->skip & 1) == 0;
+                }
+                ignore();wht = here();
+                if (error) {epoint = lpoint; goto jn;} /* skip things if needed */
+                if (labelname.len > 1 && labelname.data[0] == '_' && labelname.data[1] == '_') {err_msg2(ERROR_RESERVED_LABL, &labelname, &epoint); goto breakerr;}
+                while (wht != 0 && !arguments.tasmcomp) {
+                    bool minmax;
+                    Label *label;
+                    struct oper_s tmp;
+                    Obj *result2, *val2;
+                    struct linepos_s epoint2, epoint3;
+                    int wht2 = pline[lpoint.pos + 1];
+
+                    if (wht2 == '=') {
+                        Oper_types op;
+                        if (wht == ':') {
+                            if (labelname.data[0] == '*') {
+                                lpoint.pos++;
+                                goto starassign;
+                            }
+                            lpoint.pos += 2;
+                            ignore();
+                            goto itsvar;
+                        }
+                        op = oper_from_token(wht);
+                        if (op == O_NONE) break;
+                        tmp.op = op;
+                        epoint3 = lpoint;
+                        lpoint.pos += 2;
+                    } else if (wht2 != 0 && pline[lpoint.pos + 2] == '=') {
+                        Oper_types op = oper_from_token2(wht, wht2);
+                        if (op == O_NONE) break;
+                        tmp.op = op;
+                        epoint3 = lpoint;
+                        lpoint.pos += 3;
+                    } else break;
+
+                    ignore();
+                    epoint2 = lpoint;
+                    if (labelname.data[0] == '*') {
+                        label = NULL;
+                        if (diagnostics.optimize) cpu_opt_invalidate();
+                        val = get_star();
+                    } else if (tmp.op == O_COND) {
+                        label = NULL; val = NULL;
+                    } else {
+                        if (labelname.data == (const uint8_t *)&anonsymbol) {
+                            ssize_t cnt;
+                            if (anonsymbol.dir == '-') {
+                                cnt = -1; current_context->backr--;
+                            } else {
+                                cnt = 0;  current_context->forwr--;
+                            }
+                            label = tcontext ? find_anonlabel2(cnt, mycontext) : find_anonlabel(cnt);
+                        } else {
+                            label = tcontext ? find_label2(&labelname, mycontext) : find_label(&labelname, NULL);
+                        }
+                        if (tmp.op == O_MUL && !islabel && (label == NULL || label->constant)) {
+                            if (diagnostics.star_assign) {
+                                err_msg_star_assign(&epoint3);
+                                if (pline[lpoint.pos] == '*') err_msg_compound_note(&epoint3);
+                            }
+                            lpoint.pos = epoint3.pos;
+                            wht = '*';
+                            break;
+                        }
+                        if (label == NULL) {
+                            if (labelname.data == (const uint8_t *)&anonsymbol) {
+                                err_msg_not_defined2a((anonsymbol.dir == '-') ? -1 : 0, mycontext, !tcontext, &epoint);
+                            } else {
+                                err_msg_not_defined2(&labelname, mycontext, !tcontext, &epoint);
+                            }
+                            goto breakerr;
+                        }
+                        if (label->constant) {
+                            err_msg_not_variable(label, &labelname, &epoint);
+                            goto breakerr;
+                        }
+                        if (diagnostics.case_symbol && str_cmp(&labelname, &label->name) != 0) err_msg_symbol_case(&labelname, label, &epoint);
+                        val = label->value;
+                        label->usepass = 0;
+                    }
+                    if (here() == 0 || here() == ';') {
+                        err_msg(ERROR______EXPECTED, "an expression is");
+                        if (label == NULL && val != NULL) val_destroy(val);
+                        goto breakerr;
+                    } else {
+                        bool oldreferenceit = referenceit;
+                        referenceit &= 1; /* not good... */
+                        if (!get_exp(0, 1, 0, &epoint2)) {
+                            if (label == NULL && val != NULL) val_destroy(val);
+                            referenceit = oldreferenceit;
+                            goto breakerr;
+                        }
+                        val2 = get_vals_tuple();
+                        referenceit = oldreferenceit;
+                    }
+                    if (val == NULL) {
+                        bool labelexists = false;
+                        if (labelname.data == (const uint8_t *)&anonsymbol) {
+                            str_t labelname2;
+                            struct anonsymbol_s anonsymbol3;
+                            uint32_t count = (anonsymbol.dir == '-') ? current_context->backr :  current_context->forwr;
+                            count -= 2;
+                            anonsymbol3.dir = anonsymbol.dir;
+                            anonsymbol3.pad = 0;
+                            labelname2.len = 2;
+                            while (count != 0) {
+                                anonsymbol3.count[labelname2.len - 2] = (uint8_t)count;
+                                labelname2.len++;
+                                count >>= 8;
+                            }
+                            labelname2.data = (const uint8_t *)&anonsymbol3;
+                            label = find_label3(&labelname2, mycontext, strength);
+                            if (label != NULL) {
+                                if (anonsymbol.dir == '-') {
+                                    current_context->backr--;
+                                } else {
+                                    current_context->forwr--;
+                                }
+                                labelexists = true;
+                            }
+                        }
+                        if (!labelexists) {
+                            label = new_label(&labelname, mycontext, strength, current_file_list);
+                            labelexists = label->value != NULL;
+                        }
+                        if (labelexists) {
+                            if (label->constant) {
+                                err_msg_not_variable(label, &labelname, &epoint);
+                                val_destroy(val2);
+                                goto breakerr;
+                            }
+                            if (label->defpass != pass) {
+                                label->ref = false;
+                                label->defpass = pass;
+                            } else {
+                                val_destroy(val2);
+                                goto finish;
+                            }
+                            label->owner = false;
+                            if (label->file_list != current_file_list) {
+                                label_move(label, &labelname, current_file_list);
+                            }
+                            label->epoint = epoint;
+                            val_destroy(label->value);
+                            label->value = val2;
+                            label->usepass = 0;
+                        } else {
+                            label->constant = false;
+                            label->owner = false;
+                            label->value = val2;
+                            label->epoint = epoint;
+                        }
+                        goto finish;
+                    }
+                    if (tmp.op == O_REASSIGN) {
+                        result2 = val2;
+                    } else {
+                        minmax = (tmp.op == O_MIN) || (tmp.op == O_MAX);
+                        tmp.v1 = val;
+                        tmp.v2 = val2;
+                        tmp.epoint = &epoint;
+                        tmp.epoint2 = &epoint2;
+                        tmp.epoint3 = &epoint3;
+                        tmp.inplace = (tmp.v1->refcount == 1 && !minmax) ? tmp.v1 : NULL;
+                        result2 = tmp.v1->obj->calc2(&tmp);
+                        if (minmax) {
+                            if (result2 == true_value) val_replace(&result2, val);
+                            else if (result2 == false_value) val_replace(&result2, val2);
+                        }
+                        val_destroy(val2);
+                    }
+                    if (label != NULL) {
+                        listing_equal(result2);
+                        if (label->file_list != current_file_list) {
+                            label_move(label, &labelname, current_file_list);
+                        }
+                        label->epoint = epoint;
+                        val_destroy(label->value);
+                        label->value = result2;
+                    } else {
+                        val_destroy(val);
+                        starhandle(result2, &epoint, &epoint2);
+                    }
+                    goto finish;
+                }
+                switch (wht) {
+                case '=':
+                    { /* variable */
+                        struct linepos_s opoint;
+                        Label *label;
+                        bool labelexists;
+                    starassign:
+                        if (labelname.data[0] == '*') {
+                            label = NULL;
+                            if (diagnostics.optimize) cpu_opt_invalidate();
+                        } else label = find_label3(&labelname, mycontext, strength);
+                        lpoint.pos++; ignore();
+                        opoint = lpoint; /* for no elements! */
+                        if (here() == 0 || here() == ';') {
+                            err_msg(ERROR______EXPECTED, "an expression is");
+                            goto breakerr;
+                        } else {
+                            bool oldreferenceit = referenceit;
+                            if (label != NULL && !label->ref) {
+                                referenceit = false;
+                            }
+                            if (!get_exp(0, 1, 0, &opoint)) {
+                                referenceit = oldreferenceit;
+                                goto breakerr;
+                            }
+                            val = get_vals_tuple();
+                            referenceit = oldreferenceit;
+                        }
+                        if (labelname.data[0] == '*') {
+                            starhandle(val, &epoint, &opoint);
+                            goto finish;
+                        }
+                        if (label != NULL) {
+                            labelexists = true;
+                        } else {
+                            label = new_label(&labelname, mycontext, strength, current_file_list);
+                            labelexists = label->value != NULL;
+                        }
+                        listing_equal(val);
+                        if (labelexists) {
+                            if (label->defpass == pass) {
+                                val_destroy(val);
+                                err_msg_double_defined(label, &labelname, &epoint);
+                            } else {
+                                if (label->fwpass == pass) fwcount--;
+                                if (!constcreated && label->defpass != pass - 1) {
+                                    if (pass > max_pass) err_msg_cant_calculate(&label->name, &epoint);
+                                    constcreated = true;
+                                }
+                                label->constant = true;
+                                label->owner = false;
+                                if (label->file_list != current_file_list) {
+                                    label_move(label, &labelname, current_file_list);
+                                }
+                                label->epoint = epoint;
+                                label->ref = false;
+                                const_assign(label, val);
+                            }
+                        } else {
+                            if (!constcreated) {
+                                if (pass > max_pass) err_msg_cant_calculate(&label->name, &epoint);
+                                constcreated = true;
+                            }
+                            label->constant = true;
+                            label->owner = false;
+                            label->value = val;
+                            label->epoint = epoint;
+                            label->ref = false;
+                        }
+                        goto finish;
+                    }
+                case '.':
+                    cmdpoint = lpoint;
+                    prm = get_command();
+                    ignore();
+                    if (labelname.data[0] == '*') {
+                        err_msg2(ERROR_RESERVED_LABL, &labelname, &epoint);
+                        newlabel = NULL; epoint = cmdpoint; goto as_command;
+                    }
+                    switch (prm) {
+                    case CMD_VAR: /* variable */
+                        {
+                            Label *label;
+                            bool labelexists;
+                        itsvar:
+                            label = find_label3(&labelname, mycontext, strength);
+                            if (here() == 0 || here() == ';') {
+                                err_msg(ERROR______EXPECTED, "an expression is");
+                                goto breakerr;
+                            } else {
+                                bool oldreferenceit = referenceit;
+                                referenceit &= 1; /* not good... */
+                                cmdpoint = lpoint;
+                                if (!get_exp(0, 1, 0, &cmdpoint)) {
+                                    referenceit = oldreferenceit;
+                                    goto breakerr;
+                                }
+                                val = get_vals_tuple();
+                                referenceit = oldreferenceit;
+                            }
+                            if (label != NULL) {
+                                labelexists = true;
+                                if (diagnostics.case_symbol && str_cmp(&labelname, &label->name) != 0) err_msg_symbol_case(&labelname, label, &epoint);
+                            } else {
+                                label = new_label(&labelname, mycontext, strength, current_file_list);
+                                labelexists = label->value != NULL;
+                            }
+                            listing_equal(val);
+                            if (labelexists) {
+                                if (label->constant) {
+                                    err_msg_double_defined(label, &labelname, &epoint);
+                                    val_destroy(val);
+                                } else {
+                                    if (label->defpass != pass) {
+                                        label->ref = false;
+                                        label->defpass = pass;
+                                    } else {
+                                        if (diagnostics.unused.variable && label->usepass != pass) err_msg_unused_variable(label);
+                                    }
+                                    label->owner = false;
+                                    if (label->file_list != current_file_list) {
+                                        label_move(label, &labelname, current_file_list);
+                                    }
+                                    label->epoint = epoint;
+                                    val_destroy(label->value);
+                                    label->value = val;
+                                    label->usepass = 0;
+                                }
+                            } else {
+                                label->constant = false;
+                                label->owner = false;
+                                label->value = val;
+                                label->epoint = epoint;
+                            }
+                            goto finish;
+                        }
+                    case CMD_LBL:
+                        { /* label */
+                            Lbl *lbl;
+                            Label *label = new_label(&labelname, mycontext, strength, current_file_list);
+                            listing_line(0);
+                            lbl = Lbl(val_alloc(LBL_OBJ));
+                            lbl->sline = epoint.line;
+                            lbl->pass = pass;
+                            lbl->waitforp = waitfor_p;
+                            lbl->file_list = current_file_list;
+                            lbl->parent = current_context;
+                            if (label->value != NULL) {
+                                if (label->defpass == pass) {
+                                    val_destroy(Obj(lbl));
+                                    err_msg_double_defined(label, &labelname, &epoint);
+                                } else {
+                                    if (label->fwpass == pass) fwcount--;
+                                    if (!constcreated && label->defpass != pass - 1) {
+                                        if (pass > max_pass) err_msg_cant_calculate(&label->name, &epoint);
+                                        constcreated = true;
+                                    }
+                                    label->constant = true;
+                                    label->owner = true;
+                                    if (label->file_list != current_file_list) {
+                                        label_move(label, &labelname, current_file_list);
+                                    }
+                                    label->epoint = epoint;
+                                    label->ref = false;
+                                    const_assign(label, Obj(lbl));
+                                }
+                            } else {
+                                if (!constcreated) {
+                                    if (pass > max_pass) err_msg_cant_calculate(&label->name, &epoint);
+                                    constcreated = true;
+                                }
+                                label->constant = true;
+                                label->owner = true;
+                                label->value = Obj(lbl);
+                                label->epoint = epoint;
+                                label->ref = false;
+                            }
+                            if (!arguments.tasmcomp && diagnostics.deprecated) err_msg2(ERROR______OLD_GOTO, NULL, &cmdpoint);
+                            goto finish;
+                        }
+                    case CMD_NAMESPACE:
+                        { /* namespace */
+                            Label *label = new_label(&labelname, mycontext, strength, current_file_list);
+                            bool labelexists = label->value != NULL;
+                            if (labelexists) {
+                                if (label->defpass == pass) {
+                                    err_msg_double_defined(label, &labelname, &epoint);
+                                    epoint = cmdpoint;
+                                    goto as_command;
+                                }
+                                if (label->fwpass == pass) fwcount--;
+                                if (!constcreated && label->defpass != pass - 1) {
+                                    if (pass > max_pass) err_msg_cant_calculate(&label->name, &epoint);
+                                    constcreated = true;
+                                }
+                                if (label->file_list != current_file_list) {
+                                    label_move(label, &labelname, current_file_list);
+                                }
+                            } else {
+                                if (!constcreated) {
+                                    if (pass > max_pass) err_msg_cant_calculate(&label->name, &epoint);
+                                    constcreated = true;
+                                }
+                                label->owner = true;
+                                label->value = none_value;
+                            }
+                            label->constant = true;
+                            label->epoint = epoint;
+                            label->ref = false;
+                            listing_line(0);
+                            new_waitfor(W_ENDN, &cmdpoint);
+                            if (get_exp(0, 0, 1, &cmdpoint)) {
+                                struct values_s *vs = get_val();
+                                if (vs != NULL) {
+                                    val = vs->val;
+                                    val = Obj(get_namespace(val));
+                                    if (val == NULL) err_msg_invalid_namespace_conv(vs);
+                                } else val = NULL;
+                            } else val = NULL;
+                            label->owner = (val == NULL);
+                            if (labelexists) {
+                                if (val != NULL) const_assign(label, val_reference(val));
+                                else {
+                                    label->defpass = pass;
+                                    if (label->value->obj != NAMESPACE_OBJ) {
+                                        val_destroy(label->value);
+                                        label->value = Obj(new_namespace(current_file_list, &epoint));
+                                    } else {
+                                        Namespace *names = Namespace(label->value);
+                                        names->backr = names->forwr = 0;
+                                        names->file_list = current_file_list;
+                                        names->epoint = epoint;
+                                    }
+                                }
+                            } else {
+                                label->value = (val != NULL) ? val_reference(val) : Obj(new_namespace(current_file_list, &epoint));
+                            }
+                            if (label->value->obj == NAMESPACE_OBJ) {
+                                push_context(Namespace(label->value));
+                                waitfor->what = W_ENDN2;
+                            } else push_context(current_context);
+                            goto finish;
+                        }
+                    case CMD_ENCODE:
+                        { /* encode */
+                            Label *label = new_label(&labelname, mycontext, strength, current_file_list);
+                            bool labelexists = label->value != NULL;
+                            if (labelexists) {
+                                if (label->defpass == pass) {
+                                    err_msg_double_defined(label, &labelname, &epoint);
+                                    epoint = cmdpoint;
+                                    goto as_command;
+                                }
+                                if (label->fwpass == pass) fwcount--;
+                                if (!constcreated && label->defpass != pass - 1) {
+                                    if (pass > max_pass) err_msg_cant_calculate(&label->name, &epoint);
+                                    constcreated = true;
+                                }
+                                if (label->file_list != current_file_list) {
+                                    label_move(label, &labelname, current_file_list);
+                                }
+                            } else {
+                                if (!constcreated) {
+                                    if (pass > max_pass) err_msg_cant_calculate(&label->name, &epoint);
+                                    constcreated = true;
+                                }
+                                label->owner = true;
+                                label->value = none_value;
+                            }
+                            label->constant = true;
+                            label->epoint = epoint;
+                            label->ref = false;
+                            listing_line(0);
+                            new_waitfor(W_ENDENCODE, &cmdpoint);
+                            if (get_exp(0, 0, 1, &cmdpoint)) {
+                                struct values_s *vs = get_val();
+                                if (vs != NULL) {
+                                    val = vs->val;
+                                    if (val->obj != ENC_OBJ) {
+                                        val = NULL;
+                                        err_msg_wrong_type2(vs->val, ENC_OBJ, &vs->epoint);
+                                    }
+                                } else val = NULL;
+                            } else val = NULL;
+                            label->owner = (val == NULL);
+                            if (labelexists) {
+                                if (val != NULL) const_assign(label, val_reference(val));
+                                else {
+                                    label->defpass = pass;
+                                    if (label->value->obj != ENC_OBJ) {
+                                        val_destroy(label->value);
+                                        label->value = new_enc(current_file_list, &epoint);
+                                    } else {
+                                        Enc *enc = Enc(label->value);
+                                        enc->file_list = current_file_list;
+                                        enc->epoint = epoint;
+                                    }
+                                }
+                            } else {
+                                label->value = (val != NULL) ? val_reference(val) : new_enc(current_file_list, &epoint);
+                            }
+                            if (label->value->obj == ENC_OBJ) {
+                                waitfor->u.cmd_encode.enc = actual_encoding;
+                                actual_encoding = Enc(val_reference(label->value));
+                                waitfor->what = W_ENDENCODE2;
+                            } else {
+                                waitfor->u.cmd_encode.enc = NULL;
+                            }
+                            goto finish;
+                        }
+                    case CMD_MACRO:/* .macro */
+                    case CMD_SEGMENT:
+                        {
+                            Label *label;
+                            Macro *macro;
+                            Type *obj = (prm == CMD_MACRO) ? MACRO_OBJ : SEGMENT_OBJ;
+                            listing_line(0);
+                            new_waitfor(prm == CMD_MACRO ? W_ENDMACRO : W_ENDSEGMENT, &cmdpoint);waitfor->skip = 0;
+                            label = new_label(&labelname, mycontext, strength, current_file_list);
+                            macro = Macro(val_alloc(obj));
+                            macro->file_list = current_file_list;
+                            macro->line = epoint.line;
+                            macro->recursion_pass = 0;
+                            if (label->value != NULL && label->value->obj == obj) {
+                                macro->retval = Macro(label->value)->retval;
+                                macro->argc = Macro(label->value)->argc;
+                            } else {
+                                macro->retval = false;
+                                macro->argc = 0;
+                            }
+                            get_macro_params(Obj(macro));
+                            if (label->value != NULL) {
+                                if (label->defpass == pass) {
+                                    waitfor->u.cmd_macro.val = Obj(macro);
+                                    err_msg_double_defined(label, &labelname, &epoint);
+                                } else {
+                                    if (label->fwpass == pass) fwcount--;
+                                    if (!constcreated && label->defpass != pass - 1) {
+                                        if (pass > max_pass) err_msg_cant_calculate(&label->name, &epoint);
+                                        constcreated = true;
+                                    }
+                                    label->constant = true;
+                                    label->owner = true;
+                                    if (label->file_list != current_file_list) {
+                                        label_move(label, &labelname, current_file_list);
+                                    }
+                                    label->epoint = epoint;
+                                    label->ref = false;
+                                    const_assign(label, Obj(macro));
+                                    waitfor->u.cmd_macro.val = val_reference(label->value);
+                                }
+                            } else {
+                                if (!constcreated) {
+                                    if (pass > max_pass) err_msg_cant_calculate(&label->name, &epoint);
+                                    constcreated = true;
+                                }
+                                label->constant = true;
+                                label->owner = true;
+                                label->value = Obj(macro);
+                                label->epoint = epoint;
+                                label->ref = false;
+                                waitfor->u.cmd_macro.val = val_reference(Obj(macro));
+                            }
+                            goto finish;
+                        }
+                    case CMD_SFUNCTION:
+                    case CMD_FUNCTION:
+                        {
+                            Label *label;
+                            Mfunc *mfunc;
+                            bool failed;
+                            Type *obj = (prm == CMD_FUNCTION) ? MFUNC_OBJ : SFUNC_OBJ;
+                            listing_line(0);
+                            if (prm == CMD_FUNCTION) new_waitfor(W_ENDF, &cmdpoint);
+                            label = new_label(&labelname, mycontext, strength, current_file_list);
+                            mfunc = Mfunc(val_alloc(obj));
+                            mfunc->file_list = current_file_list;
+                            mfunc->epoint.line = epoint.line;
+                            mfunc->epoint.pos = 0;
+                            mfunc->recursion_pass = 0;
+                            mfunc->argc = 0;
+                            mfunc->param = NULL; /* might be recursive through init */
+                            mfunc->nslen = 0;
+                            mfunc->namespaces = NULL;
+                            mfunc->ipoint = 0;
+                            if (prm == CMD_SFUNCTION && not_in_file(pline, current_file_list->file)) {
+                                size_t ln = strlen((const char *)pline) + 1;
+                                uint8_t *l = allocate_array(uint8_t, ln);
+                                if (l != NULL) memcpy(l, pline, ln);
+                                mfunc->line = l;
+                            } else mfunc->line = NULL;
+                            if (label->value != NULL) {
+                                mfunc->retval = (label->value->obj == obj) && Mfunc(label->value)->retval;
+                                if (label->defpass == pass) {
+                                    mfunc->names = new_namespace(current_file_list, &epoint);
+                                    mfunc->inamespaces = Tuple(val_reference(null_tuple));
+                                    if (prm == CMD_FUNCTION) waitfor->u.cmd_function.val = Obj(mfunc); else val_destroy(Obj(mfunc));
+                                    err_msg_double_defined(label, &labelname, &epoint);
+                                    failed = true;
+                                } else {
+                                    if (label->fwpass == pass) fwcount--;
+                                    if (!constcreated && label->defpass != pass - 1) {
+                                        if (pass > max_pass) err_msg_cant_calculate(&label->name, &epoint);
+                                        constcreated = true;
+                                    }
+                                    label->constant = true;
+                                    label->owner = true;
+                                    if (label->file_list != current_file_list) {
+                                        label_move(label, &labelname, current_file_list);
+                                    }
+                                    if (label->value->obj == obj) {
+                                        Mfunc *prev = Mfunc(label->value);
+                                        mfunc->names = ref_namespace(prev->names);
+                                        mfunc->names->backr = mfunc->names->forwr = 0;
+                                        mfunc->names->file_list = current_file_list;
+                                        mfunc->names->epoint = epoint;
+                                        mfunc->inamespaces = Tuple(val_reference(Obj(prev->inamespaces)));
+                                        mfunc->argc = prev->argc;
+                                    } else {
+                                        mfunc->names = new_namespace(current_file_list, &epoint);
+                                        mfunc->inamespaces = Tuple(val_reference(null_tuple));
+                                    }
+                                    label->epoint = epoint;
+                                    label->ref = false;
+                                    get_namespaces(mfunc);
+                                    failed = get_func_params(mfunc, prm == CMD_SFUNCTION);
+                                    const_assign(label, Obj(mfunc));
+                                    if (label->value != Obj(mfunc)) Mfunc(label->value)->ipoint = 0;
+                                    if (prm == CMD_FUNCTION) waitfor->u.cmd_function.val = val_reference(label->value);
+                                }
+                            } else {
+                                mfunc->retval = false;
+                                if (!constcreated) {
+                                    if (pass > max_pass) err_msg_cant_calculate(&label->name, &epoint);
+                                    constcreated = true;
+                                }
+                                label->constant = true;
+                                label->owner = true;
+                                label->value = Obj(mfunc);
+                                mfunc->inamespaces = Tuple(val_reference(null_tuple));
+                                label->epoint = epoint;
+                                label->ref = false;
+                                get_namespaces(mfunc);
+                                mfunc->names = new_namespace(current_file_list, &epoint);
+                                if (prm == CMD_FUNCTION) waitfor->u.cmd_function.val = val_reference(Obj(mfunc));
+                                failed = get_func_params(mfunc, prm == CMD_SFUNCTION);
+                            }
+                            if (prm == CMD_FUNCTION) {
+                                if (!failed && here() != 0 && here() != ';') err_msg(ERROR_EXTRA_CHAR_OL,NULL);
+                                waitfor->skip = 0;
+                            } 
+                            goto breakerr;
+                        }
+                    case CMD_STRUCT:
+                    case CMD_UNION:
+                        {
+                            Label *label;
+                            Struct *structure;
+                            struct section_address_s section_address, *oldsection_address = current_address;
+                            uval_t provides = current_section->provides, requires = current_section->requires, conflicts = current_section->conflicts;
+                            bool doubledef = false;
+                            Type *obj = (prm == CMD_STRUCT) ? STRUCT_OBJ : UNION_OBJ;
+
+                            if (diagnostics.optimize) cpu_opt_invalidate();
+                            new_waitfor((prm==CMD_STRUCT) ? W_ENDS : W_ENDU, &cmdpoint);waitfor->skip = 0;
+                            label = new_label(&labelname, mycontext, strength, current_file_list);
+
+                            current_section->provides = ~(uval_t)0;current_section->requires = current_section->conflicts = 0;
+                            section_address.wrapwarn = section_address.moved = false;
+                            section_address.bankwarn = false;
+                            section_address.unionmode = (prm == CMD_UNION);
+                            section_address.address = section_address.start = section_address.end = 0;
+                            section_address.l_start = 0;
+                            section_address.l_union = 0;
+                            section_address.l_address = 0;
+                            section_address.l_address_val = val_reference(int_value[0]);
+                            section_address.mem = new_memblocks(0, 0);
+                            section_address.mem->lastaddr = 0;
+                            section_address.mem->enumeration = true;
+                            current_address = &section_address;
+
+                            structure = Struct(val_alloc(obj));
+                            structure->file_list = current_file_list;
+                            structure->line = epoint.line;
+                            structure->recursion_pass = 0;
+                            if (label->value != NULL && label->value->obj == obj) {
+                                structure->retval = Struct(label->value)->retval;
+                                structure->argc = Struct(label->value)->argc;
+                            } else {
+                                structure->retval = false;
+                                structure->argc = 0;
+                            }
+                            get_macro_params(Obj(structure));
+                            if (label->value != NULL) {
+                                if (label->defpass == pass) {
+                                    doubledef = true;
+                                    structure->size = 0;
+                                    structure->names = new_namespace(current_file_list, &epoint);
+                                    err_msg_double_defined(label, &labelname, &epoint);
+                                } else {
+                                    if (label->fwpass == pass) fwcount--;
+                                    if (!constcreated && label->defpass != pass - 1) {
+                                        if (pass > max_pass) err_msg_cant_calculate(&label->name, &epoint);
+                                        constcreated = true;
+                                    }
+                                    label->constant = true;
+                                    label->owner = true;
+                                    if (label->file_list != current_file_list) {
+                                        label_move(label, &labelname, current_file_list);
+                                    }
+                                    label->epoint = epoint;
+                                    label->ref = false;
+                                    if (label->value->obj == obj) {
+                                        Struct *prev = Struct(label->value);
+                                        structure->size = prev->size;
+                                        structure->names = ref_namespace(prev->names);
+                                        structure->names->backr = structure->names->forwr = 0;
+                                        structure->names->file_list = current_file_list;
+                                        structure->names->epoint = epoint;
+                                    } else {
+                                        structure->size = 0;
+                                        structure->names = new_namespace(current_file_list, &epoint);
+                                    }
+                                    const_assign(label, Obj(structure));
+                                    structure = Struct(label->value);
+                                }
+                            } else {
+                                if (!constcreated) {
+                                    if (pass > max_pass) err_msg_cant_calculate(&label->name, &epoint);
+                                    constcreated = true;
+                                }
+                                label->constant = true;
+                                label->owner = true;
+                                label->value = Obj(structure);
+                                label->epoint = epoint;
+                                label->ref = false;
+                                structure->size = 0;
+                                structure->names = new_namespace(current_file_list, &epoint);
+                            }
+                            listing_line(cmdpoint.pos);
+                            waitfor->what = (prm == CMD_STRUCT) ? W_ENDS2 : W_ENDU2;
+                            waitfor->skip = 1;
+                            val = macro_recurse(W_ENDS, Obj(structure), structure->names, &cmdpoint);
+                            structure->retval = (val != NULL);
+                            if (val != NULL) val_destroy(val);
+                            waitfor->what = (prm == CMD_STRUCT) ? W_ENDS : W_ENDU;
+                            waitfor->skip = 0;
+                            lpoint.line--; vline--;
+
+                            current_section->provides = provides; current_section->requires = requires; current_section->conflicts = conflicts;
+                            current_address = oldsection_address;
+                            if (current_address->l_address > all_mem) {
+                                err_msg_big_address(&cmdpoint);
+                                current_address->l_address &= all_mem;
+                            }
+
+                            if (doubledef) val_destroy(Obj(structure));
+                            else {
+                                address_t end = (section_address.end < section_address.address) ? section_address.address : section_address.end;
+                                if (structure->size != (end & all_mem2)) {
+                                    structure->size = end & all_mem2;
+                                    if (label->usepass >= pass) {
+                                        if (fixeddig && pass > max_pass) err_msg_cant_calculate(&label->name, &label->epoint);
+                                        fixeddig = false;
+                                    }
+                                }
+                            }
+                            val_destroy(section_address.l_address_val);
+                            val_destroy(Obj(section_address.mem));
+                            goto breakerr;
+                        }
+                    case CMD_SECTION:
+                        if (section_start(&cmdpoint)) goto breakerr;
+                        star = current_address->l_address;
+                        break;
+                    case CMD_VIRTUAL:
+                        if (virtual_start(&cmdpoint)) goto breakerr;
+                        star = current_address->l_address;
+                        break;
+                    case CMD_BREPT:
+                    case CMD_BFOR:
+                    case CMD_BWHILE:
+                        { /* .bfor */
+                            List *lst;
+                            size_t i;
+                            Label *label = new_label(&labelname, mycontext, strength, current_file_list);
+                            if (label->value != NULL) {
+                                if (label->defpass == pass) {
+                                    err_msg_double_defined(label, &labelname, &epoint);
+                                    epoint = cmdpoint;
+                                    goto as_command;
+                                } else {
+                                    if (label->fwpass == pass) fwcount--;
+                                    if (!constcreated && label->defpass != pass - 1) {
+                                        if (pass > max_pass) err_msg_cant_calculate(&label->name, &epoint);
+                                        constcreated = true;
+                                    }
+                                    if (label->file_list != current_file_list) {
+                                        label_move(label, &labelname, current_file_list);
+                                    }
+                                    label->defpass = pass;
+                                }
+                            } else {
+                                if (!constcreated) {
+                                    if (pass > max_pass) err_msg_cant_calculate(&label->name, &epoint);
+                                    constcreated = true;
+                                }
+                                label->value = ref_none();
+                            }
+                            label->constant = true;
+                            label->owner = true;
+                            label->epoint = epoint;
+                            label->ref = false;
+                            if (label->value->obj == TUPLE_OBJ) {
+                                Tuple *old = Tuple(label->value);
+                                lst = new_tuple(old->len);
+                                for (i = 0; i < old->len; i++) lst->data[i] = val_reference(old->data[i]);
+                            } else {
+                                lst = new_tuple(lenof(lst->u.val));
+                                for (i = 0; i < lst->len; i++) lst->data[i] = ref_none();
+                            }
+                            label = ref_label(label);
+                            i = (prm == CMD_BFOR) ? for_command(label, lst, &cmdpoint) : (prm == CMD_BREPT) ? rept_command(label, lst, &cmdpoint) : while_command(label, lst, &cmdpoint);
+                            if (lst->len > i) list_shrink(lst, i);
+                            const_assign(label, Obj(lst));
+                            val_destroy(Obj(label));
+                            goto breakerr;
+                        }
+                    case CMD_DSTRUCT: /* .dstruct */
+                    case CMD_DUNION:
+                        {
+                            address_t oldstart, oldend;
+                            address_t oldl_start, oldl_union;
+                            bool oldunionmode;
+                            bool ret, doubledef = false;
+                            Type *obj;
+                            Namespace *context;
+                            Label *label = new_label(&labelname, mycontext, strength, current_file_list);
+                            bool labelexists = label->value != NULL;
+                            if (labelexists) {
+                                if (label->defpass == pass) {
+                                    doubledef = true;
+                                    err_msg_double_defined(label, &labelname, &epoint);
+                                } else {
+                                    if (label->fwpass == pass) fwcount--;
+                                    if (!constcreated && label->defpass != pass - 1) {
+                                        if (pass > max_pass) err_msg_cant_calculate(&label->name, &epoint);
+                                        constcreated = true;
+                                    }
+                                    label->constant = true;
+                                    label->owner = true;
+                                    if (label->file_list != current_file_list) {
+                                        label_move(label, &labelname, current_file_list);
+                                    }
+                                    label->epoint = epoint;
+                                    label->ref = false;
+                                }
+                            } else {
+                                if (!constcreated) {
+                                    if (pass > max_pass) err_msg_cant_calculate(&label->name, &epoint);
+                                    constcreated = true;
+                                }
+                                label->value = ref_none();
+                                label->constant = true;
+                                label->owner = true;
+                                label->epoint = epoint;
+                                label->ref = false;
+                            }
+
+                            if (diagnostics.optimize) cpu_opt_invalidate();
+                            listing_line(cmdpoint.pos);
+                            if (get_exp(1, 1, 0, &cmdpoint)) {
+                                struct values_s *vs = get_val();
+                                val = vs->val;
+                                obj = (prm == CMD_DSTRUCT) ? STRUCT_OBJ : UNION_OBJ;
+                                if (val->obj != obj) {
+                                    err_msg_wrong_type2(val, obj, &vs->epoint);
+                                    val = NULL;
+                                }
+                            } else val = NULL;
+                            ret = (val != NULL) && Struct(val)->retval;
+                            if (here() == ',') lpoint.pos++;
+
+                            oaddr = current_address->address;
+                            newmembp = get_mem(current_address->mem);
+                            oldstart = current_address->start;
+                            oldend = current_address->end;
+                            oldl_start = current_address->l_start;
+                            oldl_union = current_address->l_union;
+                            oldunionmode = current_address->unionmode;
+                            current_address->start = current_address->end = current_address->address;
+                            current_address->l_start = current_address->l_address;
+                            current_address->l_union = current_address->l_address;
+                            current_address->unionmode = (prm == CMD_DUNION);
+
+                            if (!ret && !doubledef) {
+                                Code *code = Code(label->value);
+                                if (labelexists && code->v.obj == CODE_OBJ) {
+                                    update_code(label, code);
+                                    label->defpass = pass;
+                                } else {
+                                    val_destroy(Obj(code));
+                                    code = create_code(&epoint);
+                                    label->value = Obj(code);
+                                }
+                                context = code->names;
+                            } else {
+                                context = anonlabel(mycontext, '#', &epoint);
+                            }
+                            label = ref_label(label);
+                            if (val != NULL) {
+                                val = macro_recurse((prm == CMD_DSTRUCT) ? W_ENDS3 : W_ENDU3, val, context, &cmdpoint);
+                                if (val != NULL) {
+                                    if (ret && !doubledef) const_assign(label, val);
+                                    else val_destroy(val);
+                                }
+                            }
+
+                            if (!ret && !doubledef) set_size(label, ((current_address->end < current_address->address) ? current_address->address : current_address->end) - oaddr, current_address->mem, oaddr, newmembp);
+                            current_address->start = oldstart;
+                            oldstart = current_address->unionmode ? current_address->end : current_address->address;
+                            if (oldend > current_address->end) current_address->end = oldend;
+                            current_address->l_start = oldl_start;
+                            current_address->l_union = oldl_union;
+                            current_address->unionmode = oldunionmode;
+                            if (oldstart > current_address->address) {
+                                memskip(oldstart - current_address->address, &epoint);
+                            }
+                            val_destroy(Obj(label));
+                            goto breakerr;
+                        }
+                    }
+                    islabel = true;
+                    break;
+                }
+                {
+                    bool labelexists = false;
+                    if (labelname.data[0] == '*') {
+                        err_msg2(ERROR_RESERVED_LABL, &labelname, &epoint);
+                        newlabel = NULL;
+                        epoint = lpoint;
+                        goto jn;
+                    }
+                    if (!islabel) {
+                        Namespace *parent;
+                        bool down = (labelname.data[0] != '_');
+                        if (down) {
+                            parent = mycontext;
+                            tmp2 = find_label(&labelname, &parent);
+                        } else {
+                            parent = cheap_context;
+                            tmp2 = find_label2(&labelname, cheap_context);
+                        }
+                        if (tmp2 != NULL) {
+                            const Type *obj = tmp2->value->obj;
+                            if (diagnostics.case_symbol && str_cmp(&labelname, &tmp2->name) != 0) err_msg_symbol_case(&labelname, tmp2, &epoint);
+                            if (obj == MACRO_OBJ || obj == SEGMENT_OBJ || obj == MFUNC_OBJ) {
+                                if (diagnostics.macro_prefix && (here() == 0 || here() == ';')) err_msg_macro_prefix(&epoint);
+                                touch_label(tmp2);
+                                labelname.len = 0;val = tmp2->value; goto as_macro;
+                            }
+                            if (parent == mycontext && tmp2->strength == strength) {
+                                newlabel = tmp2;
+                                labelexists = true;
+                            }
+                        }
+                    }
+                    if (!labelexists) {
+                        newlabel = new_label(&labelname, mycontext, strength, current_file_list);
+                        labelexists = newlabel->value != NULL;
+                    }
+                    oaddr = current_address->address;
+                    ref_label(newlabel);
+                    if (labelexists) {
+                        if (newlabel->defpass == pass) {
+                            err_msg_double_defined(newlabel, &labelname, &epoint);
+                            val_destroy(Obj(newlabel));
+                            newlabel = NULL;
+                            if (wht == '.') {
+                                epoint = cmdpoint;
+                                goto as_command;
+                            }
+                            epoint = lpoint;
+                            goto jn;
+                        }
+                        if (!constcreated && newlabel->defpass != pass - 1) {
+                            if (pass > max_pass) err_msg_cant_calculate(&newlabel->name, &epoint);
+                            constcreated = true;
+                        }
+                        if (newlabel->fwpass == pass) fwcount--;
+                        if (newlabel->file_list != current_file_list) {
+                            label_move(newlabel, &labelname, current_file_list);
+                        }
+                        if (!newlabel->update_after && newlabel->value->obj != CODE_OBJ) {
+                            val_destroy(newlabel->value);
+                            labelexists = false;
+                            newlabel->defpass = pass;
+                        }
+                    } else if (!constcreated) {
+                        if (pass > max_pass) err_msg_cant_calculate(&newlabel->name, &epoint);
+                        constcreated = true;
+                    }
+                    if (labelexists) {
+                        newlabel->constant = true;
+                        newlabel->owner = true;
+                        newlabel->epoint = epoint;
+                        if (newlabel->update_after) {
+                            newlabel->update_after = false;
+                        } else {
+                            if (diagnostics.optimize && newlabel->ref) cpu_opt_invalidate();
+                            update_code(newlabel, Code(newlabel->value));
+                            newmembp = get_mem(current_address->mem);
+                            newlabel->defpass = pass;
+                        }
+                    } else {
+                        if (diagnostics.optimize) cpu_opt_invalidate();
+                        newlabel->value = Obj(create_code(&epoint));
+                        newlabel->constant = true;
+                        newlabel->owner = true;
+                        newlabel->epoint = epoint;
+                        newmembp = get_mem(current_address->mem);
+                    }
+                }
+                if (wht == '.') { /* .proc */
+                    epoint = cmdpoint;
+                    switch (prm) {
+                    case CMD_PROC:
+                        new_waitfor(W_PEND, &epoint);
+                        if (newlabel->value->obj != CODE_OBJ) {
+                            listing_line(0);
+                            waitfor->skip = 0; push_dummy_context();
+                            waitfor->u.cmd_proc.label = NULL;
+                            val_destroy(Obj(newlabel));
+                        } else if (!newlabel->ref && Code(newlabel->value)->pass != 0) {
+                            listing_line(0);
+                            waitfor->skip = 0; 
+                            set_size(newlabel, 0, current_address->mem, oaddr, newmembp);
+                            Code(newlabel->value)->pass = 1;
+                            push_dummy_context();
+                            waitfor->u.cmd_proc.label = NULL;
+                            val_destroy(Obj(newlabel));
+                        } else {         /* TODO: first time it should not compile */
+                            listing_line(epoint.pos);
+                            push_context(Code(newlabel->value)->names);
+                            newlabel->ref = false;
+                            waitfor->u.cmd_proc.addr = current_address->address;waitfor->u.cmd_proc.membp = newmembp;waitfor->u.cmd_proc.label = newlabel;
+                        }
+                        newlabel = NULL;
+                        goto finish;
+                    case CMD_SECTION:
+                        waitfor->u.cmd_section.addr = current_address->address;waitfor->u.cmd_section.membp = newmembp;waitfor->u.cmd_section.label = newlabel;
+                        listing_line(epoint.pos);
+                        newlabel->ref = false;
+                        newlabel = NULL;
+                        goto finish;
+                    case CMD_VIRTUAL:
+                        waitfor->u.cmd_virtual.membp = newmembp;waitfor->u.cmd_virtual.label = newlabel;
+                        listing_line(epoint.pos);
+                        newlabel->ref = false;
+                        newlabel = NULL;
+                        goto finish;
+                    }
+                    newlabel->ref = false;
+                    goto as_command;
+                }
+                if (labelname.len == 3 && !newlabel->ref && epoint.pos != 0 && !islabel && diagnostics.label_left) {
+                    unsigned int i;
+                    for (i = 0; i < 3; i++) {
+                        uint8_t c = labelname.data[i] | arguments.caseinsensitive;
+                        if ((c < 'a') || (c > 'z')) break;
+                    }
+                    if (i == 3) err_msg_label_left(&epoint);
+                }
+                epoint = lpoint;
+                newlabel->ref = false;
+            }
+        } else {
+            switch (wht) {
+            case '*':
+                lpoint.pos++;
+                switch (here()) {
+                case ' ':
+                case '\t':
+                case ';':
+                case '=':
+                case '\0':
+                    labelname.data = (const uint8_t *)"*";labelname.len = 1;
+                    goto hh;
+                default:
+                    lpoint.pos--;
+                }
+                break;
+            case '-':
+            case '+':
+                lpoint.pos++;
+                switch (here()) {
+                case ' ':
+                case '\t':
+                case ';':
+                case '\0':
+                    {
+                        uint32_t count = (wht == '-') ? current_context->backr++ : current_context->forwr++;
+                        anonsymbol.dir = (uint8_t)wht;
+                        anonsymbol.pad = 0;
+                        labelname.len = 2;
+                        while (count != 0) {
+                            anonsymbol.count[labelname.len - 2] = (uint8_t)count;
+                            labelname.len++;
+                            count >>= 8;
+                        }
+                        labelname.data = (const uint8_t *)&anonsymbol;
+                    }
+                    goto hh;
+                default:
+                    lpoint.pos--;
+                }
+                break;
+            default:
+                break;
+            }
+        }
+        jn:
+        switch (wht) {
+        case '>':
+        case '<':
+        case '*':
+            if ((waitfor->skip & 1) != 0) {
+                if (pline[lpoint.pos + 1] != wht || pline[lpoint.pos + 2] != '=' || arguments.tasmcomp) {
+                    if (wht == '*') {
+                        lpoint.pos++;ignore();
+                        if (here() == '=') {
+                            labelname.data = (const uint8_t *)"*";labelname.len = 1;
+                            goto starassign;
+                        }
+                    }
+                    err_msg2(ERROR_GENERL_SYNTAX, NULL, &epoint);
+                } else if (labelname.len == 0) err_msg2(ERROR_LABEL_REQUIRE, NULL, &epoint);
+                goto breakerr;
+            }
+            break;
+        case '|':
+        case '&':
+            if ((waitfor->skip & 1) != 0) {
+                if (pline[lpoint.pos + 1] == wht && pline[lpoint.pos + 2] == '=' && !arguments.tasmcomp) {
+                    if (labelname.len == 0) err_msg2(ERROR_LABEL_REQUIRE, NULL, &epoint);
+                    goto breakerr;
+                }
+            }
+            FALL_THROUGH; /* fall through */
+        case '+':
+        case '-':
+        case '/':
+        case '%':
+        case '^':
+        case ':':
+            if ((waitfor->skip & 1) != 0) {
+                if (pline[lpoint.pos + 1] != '=' || arguments.tasmcomp) {
+                    err_msg2(ERROR_GENERL_SYNTAX, NULL, &epoint);
+                    goto breakerr;
+                }
+            }
+            FALL_THROUGH; /* fall through */
+        case '=':
+            if ((waitfor->skip & 1) != 0) {if (labelname.len == 0) err_msg2(ERROR_LABEL_REQUIRE, NULL, &epoint); goto breakerr;}
+            break;
+        case ';':
+        case '\0':
+            if ((waitfor->skip & 1) != 0) {
+                if (newlabel != NULL && newlabel->value->obj == CODE_OBJ && labelname.len != 0 && labelname.data[0] != '_' && labelname.data[0] != '+' && labelname.data[0] != '-') {val_destroy(Obj(cheap_context));cheap_context = ref_namespace(Code(newlabel->value)->names);}
+                listing_line(epoint.pos);
+            }
+            break;
+        case '.':
+            prm = get_command();
+            ignore();
+            if ((waitfor->skip & 1) == 0 && waitfor->what == W_ENDC && prm != CMD_ENDC && prm != CMD_COMMENT) {
+                break;
+            }
+        as_command:
+            switch (prm) {
+            case CMD_ENDC: /* .endc */
+                if ((waitfor->skip & 1) != 0) listing_line(epoint.pos);
+                if (!close_waitfor(W_ENDC)) {err_msg2(ERROR__MISSING_OPEN, ".comment", &epoint); goto breakerr;}
+                if ((waitfor->skip & 1) != 0) listing_line_cut2(epoint.pos);
+                break;
+            case CMD_FI: /* .fi */
+                {
+                    if ((waitfor->skip & 1) != 0) listing_line(epoint.pos);
+                    if (waitfor->what==W_FI || waitfor->what==W_FI2) {
+                        if (waitfor->u.cmd_if.label != NULL) {set_size(waitfor->u.cmd_if.label, current_address->address - waitfor->u.cmd_if.addr, current_address->mem, waitfor->u.cmd_if.addr, waitfor->u.cmd_if.membp);val_destroy(Obj(waitfor->u.cmd_if.label));}
+                        close_waitfor(waitfor->what);
+                    } else {err_msg2(ERROR__MISSING_OPEN, ".if", &epoint); goto breakerr;}
+                    if ((waitfor->skip & 1) != 0) listing_line_cut2(epoint.pos);
+                }
+                break;
+            case CMD_ENDSWITCH: /* .endswitch */
+                {
+                    if ((waitfor->skip & 1) != 0) listing_line(epoint.pos);
+                    if (waitfor->what==W_SWITCH || waitfor->what==W_SWITCH2) {
+                        if (waitfor->u.cmd_switch.label != NULL) {set_size(waitfor->u.cmd_switch.label, current_address->address - waitfor->u.cmd_switch.addr, current_address->mem, waitfor->u.cmd_switch.addr, waitfor->u.cmd_switch.membp);val_destroy(Obj(waitfor->u.cmd_switch.label));}
+                        if (waitfor->u.cmd_switch.val != NULL) val_destroy(waitfor->u.cmd_switch.val);
+                        close_waitfor(waitfor->what);
+                    } else {err_msg2(ERROR__MISSING_OPEN, ".switch", &epoint); goto breakerr;}
+                    if ((waitfor->skip & 1) != 0) listing_line_cut2(epoint.pos);
+                }
+                break;
+            case CMD_DEFAULT: /* .default */
+                {
+                    if ((waitfor->skip & 1) != 0) listing_line_cut(epoint.pos);
+                    if (waitfor->what==W_SWITCH) {err_msg2(ERROR______EXPECTED, "'.endswitch'", &epoint); goto breakerr;}
+                    if (waitfor->what!=W_SWITCH2) {err_msg2(ERROR__MISSING_OPEN, ".switch", &epoint); goto breakerr;}
+                    waitfor->skip = (uint8_t)(waitfor->skip >> 1);
+                    waitfor->what = W_SWITCH;waitfor->epoint = epoint;
+                    if ((waitfor->skip & 1) != 0) listing_line_cut2( epoint.pos);
+                }
+                break;
+            case CMD_ELSE: /* .else */
+                {
+                    if ((waitfor->skip & 1) != 0) listing_line_cut(epoint.pos);
+                    if (waitfor->what==W_FI) { err_msg2(ERROR______EXPECTED, "'.endif'", &epoint); goto breakerr; }
+                    if (waitfor->what!=W_FI2) { err_msg2(ERROR__MISSING_OPEN, ".if", &epoint); goto breakerr; }
+                    waitfor->skip = (uint8_t)(waitfor->skip >> 1);
+                    waitfor->what = W_FI;waitfor->epoint = epoint;
+                    if ((waitfor->skip & 1) != 0) listing_line_cut2(epoint.pos);
+                }
+                break;
+            case CMD_IF: /* .if */
+            case CMD_IFEQ: /* .ifeq */
+            case CMD_IFNE: /* .ifne */
+            case CMD_IFPL: /* .ifpl */
+            case CMD_IFMI: /* .ifmi */
+                {
+                    uint8_t skwait = waitfor->skip;
+                    ival_t ival;
+                    bool truth;
+                    Obj *err;
+                    struct values_s *vs;
+                    if ((waitfor->skip & 1) != 0) listing_line(epoint.pos);
+                    new_waitfor(W_FI2, &epoint);
+                    waitfor->u.cmd_if.label = newlabel;
+                    if (newlabel != NULL) {
+                        waitfor->u.cmd_if.addr = current_address->address;waitfor->u.cmd_if.membp = newmembp;
+                        newlabel = NULL;
+                    }
+                    if (skwait != 1) { waitfor->skip = 0; break; }
+                    if (!get_exp(0, 1, 1, &epoint)) { waitfor->skip = 0; goto breakerr;}
+                    vs = get_val(); val = vs->val;
+                    switch (prm) {
+                    case CMD_IF:
+                        if (tobool(vs, &truth)) { waitfor->skip = 0; break; }
+                        waitfor->skip = truth ? (skwait & 1) : (uint8_t)((skwait & 1) << 1);
+                        break;
+                    case CMD_IFNE:
+                    case CMD_IFEQ:
+                        err = val->obj->sign(val, &vs->epoint);
+                        if (err->obj != INT_OBJ) {
+                            if (err == none_value) err_msg_still_none(NULL, &vs->epoint);
+                            else if (err->obj == ERROR_OBJ) err_msg_output(Error(err));
+                            val_destroy(err);
+                            waitfor->skip = 0; break;
+                        }
+                        waitfor->skip = ((Int(err)->len == 0) != (prm == CMD_IFNE)) ? (skwait & 1) : (uint8_t)((skwait & 1) << 1);
+                        val_destroy(err);
+                        break;
+                    case CMD_IFPL:
+                    case CMD_IFMI:
+                        if (arguments.tasmcomp) {
+                            if (toival(val, &ival, 8 * sizeof ival, &vs->epoint)) { waitfor->skip = 0; break; }
+                            waitfor->skip = (((ival & 0x8000) == 0) != (prm == CMD_IFMI)) ? (skwait & 1) : (uint8_t)((skwait & 1) << 1);
+                        } else {
+                            err = val->obj->sign(val, &vs->epoint);
+                            if (err->obj != INT_OBJ) {
+                                if (err == none_value) err_msg_still_none(NULL, &vs->epoint);
+                                else if (err->obj == ERROR_OBJ) err_msg_output(Error(err));
+                                val_destroy(err);
+                                waitfor->skip = 0; break;
+                            }
+                            waitfor->skip = ((Int(err)->len >= 0) != (prm == CMD_IFMI)) ? (skwait & 1) : (uint8_t)((skwait & 1) << 1);
+                            val_destroy(err);
+                        }
+                        break;
+                    }
+                }
+                break;
+            case CMD_ELSIF: /* .elsif */
+                {
+                    bool truth;
+                    if ((waitfor->skip & 1) != 0) listing_line_cut(epoint.pos);
+                    if (waitfor->what == W_FI) {err_msg2(ERROR______EXPECTED, "'.endif'", &epoint); goto breakerr; }
+                    if (waitfor->what != W_FI2) {err_msg2(ERROR__MISSING_OPEN, ".if", &epoint); goto breakerr;}
+                    waitfor->epoint = epoint;
+                    if (waitfor->skip != 2) { waitfor->skip = 0; break; }
+                    waitfor->skip = 1;
+                    if (!get_exp(0, 1, 1, &epoint)) { waitfor->skip = 0; goto breakerr;}
+                    if (tobool(get_val(), &truth)) waitfor->skip = 0;
+                    else if (truth) listing_line_cut2(epoint.pos);
+                    else waitfor->skip = 2;
+                }
+                break;
+            case CMD_SWITCH: /* .switch */
+                {
+                    uint8_t skwait = waitfor->skip;
+                    if ((waitfor->skip & 1) != 0) listing_line(epoint.pos);
+                    new_waitfor(W_SWITCH2, &epoint);
+                    waitfor->u.cmd_switch.label = newlabel;
+                    if (newlabel != NULL) {
+                        waitfor->u.cmd_switch.addr = current_address->address;waitfor->u.cmd_switch.membp = newmembp;
+                        newlabel = NULL;
+                    }
+                    if (skwait == 1) {
+                        struct values_s *vs;
+                        if (!get_exp(0, 1, 1, &epoint)) {waitfor->skip = 0; waitfor->u.cmd_switch.val = NULL; goto breakerr;}
+                        vs = get_val(); val = vs->val;
+                        if (val->obj == ERROR_OBJ) { err_msg_output(Error(val)); val = none_value; }
+                        else if (val == none_value) err_msg_still_none(NULL, &vs->epoint);
+                    } else val = none_value;
+                    waitfor->u.cmd_switch.val = val_reference(val);
+                    waitfor->skip = (val == none_value) ? 0 : (uint8_t)((skwait & 1) << 1);
+                }
+                break;
+            case CMD_CASE: /* .case */
+                {
+                    bool truth = false;
+                    uint8_t skwait = waitfor->skip;
+                    if ((skwait & 1) != 0) listing_line_cut(epoint.pos);
+                    if (waitfor->what == W_SWITCH) { err_msg2(ERROR______EXPECTED, "'.endswitch'", &epoint); goto breakerr; }
+                    if (waitfor->what != W_SWITCH2) { err_msg2(ERROR__MISSING_OPEN, ".switch", &epoint); goto breakerr; }
+                    waitfor->epoint = epoint;
+                    if (skwait == 2) {
+                        struct linepos_s epoint2;
+                        struct values_s *vs;
+                        Obj *result2;
+                        struct oper_s tmp;
+                        waitfor->skip = 1;
+                        if (!get_exp(0, 1, 0, &epoint)) { waitfor->skip = 0; goto breakerr; }
+                        result2 = ref_false();
+                        tmp.op = O_EQ;
+                        tmp.epoint = tmp.epoint3 = &epoint;
+                        while ((vs = get_val()) != NULL) {
+                            Obj *result;
+                            tmp.v1 = waitfor->u.cmd_switch.val;
+                            tmp.v2 = vs->val;
+                            tmp.epoint2 = &vs->epoint;
+                            tmp.inplace = NULL;
+                            result = tmp.v1->obj->calc2(&tmp);
+                            if (result == false_value) {
+                                val_destroy(result);
+                                continue;
+                            }
+                            val_destroy(result2);
+                            result2 = result;
+                            if (result == true_value) {
+                                break;
+                            } else if (result == none_value) {
+                                epoint2 = vs->epoint;
+                            }
+                        }
+                        if (result2 == none_value) err_msg_still_none(NULL, &epoint2);
+                        else if (result2->obj == ERROR_OBJ) err_msg_output(Error(result2));
+                        else truth = (result2 == true_value);
+                        val_destroy(result2);
+                    }
+                    waitfor->skip = truth ? (uint8_t)(skwait >> 1) : (skwait & 2);
+                    if ((waitfor->skip & 1) != 0) listing_line_cut2(epoint.pos);
+                }
+                break;
+            case CMD_ENDMACRO: /* .endmacro */
+            case CMD_ENDSEGMENT: /* .endsegment */
+            case CMD_ENDM: /* .endm */
+                if ((prm != CMD_ENDSEGMENT && waitfor->what == W_ENDMACRO) || (prm != CMD_ENDMACRO && waitfor->what==W_ENDSEGMENT)) {
+                    if (waitfor->u.cmd_macro.val != NULL) {
+                        Macro(waitfor->u.cmd_macro.val)->retval = (here() != 0 && here() != ';');
+                        val_destroy(waitfor->u.cmd_macro.val);
+                    }
+                    close_waitfor(waitfor->what);
+                    if ((waitfor->skip & 1) != 0) listing_line_cut2(epoint.pos);
+                } else if ((prm != CMD_ENDSEGMENT && waitfor->what == W_ENDMACRO2) || (prm != CMD_ENDMACRO && waitfor->what==W_ENDSEGMENT2)) { /* not closed here */
+                    nobreak = false;
+                    if (here() != 0 && here() != ';' && get_exp(0, 0, 0, NULL)) {
+                        retval = get_vals_tuple();
+                        break;
+                    }
+                } else err_msg2(ERROR__MISSING_OPEN, prm == CMD_ENDMACRO ? ".macro" : prm == CMD_ENDSEGMENT ? ".segment" : ".macro' or '.segment", &epoint);
+                goto breakerr;
+            case CMD_ENDF: /* .endf */
+                if (waitfor->what==W_ENDF) {
+                    if (waitfor->u.cmd_function.val != NULL) {
+                        Mfunc(waitfor->u.cmd_function.val)->retval = (here() != 0 && here() != ';');
+                        val_destroy(waitfor->u.cmd_function.val);
+                    }
+                    close_waitfor(W_ENDF);
+                    if ((waitfor->skip & 1) != 0) listing_line_cut2(epoint.pos);
+                } else if (waitfor->what==W_ENDF2 || waitfor->what==W_ENDF3) { /* not closed here */
+                    nobreak = false;
+                    if (here() != 0 && here() != ';' && get_exp(0, 0, 0, NULL)) {
+                        retval = get_vals_tuple();
+                        break;
+                    }
+                } else err_msg2(ERROR__MISSING_OPEN, ".function", &epoint);
+                goto breakerr;
+            case CMD_NEXT: /* .next */
+                switch (waitfor->what) {
+                case W_ENDFOR:
+                case W_ENDFOR2:
+                case W_ENDFOR3:
+                    goto cmd_endfor;
+                case W_ENDREPT:
+                case W_ENDREPT2:
+                case W_ENDREPT3:
+                    goto cmd_endrept;
+                case W_ENDWHILE:
+                case W_ENDWHILE2:
+                case W_ENDWHILE3:
+                    goto cmd_endwhile;
+                default:
+                    err_msg2(ERROR__MISSING_OPEN, ".for', '.rept' or '.while", &epoint);
+                    goto breakerr;
+                }
+            case CMD_ENDFOR: /* .endfor */
+            cmd_endfor:
+                waitfor->epoint = epoint;
+                if (close_waitfor(W_ENDFOR)) {
+                    if ((waitfor->skip & 1) != 0) listing_line_cut2(epoint.pos);
+                } else if (waitfor->what == W_ENDFOR2) {
+                    retval = true_value; /* anything non-null */
+                    nobreak = false;
+                } else if (close_waitfor(W_ENDFOR3)) {
+                    pop_context();
+                } else {err_msg2(ERROR__MISSING_OPEN, ".for", &epoint); goto breakerr;}
+                break;
+            case CMD_ENDREPT: /* .endrept */
+            cmd_endrept:
+                waitfor->epoint = epoint;
+                if (close_waitfor(W_ENDREPT)) {
+                    if ((waitfor->skip & 1) != 0) listing_line_cut2(epoint.pos);
+                } else if (waitfor->what == W_ENDREPT2) {
+                    retval = true_value; /* anything non-null */
+                    nobreak = false;
+                } else if (close_waitfor(W_ENDREPT3)) {
+                    pop_context();
+                } else {err_msg2(ERROR__MISSING_OPEN, ".rept", &epoint); goto breakerr;}
+                break;
+            case CMD_ENDWHILE: /* .endwhile */
+            cmd_endwhile:
+                waitfor->epoint = epoint;
+                if (close_waitfor(W_ENDWHILE)) {
+                    if ((waitfor->skip & 1) != 0) listing_line_cut2(epoint.pos);
+                } else if (waitfor->what == W_ENDWHILE2) {
+                    retval = true_value; /* anything non-null */
+                    nobreak = false;
+                } else if (close_waitfor(W_ENDWHILE3)) {
+                    pop_context();
+                } else {err_msg2(ERROR__MISSING_OPEN, ".while", &epoint); goto breakerr;}
+                break;
+            case CMD_PEND: /* .pend */
+                if (waitfor->what==W_PEND) {
+                    if ((waitfor->skip & 1) != 0) {
+                        listing_line(epoint.pos);
+                        if (pop_context()) err_msg2(ERROR__MISSING_OPEN, ".proc", &epoint);
+                        if (waitfor->u.cmd_proc.label != NULL) {set_size(waitfor->u.cmd_proc.label, current_address->address - waitfor->u.cmd_proc.addr, current_address->mem, waitfor->u.cmd_proc.addr, waitfor->u.cmd_proc.membp);val_destroy(Obj(waitfor->u.cmd_proc.label));}
+                    } else pop_context();
+                    close_waitfor(W_PEND);
+                    if ((waitfor->skip & 1) != 0) listing_line_cut2(epoint.pos);
+                } else {err_msg2(ERROR__MISSING_OPEN, ".proc", &epoint); goto breakerr;}
+                break;
+            case CMD_ENDS: /* .ends */
+                if ((waitfor->skip & 1) != 0) listing_line(epoint.pos);
+                if (waitfor->what==W_ENDS) {
+                    if ((waitfor->skip & 1) != 0) {
+                        current_address->unionmode = waitfor->u.cmd_struct.unionmode;
+                        close_waitfor(W_ENDS);
+                        break;
+                    }
+                    close_waitfor(W_ENDS);
+                } else if (waitfor->what==W_ENDS3 || waitfor->what==W_ENDS2) { /* not closed here */
+                    nobreak = false;
+                    if (here() != 0 && here() != ';' && get_exp(0, 0, 0, NULL)) {
+                        retval = get_vals_tuple();
+                        break;
+                    }
+                } else err_msg2(ERROR__MISSING_OPEN, ".struct", &epoint);
+                goto breakerr;
+            case CMD_SEND: /* .send */
+                if ((waitfor->skip & 1) != 0) listing_line(epoint.pos);
+                if (close_waitfor(W_SEND)) {
+                    lpoint.pos += (linecpos_t)get_label(pline + lpoint.pos);
+                } else if (waitfor->what==W_SEND2) {
+                    str_t sectionname;
+                    epoint = lpoint;
+                    sectionname.data = pline + lpoint.pos; sectionname.len = get_label(sectionname.data);
+                    if (sectionname.len != 0) {
+                        str_t cf;
+                        lpoint.pos += (linecpos_t)sectionname.len;
+                        str_cfcpy(&cf, &sectionname);
+                        if (str_cmp(&cf, &current_section->cfname) != 0) {
+                            char *s;
+                            new_array(&s, current_section->name.len + 1);
+                            memcpy(s, current_section->name.data, current_section->name.len);
+                            s[current_section->name.len] = '\0';
+                            err_msg2(ERROR______EXPECTED, s, &epoint);
+                            free(s);
+                        }
+                    }
+                    section_close(&epoint);
+                    close_waitfor(W_SEND2);
+                } else {err_msg2(ERROR__MISSING_OPEN, ".section", &epoint); goto breakerr;}
+                break;
+            case CMD_ENDU: /* .endu */
+                if (diagnostics.optimize) cpu_opt_invalidate();
+                if ((waitfor->skip & 1) != 0) listing_line(epoint.pos);
+                if (waitfor->what==W_ENDU) {
+                    if ((waitfor->skip & 1) != 0) union_close(&epoint);
+                    close_waitfor(W_ENDU);
+                    oaddr = current_address->address;
+                } else if (waitfor->what==W_ENDU3) { /* not closed here */
+                    nobreak = false;
+                    goto breakerr;
+                } else if (waitfor->what==W_ENDU2) { /* not closed here */
+                    nobreak = false;
+                } else {err_msg2(ERROR__MISSING_OPEN, ".union", &epoint); goto breakerr;}
+                break;
+            case CMD_ENDP: /* .endp */
+                if (diagnostics.optimize) cpu_opt_invalidate();
+                if ((waitfor->skip & 1) != 0) listing_line(epoint.pos);
+                if (close_waitfor(W_ENDP)) {
+                } else if (waitfor->what==W_ENDP2) {
+                    if (diagnostics.page) {
+                        if ((current_address->l_address ^ waitfor->u.cmd_page.laddr) > 0xff) {
+                            err_msg_page(waitfor->u.cmd_page.laddr, current_address->l_address, &epoint);
+                        }
+                    }
+                    if (waitfor->u.cmd_page.label != NULL) {set_size(waitfor->u.cmd_page.label, current_address->address - waitfor->u.cmd_page.addr, current_address->mem, waitfor->u.cmd_page.addr, waitfor->u.cmd_page.membp);val_destroy(Obj(waitfor->u.cmd_page.label));}
+                    close_waitfor(W_ENDP2);
+                } else {err_msg2(ERROR__MISSING_OPEN, ".page", &epoint); goto breakerr;}
+                break;
+            case CMD_HERE: /* .here */
+                if (diagnostics.optimize) cpu_opt_invalidate();
+                if ((waitfor->skip & 1) != 0) listing_line(epoint.pos);
+                if (close_waitfor(W_HERE)) {
+                } else if (waitfor->what==W_HERE2) {
+                    logical_close(&epoint);
+                    close_waitfor(W_HERE2);
+                } else {err_msg2(ERROR__MISSING_OPEN, ".logical", &epoint); goto breakerr;}
+                break;
+            case CMD_ENDV: /* .endv */
+                if (diagnostics.optimize) cpu_opt_invalidate();
+                if ((waitfor->skip & 1) != 0) listing_line(epoint.pos);
+                if (close_waitfor(W_ENDV)) {
+                } else if (waitfor->what==W_ENDV2) {
+                    virtual_close(&epoint);
+                    close_waitfor(W_ENDV2);
+                } else {err_msg2(ERROR__MISSING_OPEN, ".virtual", &epoint); goto breakerr;}
+                break;
+            case CMD_BEND: /* .bend */
+                if ((waitfor->skip & 1) != 0) listing_line(epoint.pos);
+                if (close_waitfor(W_BEND)) {
+                    pop_context();
+                } else if (waitfor->what==W_BEND2) {
+                    if (waitfor->u.cmd_block.label != NULL) {set_size(waitfor->u.cmd_block.label, current_address->address - waitfor->u.cmd_block.addr, current_address->mem, waitfor->u.cmd_block.addr, waitfor->u.cmd_block.membp);val_destroy(Obj(waitfor->u.cmd_block.label));}
+                    if (pop_context()) err_msg2(ERROR__MISSING_OPEN, ".block", &epoint);
+                    close_waitfor(W_BEND2);
+                } else {err_msg2(ERROR__MISSING_OPEN, ".block", &epoint); goto breakerr;}
+                break;
+            case CMD_ENDN: /* .endn */
+                if ((waitfor->skip & 1) != 0) listing_line(epoint.pos);
+                if (close_waitfor(W_ENDN)) {
+                    pop_context();
+                } else if (waitfor->what==W_ENDN2) {
+                    if (pop_context()) err_msg2(ERROR__MISSING_OPEN, ".namespace", &epoint);
+                    close_waitfor(W_ENDN2);
+                } else {err_msg2(ERROR__MISSING_OPEN, ".namespace", &epoint); goto breakerr;}
+                break;
+            case CMD_ENDENCODE: /* .endencode */
+                if ((waitfor->skip & 1) != 0) listing_line(epoint.pos);
+                if (close_waitfor(W_ENDENCODE)) {
+                } else if (waitfor->what==W_ENDENCODE2) {
+                    encode_close();
+                    close_waitfor(W_ENDENCODE2);
+                } else {err_msg2(ERROR__MISSING_OPEN, ".encode", &epoint); goto breakerr;}
+                break;
+            case CMD_ENDWITH: /* .endwith */
+                if ((waitfor->skip & 1) != 0) listing_line(epoint.pos);
+                if ((waitfor->what==W_ENDWITH || waitfor->what==W_ENDWITH2) && waitfor->u.cmd_with.label != NULL) {
+                    set_size(waitfor->u.cmd_with.label, current_address->address - waitfor->u.cmd_with.addr, current_address->mem, waitfor->u.cmd_with.addr, waitfor->u.cmd_with.membp);val_destroy(Obj(waitfor->u.cmd_with.label));
+                }
+                if (close_waitfor(W_ENDWITH)) {
+                } else if (waitfor->what==W_ENDWITH2) {
+                    if (pop_context2()) err_msg2(ERROR__MISSING_OPEN, ".with", &epoint);
+                    close_waitfor(W_ENDWITH2);
+                } else {err_msg2(ERROR__MISSING_OPEN, ".with", &epoint); goto breakerr;}
+                break;
+            case CMD_ENDWEAK: /* .endweak */
+                if ((waitfor->skip & 1) != 0) listing_line(epoint.pos);
+                if (close_waitfor(W_WEAK)) {
+                } else if (waitfor->what==W_WEAK2) {
+                    if (waitfor->u.cmd_weak.label != NULL) {set_size(waitfor->u.cmd_weak.label, current_address->address - waitfor->u.cmd_weak.addr, current_address->mem, waitfor->u.cmd_weak.addr, waitfor->u.cmd_weak.membp);val_destroy(Obj(waitfor->u.cmd_weak.label));}
+                    close_waitfor(W_WEAK2);
+                    strength--;
+                } else {err_msg2(ERROR__MISSING_OPEN, ".weak", &epoint); goto breakerr;}
+                break;
+            case CMD_END: /* .end */
+                if ((waitfor->skip & 1) != 0) listing_line(epoint.pos);
+                nobreak = false;
+                break;
+            case CMD_TEXT: /* .text */
+            case CMD_PTEXT: /* .ptext */
+            case CMD_SHIFT: /* .shift */
+            case CMD_SHIFTL: /* .shiftl */
+            case CMD_NULL: /* .null */
+            case CMD_BYTE: /* .byte */
+            case CMD_CHAR: /* .char */
+            case CMD_RTA: /* .rta */
+            case CMD_ADDR: /* .addr */
+            case CMD_SINT: /* .sint */
+            case CMD_WORD: /* .word */
+            case CMD_LINT: /* .lint */
+            case CMD_LONG: /* .long */
+            case CMD_DINT: /* .dint */
+            case CMD_DWORD: /* .dword */
+            case CMD_BINARY: if ((waitfor->skip & 1) != 0)
+                { /* .binary */
+                    struct mem_mark_s mm;
+                    if (diagnostics.optimize) cpu_opt_invalidate();
+
+                    if (prm<CMD_BYTE) {    /* .text .ptext .shift .shiftl .null */
+                        argcount_t ln;
+                        struct values_s *vs;
+                        struct textrecursion_s trec;
+                        if (newlabel != NULL && newlabel->value->obj == CODE_OBJ) {
+                            Code(newlabel->value)->dtype = D_BYTE;
+                        }
+                        if (here() == 0 || here() == ';') { err_msg_argnum(0, 1, 0, &epoint); goto breakerr; }
+                        if (!get_exp(0, 0, 0, NULL)) goto breakerr;
+                        if (prm == CMD_PTEXT) {
+                            trec.buff[0] = (uint8_t)outputeor;
+                            trec.sum = 1; 
+                            trec.p = 1;
+                        } else {
+                            trec.sum = 0; 
+                            trec.p = 0;
+                        }
+                        trec.gaps = 0;
+                        trec.max = ~(address_t)0;
+                        trec.prm = prm;
+                        switch (prm) {
+                        case CMD_SHIFTL:
+                        case CMD_SHIFT: trec.tconv = BYTES_MODE_SHIFT_CHECK; break;
+                        case CMD_NULL: trec.tconv = BYTES_MODE_NULL_CHECK; break;
+                        default: trec.tconv = BYTES_MODE_TEXT; break;
+                        }
+                        trec.error = ERROR__USER_DEFINED;
+                        trec.epoint = &epoint;
+                        mark_mem(&mm, current_address->mem, current_address->address, current_address->l_address);
+                        for (ln = get_val_remaining(), vs = get_val(); ln != 0; ln--, vs++) {
+                            if (trec.p > 0) textrecursion_flush(&trec);
+                            else if (trec.gaps > 0) textrecursion_gaps(&trec);
+                            trec.epoint = &vs->epoint;
+                            textrecursion(&trec, vs->val);
+                            if (trec.error != ERROR__USER_DEFINED) { err_msg2(trec.error, NULL, trec.epoint); trec.error = ERROR__USER_DEFINED;}
+                        }
+                        if (trec.gaps > 0) textrecursion_gaps(&trec);
+                        switch (prm) {
+                        case CMD_SHIFTL:
+                        case CMD_SHIFT:
+                            if (trec.p > 0) {
+                                uint8_t inv = (prm == CMD_SHIFT) ? 0x80 : 0x01;
+                                trec.buff[trec.p - 1] ^= inv;
+                            } else if (trec.sum != 0) err_msg2(ERROR___NO_LAST_GAP, NULL, trec.epoint);
+                            else err_msg2(ERROR__BYTES_NEEDED, NULL, &epoint);
+                            break;
+                        case CMD_NULL:
+                            if (trec.p >= sizeof trec.buff) textrecursion_flush(&trec);
+                            trec.buff[trec.p++] = (uint8_t)outputeor; break;
+                        default: break;
+                        }
+                        if (trec.p > 0) textrecursion_flush(&trec);
+                        if (prm == CMD_PTEXT) {
+                            if (trec.sum > 0x100) {
+                                size_t ln2 = trec.sum;
+                                err_msg2(ERROR____PTEXT_LONG, &ln2, &epoint);
+                            }
+                            write_mark_mem(&mm, current_address->mem, (trec.sum-1) ^ outputeor);
+                        }
+                        if (nolisting == 0) list_mem(&mm, current_address->mem);
+                    } else if (prm<=CMD_DWORD) { /* .byte .word .int .rta .long */
+                        argcount_t ln;
+                        struct values_s *vs;
+                        struct byterecursion_s brec;
+                        if (newlabel != NULL && newlabel->value->obj == CODE_OBJ) {
+                            signed char dtype;
+                            switch (prm) {
+                            case CMD_DINT: dtype = D_DINT;break;
+                            case CMD_LINT: dtype = D_LINT;break;
+                            case CMD_SINT: dtype = D_SINT;break;
+                            case CMD_CHAR: dtype = D_CHAR;break;
+                            default:
+                            case CMD_BYTE: dtype = D_BYTE;break;
+                            case CMD_RTA:
+                            case CMD_ADDR:
+                            case CMD_WORD: dtype = D_WORD;break;
+                            case CMD_LONG: dtype = D_LONG;break;
+                            case CMD_DWORD: dtype = D_DWORD;break;
+                            }
+                            Code(newlabel->value)->dtype = dtype;
+                        }
+                        if (here() == 0 || here() == ';') { err_msg_argnum(0, 1, 0, &epoint); goto breakerr; }
+                        switch (prm) {
+                        case CMD_CHAR: brec.bits = -8; break;
+                        case CMD_SINT: brec.bits = -16; break;
+                        case CMD_LINT: brec.bits = -24; break;
+                        case CMD_DINT: brec.bits = -32; break;
+                        case CMD_BYTE: brec.bits = 8; break;
+                        default: brec.bits = 16; break;
+                        case CMD_LONG: brec.bits = 24; break;
+                        case CMD_DWORD: brec.bits = 32; break;
+                        }
+                        if (!get_exp(0, 0, 0, NULL)) goto breakerr;
+                        brec.p = 0;
+                        brec.gaps = 0;
+                        brec.warn = false;
+                        brec.epoint2 = &epoint;
+                        brec.prm = prm;
+                        mark_mem(&mm, current_address->mem, current_address->address, current_address->l_address);
+                        for (ln = get_val_remaining(), vs = get_val(); ln != 0; ln--, vs++) {
+                            brec.epoint = &vs->epoint;
+                            byterecursion(&brec, vs->val);
+                            if (brec.warn) { err_msg_still_none(NULL, brec.epoint); brec.warn = false; }
+                            if (brec.p > 0) byterecursion_flush(&brec);
+                            else if (brec.gaps > 0) byterecursion_gaps(&brec);
+                        }
+                        if (nolisting == 0) list_mem(&mm, current_address->mem);
+                    } else if (prm==CMD_BINARY) { /* .binary */
+                        struct file_s *cfile2 = NULL;
+                        ival_t foffs = 0;
+                        filesize_t fsize = ~(filesize_t)0;
+                        struct values_s *vs;
+                        str_t filename;
+
+                        if (newlabel != NULL && newlabel->value->obj == CODE_OBJ) {
+                            Code(newlabel->value)->dtype = D_BYTE;
+                        }
+                        if (!get_exp(0, 1, 3, &epoint)) goto breakerr;
+                        vs = get_val();
+                        if (!tostr(vs, &filename)) {
+                            cfile2 = file_open(&filename, current_file_list, FILE_OPEN_BINARY, &vs->epoint);
+                        }
+                        if ((vs = get_val()) != NULL) {
+                            ival_t ival;
+                            if (toival(vs->val, &ival, 8 * sizeof ival, &vs->epoint)) {}
+                            else foffs = ival;
+                            if ((vs = get_val()) != NULL) {
+                                uval_t uval;
+                                if (touval2(vs, &uval, 8 * sizeof uval)) {}
+                                else fsize = uval;
+                            }
+                        }
+
+                        if (cfile2 != NULL) {
+                            filesize_t foffset;
+                            mark_mem(&mm, current_address->mem, current_address->address, current_address->l_address);
+                            if (foffs < 0) foffset = -(uval_t)foffs < cfile2->binary.len ? (cfile2->binary.len - -(uval_t)foffs) : 0;
+                            else foffset = (uval_t)foffs;
+                            for (; fsize != 0 && foffset < cfile2->binary.len;) {
+                                filesize_t i, ln = cfile2->binary.len - foffset;
+                                uint8_t *d, *s = cfile2->binary.data + foffset;
+                                if (ln > fsize) ln = fsize;
+                                d = pokealloc(ln, &epoint);
+                                if (outputeor != 0) {
+                                    for (i = 0; i < ln; i++) d[i] = s[i] ^ (uint8_t)outputeor;
+                                } else memcpy(d, s, ln);
+                                foffset += ln;
+                                fsize -= ln;
+                            }
+                            if (nolisting == 0) list_mem(&mm, current_address->mem);
+                        }
+                    }
+                }
+                break;
+            case CMD_OFFS: if ((waitfor->skip & 1) != 0)
+                {   /* .offs */
+                    struct values_s *vs;
+                    ival_t ival;
+                    address_t addr;
+
+                    if (diagnostics.optimize) cpu_opt_invalidate();
+                    listing_line(epoint.pos);
+                    if (!get_exp(0, 1, 1, &epoint)) goto breakerr;
+                    vs = get_val();
+                    if (toival(vs->val, &ival, 8 * sizeof ival, &vs->epoint)) break;
+                    if (!current_address->moved) {
+                        if (current_address->end < current_address->address) current_address->end = current_address->address;
+                        current_address->moved = true;
+                    }
+                    current_address->wrapwarn = false;
+                    addr = (ival < 0 ? current_address->l_address - -(uval_t)ival : current_address->l_address + (uval_t)ival) & all_mem2;
+                    if (current_address->address != addr) {
+                        current_address->address = addr;
+                        memjmp(current_address->mem, current_address->address);
+                    }
+                }
+                break;
+            case CMD_LOGICAL: if ((waitfor->skip & 1) != 0)
+                { /* .logical */
+                    struct values_s *vs;
+                    uval_t uval;
+                    atype_t am;
+                    Obj *tmp;
+
+                    if (diagnostics.optimize) cpu_opt_invalidate();
+                    listing_line(epoint.pos);
+                    new_waitfor(W_HERE2, &epoint);
+                    waitfor->u.cmd_logical.laddr = current_address->unionmode ? current_address->l_union : current_address->l_address;
+                    waitfor->u.cmd_logical.addr = current_address->address;
+                    waitfor->u.cmd_logical.val = val_reference(current_address->l_address_val);
+                    waitfor->u.cmd_logical.label = newlabel;
+                    if (newlabel != NULL) {
+                        waitfor->u.cmd_logical.membp = newmembp;
+                        newlabel = NULL;
+                    }
+                    current_section->logicalrecursion++;
+                    if (!get_exp(0, 1, 1, &epoint)) goto breakerr;
+                    vs = get_val();
+                    tmp = vs->val;
+                    if (touaddress(tmp, &uval, all_mem_bits, &vs->epoint)) break;
+                    am = tmp->obj->address(tmp);
+                    if (am != A_NONE && check_addr(am)) {
+                        err_msg_output_and_destroy(err_addressing(am, &vs->epoint, -1));
+                        break;
+                    }
+                    uval &= all_mem;
+                    if (current_address->unionmode) {
+                        current_address->l_union = uval;
+                    } else {
+                        current_address->l_address = uval;
+                    }
+                    current_address->bankwarn = false;
+                    address_update(current_address, tmp);
+                } else new_waitfor(W_HERE, &epoint);
+                break;
+            case CMD_VIRTUAL: if ((waitfor->skip & 1) != 0)
+                { /* .virtual */
+                    listing_line(0);
+                    if (virtual_start(&epoint)) goto breakerr;
+                } else new_waitfor(W_ENDV, &epoint);
+                break;
+            case CMD_AS: /* .as */
+            case CMD_AL: /* .al */
+                if ((waitfor->skip & 1) != 0) {
+                    listing_line(epoint.pos);
+                    longaccu = (prm == CMD_AL);
+                }
+                break;
+            case CMD_XS: /* .xs */
+            case CMD_XL: /* .xl */
+                if ((waitfor->skip & 1) != 0) {
+                    listing_line(epoint.pos);
+                    longindex = (prm == CMD_XL);
+                }
+                break;
+            case CMD_AUTSIZ: /* .autsiz */
+            case CMD_MANSIZ: /* .mansiz */
+                if ((waitfor->skip & 1) != 0) {
+                    listing_line(epoint.pos);
+                    autosize = (prm == CMD_AUTSIZ);
+                }
+                break;
+            case CMD_BLOCK: if ((waitfor->skip & 1) != 0)
+                { /* .block */
+                    listing_line(epoint.pos);
+                    new_waitfor(W_BEND2, &epoint);
+                    if (newlabel != NULL && newlabel->value->obj == CODE_OBJ) {
+                        push_context(Code(newlabel->value)->names);
+                        waitfor->u.cmd_block.addr = current_address->address;waitfor->u.cmd_block.membp = newmembp;waitfor->u.cmd_block.label = newlabel;
+                        newlabel = NULL;
+                    } else {
+                        waitfor->u.cmd_block.label = NULL;
+                        push_context(anonlabel(mycontext, '.', &epoint));
+                    }
+                } else {push_dummy_context(); new_waitfor(W_BEND, &epoint);}
+                break;
+            case CMD_NAMESPACE: if ((waitfor->skip & 1) != 0)
+                { /* .namespace */
+                    listing_line(epoint.pos);
+                    new_waitfor(W_ENDN, &epoint);
+                    if (get_exp(0, 0, 1, &epoint)) {
+                        struct values_s *vs = get_val();
+                        if (vs != NULL) {
+                            val = Obj(get_namespace(vs->val));
+                            if (val == NULL) err_msg_invalid_namespace_conv(vs);
+                        } else val = NULL;
+                    } else val = NULL;
+                    if (val == NULL) {
+                        val = Obj(anonlabel(mycontext, '.', &epoint));
+                    }
+                    if (val->obj == NAMESPACE_OBJ) {
+                        push_context(Namespace(val));
+                        waitfor->what = W_ENDN2;
+                    } else push_context(current_context);
+                } else {push_dummy_context(); new_waitfor(W_ENDN, &epoint);}
+                break;
+            case CMD_ENCODE: if ((waitfor->skip & 1) != 0)
+                { /* .encode */
+                    listing_line(epoint.pos);
+                    new_waitfor(W_ENDENCODE, &epoint);
+                    if (get_exp(0, 0, 1, &epoint)) {
+                        struct values_s *vs = get_val();
+                        if (vs != NULL) {
+                            val = vs->val;
+                            if (val->obj != ENC_OBJ) {
+                                val = NULL;
+                                err_msg_wrong_type2(vs->val, ENC_OBJ, &vs->epoint);
+                            }
+                        } else val = NULL;
+                    } else val = NULL;
+                    if (val == NULL) {
+                        Label *label = new_anonlabel(mycontext);
+                        if (label->value != NULL) {
+                            if (label->defpass == pass) err_msg_double_defined(label, &label->name, &epoint);
+                            else if (label->fwpass == pass) fwcount--;
+                            label->constant = true;
+                            label->owner = true;
+                            label->defpass = pass;
+                            if (label->value->obj != ENC_OBJ) {
+                                val_destroy(label->value);
+                                label->value = new_enc(current_file_list, &epoint);
+                            } else {
+                                Enc *enc = Enc(label->value);
+                                enc->file_list = current_file_list;
+                                enc->epoint = epoint;
+                            }
+                        } else {
+                            label->constant = true;
+                            label->owner = true;
+                            label->value = new_enc(current_file_list, &epoint);
+                            label->epoint = epoint;
+                        }
+                        val = label->value;
+                    }
+                    if (val->obj == ENC_OBJ) {
+                        waitfor->u.cmd_encode.enc = actual_encoding;
+                        actual_encoding = Enc(val_reference(val));
+                        waitfor->what = W_ENDENCODE2;
+                    } else {
+                        waitfor->u.cmd_encode.enc = NULL;
+                    }
+                } else new_waitfor(W_ENDENCODE, &epoint);
+                break;
+            case CMD_WITH: if ((waitfor->skip & 1) != 0)
+                { /* .with */
+                    struct values_s *vs;
+                    listing_line(epoint.pos);
+                    new_waitfor(W_ENDWITH, &epoint);
+                    waitfor->u.cmd_with.label = newlabel;
+                    if (newlabel != NULL) {
+                        waitfor->u.cmd_with.addr = current_address->address;waitfor->u.cmd_with.membp = newmembp;
+                        newlabel = NULL;
+                    }
+                    if (!get_exp(0, 1, 1, &epoint)) goto breakerr;
+                    vs = get_val();
+                    val = Obj(get_namespace(vs->val));
+                    if (val == NULL) err_msg_invalid_namespace_conv(vs);
+                    else {
+                        push_context2(Namespace(val));
+                        waitfor->what = W_ENDWITH2;
+                    }
+                } else { new_waitfor(W_ENDWITH, &epoint); waitfor->u.cmd_with.label = NULL; }
+                break;
+            case CMD_WEAK: if ((waitfor->skip & 1) != 0)
+                { /* .weak */
+                    listing_line(epoint.pos);
+                    new_waitfor(W_WEAK2, &epoint);
+                    waitfor->u.cmd_weak.label = newlabel;
+                    if (newlabel != NULL) {
+                        waitfor->u.cmd_weak.addr = current_address->address;waitfor->u.cmd_weak.membp = newmembp;
+                        newlabel = NULL;
+                    }
+                    strength++;
+                    if (strength == 0) err_msg2(ERROR_WEAKRECURSION, NULL, &epoint);
+                } else new_waitfor(W_WEAK, &epoint);
+                break;
+            case CMD_SEED:
+            case CMD_DATABANK:
+            case CMD_DPAGE:
+            case CMD_EOR: if ((waitfor->skip & 1) != 0)
+                { /* .seed .databank, .dpage, .eor */
+                    uval_t uval;
+                    struct values_s *vs;
+                    listing_line(epoint.pos);
+                    if (!get_exp(0, 1, 1, &epoint)) goto breakerr;
+                    vs = get_val();
+                    switch (prm) {
+                    case CMD_DATABANK:
+                        if (vs->val == gap_value) databank = 256;
+                        else if (touval2(vs, &uval, 8)) {}
+                        else databank = uval & 0xff;
+                        break;
+                    case CMD_DPAGE:
+                        if (vs->val == gap_value) dpage = 65536;
+                        else if (touval2(vs, &uval, 16)) {}
+                        else dpage = uval & 0xffff;
+                        break;
+                    case CMD_EOR:
+                        if (touval2(vs, &uval, 8)) {}
+                        else outputeor = (uval & 0xff) * 0x01010101;
+                        break;
+                    case CMD_SEED:
+                        random_reseed(vs->val, &vs->epoint);
+                        break;
+                    default:
+                        break;
+                    }
+                }
+                break;
+            case CMD_FILL:
+            case CMD_ALIGN: if ((waitfor->skip & 1) != 0)
+                { /* .fill, .align */
+                    address_t db = 0;
+                    uval_t uval;
+                    struct values_s *vs;
+                    struct mem_mark_s mm;
+                    if (diagnostics.optimize) cpu_opt_invalidate();
+                    if (newlabel != NULL && newlabel->value->obj == CODE_OBJ) {
+                        Code(newlabel->value)->dtype = D_BYTE;
+                    }
+                    if (!get_exp(0, 1, 2, &epoint)) goto breakerr;
+                    vs = get_val();
+                    if (prm == CMD_ALIGN) {
+                        address_t max = (all_mem2 == 0xffffffff && current_section->logicalrecursion == 0) ? all_mem2 : all_mem;
+                        if (touval2(vs, &uval, 8 * sizeof uval)) {}
+                        else if (uval == 0) err_msg2(ERROR_NO_ZERO_VALUE, NULL, &vs->epoint);
+                        else if (uval > 1) {
+                            address_t itt = (all_mem2 == 0xffffffff && current_section->logicalrecursion == 0) ? current_address->address : ((current_address->l_address - current_address->l_start) & all_mem);
+                            if (uval > max) {
+                                if (itt != 0) db = max - itt + 1;
+                            } else {
+                                address_t rem = itt % uval;
+                                if (rem != 0) db = uval - rem;
+                            }
+                        }
+                    } else {
+                        if (touval2(vs, &uval, 8 * sizeof uval)) {}
+                        else db = uval;
+                    }
+                    mark_mem(&mm, current_address->mem, current_address->address, current_address->l_address);
+                    if ((vs = get_val()) != NULL) {
+                        struct textrecursion_s trec;
+                        size_t membp = get_mem(current_address->mem);
+                        oaddr = current_address->address;
+
+                        trec.p = 0;
+                        trec.gaps = 0;
+                        trec.sum = 0;
+                        trec.max = db;
+                        trec.prm = CMD_TEXT;
+                        trec.tconv = BYTES_MODE_TEXT;
+                        trec.error = ERROR__USER_DEFINED;
+                        trec.epoint = &vs->epoint;
+                        textrecursion(&trec, vs->val);
+                        if (trec.error != ERROR__USER_DEFINED) err_msg2(trec.error, NULL, trec.epoint);
+
+                        db -= trec.sum;
+                        if (db != 0) {
+                            if (trec.sum == 1 && trec.p == 1) {
+                                memset(pokealloc(db + 1, trec.epoint), trec.buff[0], db + 1); /* single byte shortcut */
+                                trec.p = 0;
+                            } else if (trec.sum == trec.gaps) {
+                                if (trec.sum == 0) err_msg2(ERROR__BYTES_NEEDED, NULL, trec.epoint);
+                                trec.gaps += db; /* gap shortcut */
+                            } else {
+                                address_t offs = 0;
+                                if (trec.p > 0) textrecursion_flush(&trec);
+                                while (db != 0) { /* pattern repeat */
+                                    int ch;
+                                    db--;
+                                    ch = read_mem(current_address->mem, oaddr, membp, offs);
+                                    if (ch < 0) {
+                                        if (trec.p > 0) textrecursion_flush(&trec);
+                                        trec.gaps++;
+                                    } else {
+                                        if (trec.gaps > 0) textrecursion_gaps(&trec);
+                                        else if (trec.p >= sizeof trec.buff) textrecursion_flush(&trec);
+                                        trec.buff[trec.p++] = (uint8_t)ch;
+                                    }
+                                    offs++;
+                                    if (offs >= trec.sum) offs = 0;
+                                }
+                            }
+                        }
+                        if (trec.p > 0) textrecursion_flush(&trec);
+                        else if (trec.gaps > 0) textrecursion_gaps(&trec);
+                    } else if (db != 0) {
+                        memskip(db, &epoint);
+                    }
+                    if (nolisting == 0) {
+                        list_mem(&mm, current_address->mem);
+                    }
+                }
+                break;
+            case CMD_ASSERT: if ((waitfor->skip & 1) != 0)
+                { /* .assert */
+                    uval_t uval;
+                    struct values_s *vs;
+                    listing_line(epoint.pos);
+                    if (!get_exp(0, 3, 3, &epoint)) goto breakerr;
+                    vs = get_val();
+                    if (touval2(vs, &uval, 8 * sizeof uval)) current_section->provides = ~(uval_t)0;
+                    else current_section->provides = uval;
+                    if (touval2(vs + 1, &uval, 8 * sizeof uval)) current_section->requires = 0;
+                    else current_section->requires = uval;
+                    if (touval2(vs + 2, &uval, 8 * sizeof uval)) current_section->conflicts = 0;
+                    else current_section->conflicts = uval;
+                }
+                break;
+            case CMD_CHECK: if ((waitfor->skip & 1) != 0)
+                { /* .check */
+                    uval_t uval;
+                    struct values_s *vs;
+                    listing_line(epoint.pos);
+                    if (!get_exp(0, 2, 2, &epoint)) goto breakerr;
+                    vs = get_val();
+                    if (touval2(vs, &uval, 8 * sizeof uval)) {}
+                    else if ((uval & current_section->provides) != uval) err_msg2(ERROR_REQUIREMENTS_, NULL, &epoint);
+                    if (touval2(vs + 1, &uval, 8 * sizeof uval)) {}
+                    else if ((uval & current_section->provides) != 0) err_msg2(ERROR______CONFLICT, NULL, &epoint);
+                }
+                break;
+            case CMD_WARN:
+            case CMD_CWARN:
+            case CMD_ERROR:
+            case CMD_CERROR: if ((waitfor->skip & 1) != 0)
+                { /* .warn .cwarn .error .cerror */
+                    argcount_t i, len;
+                    size_t len2, chars;
+                    Obj **vals;
+                    uint8_t *s;
+                    Tuple *tmp;
+                    struct values_s *vs;
+                    listing_line(epoint.pos);
+                    if (prm == CMD_CWARN || prm == CMD_CERROR) {
+                        bool writeit;
+                        if (!get_exp(1, 1, 0, &epoint)) goto breakerr;
+                        if (here() == ',') {
+                            lpoint.pos++; ignore();
+                            if (here() == 0 || here() == ';') {
+                                err_msg2(ERROR______EXPECTED, "an expression is", &lpoint);
+                            }
+                        }
+                        if (tobool(get_val(), &writeit) || !writeit) goto breakerr;
+                    }
+                    if (!get_exp(0, 0, 0, &epoint)) goto breakerr;
+                    len = get_val_remaining();
+                    tmp = new_tuple(len);
+                    vals = tmp->data;
+                    vs = get_val();
+                    len2 = 0; chars = 0;
+                    for (i = 0; i < len; i++, vs++) {
+                        val = str_from_obj(vs->val, &vs->epoint);
+                        if (val->obj != STR_OBJ) {
+                            if (val == none_value) err_msg_still_none(NULL, &vs->epoint);
+                            else if (val->obj == ERROR_OBJ) { err_msg_output_and_destroy(Error(val)); break; }
+                            val_destroy(val);
+                            val = val_reference(null_str);
+                        } else {
+                            Str *str = Str(val);
+                            if (inc_overflow(&len2, str->len)) err_msg_out_of_memory();
+                            chars += str->chars;
+                        }
+                        vals[i] = val;
+                    }
+                    tmp->len = i;
+                    if (i == len) {
+                        Str *v = new_str(len2);
+                        v->chars = chars;
+                        s = v->data;
+                        for (i = 0; i < len; i++) {
+                            Str *str = Str(vals[i]);
+                            if (str->len == 0) continue;
+                            memcpy(s, str->data, str->len);
+                            s += str->len;
+                        }
+                        err_msg2((prm==CMD_CERROR || prm==CMD_ERROR)?ERROR__USER_DEFINED:ERROR_WUSER_DEFINED, v, &epoint);
+                        val_destroy(Obj(v));
+                    }
+                    val_destroy(Obj(tmp));
+                }
+                break;
+            case CMD_ENC: if ((waitfor->skip & 1) != 0)
+                { /* .enc */
+                    struct values_s *vs;
+                    Enc *newenc;
+                    listing_line(epoint.pos);
+                    if (!get_exp(0, 1, 1, &epoint)) goto breakerr;
+                    vs = get_val();
+                    if (vs->val->obj == ENC_OBJ) {
+                        newenc = Enc(vs->val);
+                    } else {
+                        str_t encname;
+                        if (tostr(vs, &encname)) break;
+                        if (encname.len == 0) {err_msg2(ERROR__EMPTY_STRING, NULL, &vs->epoint); break;}
+                        newenc = new_encoding(&encname, &epoint);
+                    }
+                    val_destroy(Obj(actual_encoding));
+                    actual_encoding = ref_enc(newenc);
+                }
+                break;
+            case CMD_CDEF: if ((waitfor->skip & 1) != 0)
+                { /* .cdef */
+                    if (cdef_command(&epoint)) goto breakerr;
+                }
+                break;
+            case CMD_EDEF: if ((waitfor->skip & 1) != 0)
+                { /* .edef */
+                    if (edef_command(&epoint)) goto breakerr;
+                }
+                break;
+            case CMD_TDEF: if ((waitfor->skip & 1) != 0)
+                { /* .tdef */
+                    if (tdef_command(&epoint)) goto breakerr;
+                }
+                break;
+            case CMD_CPU: if ((waitfor->skip & 1) != 0)
+                { /* .cpu */
+                    struct values_s *vs;
+                    const struct cpu_s **cpui;
+                    static const struct cpu_s default_cpu = {"default", NULL, NULL, NULL, NULL, 0, 0, 0, 0, 0};
+                    static const struct cpu_s *cpus[] = {
+                        &c6502, &c65c02, &c65ce02, &c6502i, &w65816, &c65dtv02,
+                        &c65el02, &r65c02, &w65c02, &c4510, &default_cpu, NULL
+                    };
+                    str_t cpuname;
+
+                    if (diagnostics.optimize) cpu_opt_invalidate();
+                    listing_line(epoint.pos);
+                    if (!get_exp(0, 1, 1, &epoint)) goto breakerr;
+                    vs = get_val();
+                    if (tostr(vs, &cpuname)) break;
+                    for (cpui = cpus; *cpui != NULL; cpui++) {
+                        if (cpuname.len == strlen((*cpui)->name) && memcmp((*cpui)->name, cpuname.data, cpuname.len) == 0) {
+                            const struct cpu_s *cpumode = (*cpui != &default_cpu) ? *cpui : arguments.cpumode;
+                            if (current_address->l_address > cpumode->max_address) {
+                                err_msg_big_address(&epoint);
+                                current_address->l_address &= cpumode->max_address;
+                            }
+                            set_cpumode(cpumode);
+                            break;
+                        }
+                    }
+                    if (*cpui == NULL) err_msg2(ERROR___UNKNOWN_CPU, &cpuname, &vs->epoint);
+                }
+                break;
+            case CMD_PRON: /* .pron */
+                if ((waitfor->skip & 1) != 0) {
+                    listing_line(epoint.pos);
+                    if (nolisting != 0) nolisting--;
+                }
+                break;
+            case CMD_PROFF: /* .proff */
+                if ((waitfor->skip & 1) != 0) {
+                    nolisting++;
+                    listing_line(epoint.pos);
+                }
+                break;
+            case CMD_SHOWMAC: /* .showmac */
+            case CMD_HIDEMAC: /* .hidemac */
+                if ((waitfor->skip & 1) != 0) {
+                    listing_line(epoint.pos);
+                    if (diagnostics.ignored) err_msg2(ERROR_DIRECTIVE_IGN, NULL, &epoint);
+                }
+                break;
+            case CMD_COMMENT: /* .comment */
+                if ((waitfor->skip & 1) != 0) listing_line(epoint.pos);
+                new_waitfor(W_ENDC, &epoint);
+                waitfor->skip = 0;
+                break;
+            case CMD_INCLUDE:
+            case CMD_BINCLUDE: if ((waitfor->skip & 1) != 0)
+                { /* .include, .binclude */
+                    struct file_s *f = NULL;
+                    struct values_s *vs;
+                    str_t filename;
+                    if (diagnostics.optimize) cpu_opt_invalidate();
+                    listing_line(epoint.pos);
+                    if (!get_exp(0, 1, 1, &epoint)) goto breakerr;
+                    vs = get_val();
+                    if (!tostr(vs, &filename)) {
+                        f = file_open(&filename, current_file_list, FILE_OPEN_SOURCE, &vs->epoint);
+                    }
+                    if (here() != 0 && here() != ';') err_msg(ERROR_EXTRA_CHAR_OL,NULL);
+
+                    if (newlabel != NULL && prm == CMD_BINCLUDE && (f == NULL || f->open) && newlabel->value->obj == CODE_OBJ) {
+                        newlabel->update_after = true;
+                        const_assign(newlabel, ref_none());
+                    }
+                    if (f == NULL) goto breakerr;
+                    if (f->open) {
+                        err_msg2(ERROR_FILERECURSION, NULL, &epoint);
+                    } else {
+                        Wait_types what;
+                        struct star_s *s = new_star(vline);
+                        struct star_s *stree_old = star_tree;
+                        linenum_t lin = lpoint.line;
+
+                        if (s->pass != 0 && s->addr != star) {
+                            if (fixeddig && pass > max_pass) err_msg_cant_calculate(NULL, &epoint);
+                            fixeddig = false;
+                        }
+                        s->addr = star;
+                        listing_file(";******  Processing file: ", f);
+                        if (prm == CMD_BINCLUDE) {
+                            if (newlabel != NULL && newlabel->value->obj == CODE_OBJ) {
+                                push_context(Code(newlabel->value)->names);
+                            } else {
+                                push_context(anonlabel(mycontext, '.', &epoint));
+                            }
+                        }
+                        f->open = true;
+                        enterfile(f, &epoint);
+                        lpoint.line = 0;
+                        star_tree->vline = vline; star_tree = s; vline = s->vline;
+                        what = waitfor->what; waitfor->what = W_NONE;
+                        val = compile();
+                        waitfor->what = what;
+                        if (prm == CMD_BINCLUDE) pop_context();
+                        if (val != NULL) val_destroy(val);
+                        lpoint.line = lin; 
+                        s->vline = vline; star_tree = stree_old; vline = star_tree->vline;
+                        exitfile();
+                        f->open = false;
+                        listing_file(";******  Return to file: ", current_file_list->file);
+                    }
+                    goto breakerr;
+                }
+                break;
+            case CMD_BREPT:
+            case CMD_BWHILE:
+            case CMD_BFOR: if ((waitfor->skip & 1) != 0)
+                { /* .bfor */
+                    List *lst;
+                    size_t i;
+                    Label *label = new_anonlabel(mycontext);
+                    if (label->value != NULL) {
+                        if (label->defpass == pass) err_msg_double_defined(label, &label->name, &epoint);
+                        else if (label->fwpass == pass) fwcount--;
+                        label->defpass = pass;
+                    } else {
+                        label->value = ref_none();
+                        label->epoint = epoint;
+                    }
+                    label->constant = true;
+                    label->owner = true;
+                    if (label->value->obj == TUPLE_OBJ) {
+                        Tuple *old = Tuple(label->value);
+                        lst = new_tuple(old->len);
+                        for (i = 0; i < old->len; i++) lst->data[i] = val_reference(old->data[i]);
+                    } else {
+                        lst = new_tuple(lenof(lst->u.val));
+                        for (i = 0; i < lst->len; i++) lst->data[i] = ref_none();
+                    }
+                    i = (prm == CMD_BFOR) ? for_command(NULL, lst, &epoint) : (prm == CMD_BREPT) ? rept_command(NULL, lst, &epoint) : while_command(NULL, lst, &epoint);
+                    if (lst->len > i) list_shrink(lst, i);
+                    const_assign(label, Obj(lst));
+                    goto breakerr;
+                } else {push_dummy_context(); new_waitfor(prm == CMD_BFOR ? W_ENDFOR3 : prm == CMD_BREPT ? W_ENDREPT3 : W_ENDWHILE3, &epoint);}
+                break;
+            case CMD_FOR: if ((waitfor->skip & 1) != 0)
+                { /* .for */
+                    for_command(NULL, NULL, &epoint);
+                    goto breakerr;
+                } else new_waitfor(W_ENDFOR, &epoint);
+                break;
+            case CMD_REPT: if ((waitfor->skip & 1) != 0)
+                { /* .rept */
+                    rept_command(NULL, NULL, &epoint);
+                    goto breakerr;
+                } else new_waitfor(W_ENDREPT, &epoint);
+                break;
+            case CMD_WHILE: if ((waitfor->skip & 1) != 0)
+                { /* .while */
+                    while_command(NULL, NULL, &epoint);
+                    goto breakerr;
+                } else new_waitfor(W_ENDWHILE, &epoint);
+                break;
+            case CMD_CONTINUEIF:
+            case CMD_BREAKIF:
+            case CMD_CONTINUE:
+            case CMD_BREAK: if ((waitfor->skip & 1) != 0)
+                { /* .continue, .break, .continueif, .breakif */
+                    size_t wp = waitfor_p + 1;
+                    bool nok = true, doit = true;
+                    listing_line(epoint.pos);
+                    if (prm == CMD_CONTINUEIF || prm == CMD_BREAKIF) {
+                        if (get_exp(0, 1, 1, &epoint)) { 
+                            struct values_s *vs = get_val(); 
+                            bool truth, result = tobool(vs, &truth);
+                            if (prm == CMD_BREAKIF) {
+                                if (!result && !truth) doit = false;
+                            } else {
+                                if (result || !truth) doit = false;
+                            }
+                        }
+                    }
+                    while (wp != 0) {
+                        switch (waitfors[--wp].what) {
+                        case W_ENDFOR2:
+                        case W_ENDREPT2:
+                        case W_ENDWHILE2:
+                            break;
+                        case W_ENDF3:
+                            wp = 0;
+                            continue;
+                        default:
+                            continue;
+                        }
+                        if (doit) {
+                            if (wp != 0 && (prm == CMD_BREAK || prm == CMD_BREAKIF)) waitfors[wp].u.cmd_rept.breakout = true;
+                            for (;wp <= waitfor_p; wp++) waitfors[wp].skip = 0;
+                        }
+                        nok = false;
+                        break;
+                    }
+                    if (nok) err_msg2(ERROR__MISSING_LOOP, NULL, &epoint);
+                }
+                break;
+            case CMD_PAGE: if ((waitfor->skip & 1) != 0)
+                { /* .page */
+                    if (diagnostics.optimize) cpu_opt_invalidate();
+                    listing_line(epoint.pos);
+                    new_waitfor(W_ENDP2, &epoint);
+                    waitfor->u.cmd_page.laddr = current_address->l_address;
+                    waitfor->u.cmd_page.label = newlabel;
+                    if (newlabel != NULL) {
+                        waitfor->u.cmd_page.addr = current_address->address;waitfor->u.cmd_page.membp = newmembp;
+                        newlabel = NULL;
+                    }
+                } else new_waitfor(W_ENDP, &epoint);
+                break;
+            case CMD_OPTION: if ((waitfor->skip & 1) != 0)
+                { /* .option */
+                    static const str_t branch_across = {(const uint8_t *)"allow_branch_across_page", 24};
+                    static const str_t longjmp = {(const uint8_t *)"auto_longbranch_as_jmp", 22};
+                    struct values_s *vs;
+                    str_t optname, cf;
+                    listing_line(epoint.pos);
+                    optname.data = pline + lpoint.pos; optname.len = get_label(optname.data);
+                    if (optname.len == 0) { err_msg2(ERROR_LABEL_REQUIRE, NULL, &epoint); goto breakerr;}
+                    lpoint.pos += (linecpos_t)optname.len;
+                    ignore();if (here() != '=') {err_msg(ERROR______EXPECTED, "'='"); goto breakerr;}
+                    epoint = lpoint;
+                    lpoint.pos++;
+                    if (!get_exp(0, 1, 0, &epoint)) goto breakerr;
+                    vs = get_val();
+                    str_cfcpy(&cf, &optname);
+                    if (str_cmp(&cf, &branch_across) == 0) {
+                        if (tobool(vs, &allowslowbranch)) break;
+                    } else if (str_cmp(&cf, &longjmp) == 0) {
+                        if (tobool(vs, &longbranchasjmp)) break;
+                    } else err_msg2(ERROR_UNKNOWN_OPTIO, &optname, &epoint);
+                }
+                break;
+            case CMD_GOTO: if ((waitfor->skip & 1) != 0)
+                { /* .goto */
+                    bool noerr = true;
+                    struct values_s *vs;
+                    Lbl *lbl;
+                    listing_line(epoint.pos);
+                    if (!get_exp(0, 1, 1, &epoint)) goto breakerr;
+                    if (!arguments.tasmcomp && diagnostics.deprecated) err_msg2(ERROR______OLD_GOTO, NULL, &epoint);
+                    vs = get_val(); val = vs->val;
+                    if (val->obj != LBL_OBJ) {err_msg_wrong_type2(val, LBL_OBJ, &vs->epoint); break;}
+                    lbl = Lbl(val);
+                    if (lbl->pass == pass && lbl->file_list == current_file_list && lbl->parent == current_context && oldwaitforp <= lbl->waitforp) {
+                        while (lbl->waitforp < waitfor_p) {
+                            const char *msg;
+                            switch (waitfor->what) {
+                            case W_FI:
+                            case W_FI2:
+                                if (waitfor->u.cmd_if.label != NULL) {set_size(waitfor->u.cmd_if.label, current_address->address - waitfor->u.cmd_if.addr, current_address->mem, waitfor->u.cmd_if.addr, waitfor->u.cmd_if.membp);val_destroy(Obj(waitfor->u.cmd_if.label));}
+                                break;
+                            case W_SWITCH2:
+                            case W_SWITCH:
+                                if (waitfor->u.cmd_switch.label != NULL) {set_size(waitfor->u.cmd_switch.label, current_address->address - waitfor->u.cmd_switch.addr, current_address->mem, waitfor->u.cmd_switch.addr, waitfor->u.cmd_switch.membp);val_destroy(Obj(waitfor->u.cmd_switch.label));}
+                                if (waitfor->u.cmd_switch.val != NULL) val_destroy(waitfor->u.cmd_switch.val);
+                                break;
+                            default:
+                                msg = check_waitfor();
+                                if (msg != NULL) {
+                                    err_msg2(ERROR_MISSING_CLOSE, msg, &waitfor->epoint);
+                                    noerr = false;
+                                }
+                            }
+                            close_waitfor(waitfor->what);
+                        }
+                        if (noerr) {
+                            lpoint.line = lbl->sline;
+                        }
+                    } else err_msg_not_defined(NULL, &vs->epoint);
+                }
+                break;
+            case CMD_MACRO:
+            case CMD_SEGMENT: /* .macro, .segment */
+                if ((waitfor->skip & 1) != 0) {
+                    listing_line(0);
+                    if (labelname.len == 0) err_msg2(ERROR_LABEL_REQUIRE, NULL, &epoint);
+                }
+                new_waitfor(prm == CMD_MACRO ? W_ENDMACRO : W_ENDSEGMENT, &epoint);
+                waitfor->u.cmd_macro.val = NULL;
+                waitfor->skip = 0;
+                break;
+            case CMD_FUNCTION: /* .function */
+                if ((waitfor->skip & 1) != 0) {
+                    listing_line(0);
+                    if (labelname.len == 0) err_msg2(ERROR_LABEL_REQUIRE, NULL, &epoint);
+                }
+                new_waitfor(W_ENDF, &epoint);
+                waitfor->u.cmd_function.val = NULL;
+                waitfor->skip = 0;
+                break;
+            case CMD_SFUNCTION: /* .sfunction */
+            case CMD_VAR: /* .var */
+                if ((waitfor->skip & 1) != 0) {
+                    listing_line(0);
+                    if (labelname.len == 0) err_msg2(ERROR_LABEL_REQUIRE, NULL, &epoint);
+                    goto breakerr;
+                }
+                break;
+            case CMD_LBL: /* .lbl */
+                if ((waitfor->skip & 1) != 0) {
+                    listing_line(0);
+                    if (labelname.len == 0) err_msg2(ERROR_LABEL_REQUIRE, NULL, &epoint);
+                    else if (!arguments.tasmcomp && diagnostics.deprecated) err_msg2(ERROR______OLD_GOTO, NULL, &epoint);
+                }
+                break;
+            case CMD_PROC: /* .proc */
+                if ((waitfor->skip & 1) != 0) {
+                    listing_line(0);
+                    if (labelname.len == 0) err_msg2(ERROR_LABEL_REQUIRE, NULL, &epoint);
+                }
+                push_dummy_context();
+                new_waitfor(W_PEND, &epoint);
+                waitfor->skip = 0;waitfor->u.cmd_proc.label = NULL;
+                break;
+            case CMD_STRUCT: /* .struct */
+                new_waitfor(W_ENDS, &epoint);
+                if ((waitfor->skip & 1) != 0) {
+                    listing_line(0);
+                    waitfor->u.cmd_struct.unionmode = current_address->unionmode;
+                    current_address->unionmode = false;
+                }
+                break;
+            case CMD_UNION: /* .union */
+                new_waitfor(W_ENDU, &epoint);
+                if ((waitfor->skip & 1) != 0) {
+                    if (diagnostics.optimize) cpu_opt_invalidate();
+                    listing_line(0);
+                    waitfor->u.cmd_union.unionmode = current_address->unionmode;
+                    current_address->unionmode = true;
+                    waitfor->u.cmd_union.addr = current_address->start;
+                    waitfor->u.cmd_union.addr2 = current_address->end;
+                    waitfor->u.cmd_union.laddr = current_address->l_union;
+                    current_address->start = current_address->end = current_address->address;
+                    current_address->l_union = current_address->l_address;
+                }
+                break;
+            case CMD_DUNION:
+            case CMD_DSTRUCT: if ((waitfor->skip & 1) != 0)
+                { /* .dstruct */
+                    address_t oldstart, oldend;
+                    address_t oldl_start, oldl_union;
+                    bool oldunionmode;
+                    struct values_s *vs;
+                    Type *obj;
+                    if (diagnostics.optimize) cpu_opt_invalidate();
+                    listing_line(0);
+                    if (!get_exp(1, 1, 0, &epoint)) goto breakerr;
+                    vs = get_val(); val = vs->val;
+                    if (here() == ',') lpoint.pos++;
+                    obj = (prm == CMD_DUNION) ? UNION_OBJ : STRUCT_OBJ;
+                    if (val->obj != obj) {err_msg_wrong_type2(val, obj, &vs->epoint); goto breakerr;}
+                    oldstart = current_address->start;
+                    oldend = current_address->end;
+                    oldl_start = current_address->l_start;
+                    oldl_union = current_address->l_union;
+                    oldunionmode = current_address->unionmode;
+                    current_address->start = current_address->end = current_address->address;
+                    current_address->l_start = current_address->l_address;
+                    current_address->l_union = current_address->l_address;
+                    current_address->unionmode = (prm == CMD_DUNION);
+                    val = macro_recurse(prm == CMD_DUNION ? W_ENDU3 : W_ENDS3, val, NULL, &epoint);
+                    if (val != NULL) val_destroy(val);
+                    current_address->start = oldstart;
+                    oldstart = current_address->unionmode ? current_address->end : current_address->address;
+                    if (oldend > current_address->end) current_address->end = oldend;
+                    current_address->l_start = oldl_start;
+                    current_address->l_union = oldl_union;
+                    current_address->unionmode = oldunionmode;
+                    if (oldstart > current_address->address) {
+                        memskip(oldstart - current_address->address, &epoint);
+                    }
+                }
+                goto breakerr;
+            case CMD_DSECTION: if ((waitfor->skip & 1) != 0)
+                { /* .dsection */
+                    struct section_s *tmp3;
+                    str_t sectionname;
+
+                    if (diagnostics.optimize) cpu_opt_invalidate();
+                    listing_line(epoint.pos);
+                    epoint = lpoint;
+                    sectionname.data = pline + lpoint.pos; sectionname.len = get_label(sectionname.data);
+                    if (sectionname.len == 0) {err_msg2(ERROR_LABEL_REQUIRE, NULL, &epoint); goto breakerr;}
+                    lpoint.pos += (linecpos_t)sectionname.len;
+                    tmp3=new_section(&sectionname);
+                    if (tmp3->defpass == pass) {
+                        err_msg_double_definedo(tmp3->file_list, &tmp3->epoint, &sectionname, &epoint);
+                    } else {
+                        address_t t;
+                        if (tmp3->usepass == 0 || tmp3->defpass < pass - 1) {
+                            address_t ln = tmp3->address.mem->mem.p;
+                            size_t ln2 = tmp3->address.mem->p;
+                            tmp3->address.wrapwarn = tmp3->address.moved = false;
+                            tmp3->address.bankwarn = false;
+                            tmp3->address.end = tmp3->address.start = tmp3->restart = tmp3->address.address = current_address->address;
+                            tmp3->l_restart = tmp3->address.l_address = current_address->l_address;
+                            tmp3->usepass = pass;
+                            val_destroy(Obj(tmp3->address.mem));
+                            tmp3->address.mem = new_memblocks(ln, ln2);
+                            tmp3->address.mem->lastaddr = tmp3->address.address;
+                            tmp3->address.mem->section = tmp3;
+                            if (diagnostics.optimize) cpu_opt_invalidate();
+                            if (fixeddig && pass > max_pass) err_msg_cant_calculate(NULL, &epoint);
+                            fixeddig = false;
+                        }
+                        tmp3->provides = ~(uval_t)0;tmp3->requires = tmp3->conflicts = 0;
+                        tmp3->address.unionmode = current_address->unionmode;
+                        tmp3->address.l_start = current_address->l_start;
+                        tmp3->address.l_union = current_address->l_union;
+                        tmp3->logicalrecursion = current_section->logicalrecursion;
+                        val_destroy(tmp3->address.l_address_val); /* TODO: restart as well */
+                        tmp3->address.l_address_val = val_reference(current_address->l_address_val);
+                        tmp3->file_list = current_file_list;
+                        tmp3->epoint = epoint;
+                        if (tmp3->usepass == pass) {
+                            t = tmp3->size;
+                            if (t < tmp3->address.end - tmp3->address.start) t = tmp3->address.end - tmp3->address.start;
+                            if (!tmp3->address.moved) {
+                                if (t < tmp3->address.address - tmp3->address.start) t = tmp3->address.address - tmp3->address.start;
+                            }
+                            if (tmp3->restart != current_address->address) {
+                                address_t change = current_address->address - tmp3->restart;
+                                tmp3->address.end = (tmp3->address.end + change) & all_mem2;
+                                tmp3->address.address = (tmp3->address.address + change) & all_mem2;
+                                tmp3->address.start = tmp3->restart = current_address->address;
+                                if (tmp3->address.end < tmp3->address.start) tmp3->address.end = all_mem2 + 1;
+                                tmp3->address.mem->lastaddr = (tmp3->address.mem->lastaddr + change) & all_mem2;
+                            }
+                            if (tmp3->l_restart != current_address->l_address) {
+                                tmp3->address.l_address = (tmp3->address.l_address + current_address->l_address - tmp3->l_restart) & all_mem;
+                                tmp3->l_restart = current_address->l_address;
+                                if (fixeddig && pass > max_pass) err_msg_cant_calculate(NULL, &epoint);
+                                fixeddig = false;
+                            }
+                        } else {
+                            address_t ln = tmp3->address.mem->mem.p;
+                            size_t ln2 = tmp3->address.mem->p;
+                            if (!tmp3->address.moved) {
+                                if (tmp3->address.end < tmp3->address.address) tmp3->address.end = tmp3->address.address;
+                                tmp3->address.moved = true;
+                            }
+                            tmp3->address.wrapwarn = false;
+                            tmp3->address.bankwarn = false;
+                            t = tmp3->address.end - tmp3->address.start;
+                            tmp3->address.end = tmp3->address.start = tmp3->restart = tmp3->address.address = current_address->address;
+                            tmp3->address.l_address = current_address->l_address;
+                            if (tmp3->l_restart != current_address->l_address) {
+                                tmp3->l_restart = current_address->l_address;
+                                if (fixeddig && pass > max_pass) err_msg_cant_calculate(NULL, &epoint);
+                                fixeddig = false;
+                            }
+                            tmp3->size = t;
+                            val_destroy(Obj(tmp3->address.mem));
+                            tmp3->address.mem = new_memblocks(ln, ln2);
+                            tmp3->address.mem->lastaddr = tmp3->address.address;
+                            tmp3->address.mem->section = tmp3;
+                            if (diagnostics.optimize) cpu_opt_invalidate();
+                        }
+                        tmp3->usepass = pass;
+                        tmp3->defpass = pass;
+                        memref(current_address->mem, tmp3->address.mem, current_address->address, t);
+                        if (t != 0) {
+                            memskip(t, &epoint);
+                        }
+                    }
+                }
+                break;
+            case CMD_SECTION: if ((waitfor->skip & 1) != 0)
+                { /* .section */
+                    listing_line(0);
+                    if (section_start(&epoint)) goto breakerr;
+                } else new_waitfor(W_SEND, &epoint);
+                break;
+            case lenof(command):
+                if ((waitfor->skip & 1) != 0) goto as_macro2;
+                break;
+            default:
+                if ((waitfor->skip & 1) != 0) {
+                    listing_line(epoint.pos);
+                    err_msg(ERROR_GENERL_SYNTAX,NULL);
+                    goto breakerr;
+                }
+                break;
+            }
+            break;
+        case '#':if ((waitfor->skip & 1) != 0) /* skip things if needed */
+            {                   /* macro stuff */
+                struct values_s *vs;
+                lpoint.pos++;
+            as_macro2:
+                if (!get_exp(2, 1, 1, &epoint)) goto breakerr;
+                vs = get_val(); val = vs->val;
+                switch (val->obj->type) {
+                case T_MACRO:
+                case T_SEGMENT:
+                case T_STRUCT:
+                case T_UNION:
+                case T_MFUNC: break;
+                default : err_msg_wrong_type2(val, NULL, &vs->epoint); goto breakerr;
+                }
+            as_macro:
+                if (val->obj == MACRO_OBJ || val->obj == STRUCT_OBJ || val->obj == UNION_OBJ) {
+                    Namespace *context;
+                    if (newlabel != NULL && !Macro(val)->retval && newlabel->value->obj == CODE_OBJ) {
+                        context = Code(newlabel->value)->names;
+                    } else {
+                        context = anonlabel(mycontext, '#', &epoint);
+                    }
+                    if (newlabel != NULL && Macro(val)->retval) {
+                        listing_equal(newlabel->value);
+                    } else {
+                        listing_line_cut(epoint.pos);
+                    }
+                    val = macro_recurse(val->obj == MACRO_OBJ ? W_ENDMACRO2 : val->obj == STRUCT_OBJ ? W_ENDS3 : W_ENDU3, val, context, &epoint);
+                } else if (val->obj == MFUNC_OBJ) {
+                    Mfunc *mfunc = Mfunc(val_reference(val));
+                    if (!get_exp(4, 0, 0, NULL)) {
+                        val = NULL;
+                        val_destroy(Obj(mfunc));
+                        goto breakerr;
+                    }
+                    if (newlabel != NULL && mfunc->retval) {
+                        listing_equal(newlabel->value);
+                    } else {
+                        listing_line_cut(epoint.pos);
+                    }
+                    val = mfunc_recurse(mfunc, anonlabel(mfunc->namespaces[mfunc->nslen - 1], '#', &epoint), strength, &epoint);
+                    val_destroy(Obj(mfunc));
+                } else { /* segment */
+                    if (newlabel != NULL && Macro(val)->retval) {
+                        listing_equal(newlabel->value);
+                    } else {
+                        listing_line_cut(epoint.pos);
+                    }
+                    val = macro_recurse(W_ENDSEGMENT2, val, NULL, &epoint);
+                }
+                if (val != NULL) {
+                    if (newlabel != NULL) {
+                        newlabel->update_after = true;
+                        const_assign(newlabel, val);
+                    } else val_destroy(val);
+                }
+                goto breakerr;
+            }
+            break;
+        default:
+            if ((waitfor->skip & 1) != 0) {
+                str_t opname;
+                bool down;
+
+                if (newlabel != NULL && newlabel->value->obj == CODE_OBJ && labelname.len != 0 && labelname.data[0] != '_' && labelname.data[0] != '+' && labelname.data[0] != '-') {val_destroy(Obj(cheap_context));cheap_context = ref_namespace(Code(newlabel->value)->names);}
+                opname.data = pline + lpoint.pos; opname.len = get_label(opname.data);
+                lpoint.pos += (linecpos_t)opname.len;
+                if (opname.len == 3 && (prm = lookup_opcode(opname.data)) >= 0) {
+                    Error *err;
+                    struct linepos_s oldlpoint;
+                    Funcargs tmp;
+                    unsigned int w;
+                    if (false) {
+                as_opcode:
+                        opname = labelname;
+                    }
+                    ignore();
+                    oldlpoint = lpoint;
+                    w = 3; /* 0=byte 1=word 2=long 3=negative/too big */
+                    if (here() == 0 || here() == ';') {
+                        tmp.len = 0;
+                        err = instruction(prm, w, &tmp, &epoint);
+                    } else {
+                        if (arguments.tasmcomp) {
+                            if (here() == '!') {w = 1; lpoint.pos++;}
+                        } else {
+                            if (here()=='@') {
+                                switch (pline[lpoint.pos + 1] | arguments.caseinsensitive) {
+                                case 'b': w = 0;break;
+                                case 'w': w = 1;break;
+                                case 'l': w = 2;break;
+                                default:err_msg2(ERROR______EXPECTED, "'@b' or '@w' or '@l'", &lpoint);goto breakerr;
+                                }
+                                lpoint.pos += 2;
+                            }
+                        }
+                        if (!get_exp(3, 0, 0, NULL)) goto breakerr;
+                        get_vals_funcargs(&tmp);
+                        err = instruction(prm, w, &tmp, &epoint);
+                    }
+                    if (err == NULL) {
+                        if (llist != NULL) listing_instr(0, 0, -1);
+                        if (diagnostics.alias && prm != current_cpu->alias[prm]) err_msg_alias(current_cpu->mnemonic[prm], current_cpu->mnemonic[current_cpu->alias[prm]], &epoint);
+                        break;
+                    }
+                    tmp2 = find_label(&opname, NULL);
+                    if (tmp2 != NULL) {
+                        const Type *obj = tmp2->value->obj;
+                        if (diagnostics.case_symbol && str_cmp(&opname, &tmp2->name) != 0) err_msg_symbol_case(&opname, tmp2, &epoint);
+                        if (obj == MACRO_OBJ || obj == SEGMENT_OBJ || obj == MFUNC_OBJ) {
+                            val_destroy(Obj(err));
+                            touch_label(tmp2);
+                            lpoint = oldlpoint;
+                            val = tmp2->value;
+                            goto as_macro;
+                        }
+                    }
+                    err_msg_output_and_destroy(err);
+                    break;
+                }
+                down = (opname.data[0] != '_');
+                tmp2 = down ? find_label(&opname, NULL) : find_label2(&opname, cheap_context);
+                if (tmp2 != NULL) {
+                    const Type *obj = tmp2->value->obj;
+                    if (diagnostics.case_symbol && str_cmp(&opname, &tmp2->name) != 0) err_msg_symbol_case(&opname, tmp2, &epoint);
+                    if (obj == MACRO_OBJ || obj == SEGMENT_OBJ || obj == MFUNC_OBJ) {
+                        if (diagnostics.macro_prefix) {
+                            ignore();
+                            if (here() == 0 || here() == ';') err_msg_macro_prefix(&epoint);
+                        }
+                        touch_label(tmp2);
+                        val = tmp2->value;goto as_macro;
+                    }
+                }
+                err_msg2(ERROR_GENERL_SYNTAX, NULL, &epoint);
+                goto breakerr;
+            }
+        }
+    finish:
+        ignore();if (here() != 0 && here() != ';' && (waitfor->skip & 1) != 0) err_msg(ERROR_EXTRA_CHAR_OL,NULL);
+    breakerr:
+        if (newlabel != NULL) { 
+            if (!newlabel->update_after) set_size(newlabel, current_address->address - oaddr, current_address->mem, oaddr, newmembp);
+            val_destroy(Obj(newlabel));
+        }
+    }
+
+    while (oldwaitforp < waitfor_p) {
+        const char *msg = check_waitfor();
+        if (msg != NULL) err_msg2(ERROR_MISSING_CLOSE, msg, &waitfor->epoint);
+        close_waitfor(waitfor->what);
+    }
+    return retval;
+}
+
+static void one_pass(int argc, char **argv, int opts) {
+    static const str_t none_enc = {(const uint8_t *)"none", 4};
+    static const str_t cmdline_name = { (const uint8_t *)"<command line>", 14 };
+    static const struct linepos_s nopoint = {0, 0};
+    struct file_s *cfile;
+    Obj *val;
+    int i;
+    address_t ln = root_section.address.mem->mem.p;
+    size_t ln2 = root_section.address.mem->p;
+    str_t filename;
+
+    fixeddig = true;constcreated = false; fwcount = 0; efwcount = 0; error_reset();random_reseed(int_value[0], NULL);
+    val_destroy(Obj(root_section.address.mem));
+    root_section.address.mem = new_memblocks(0, 0);
+    if (diagnostics.optimize) cpu_opt_invalidate();
+    for (i = opts - 1; i < argc; i++) {
+        set_cpumode(arguments.cpumode); if (pass == 1 && i == opts - 1) constcreated = false;
+        star = databank = dpage = strength = 0;longaccu = longindex = autosize = false;
+        val_destroy(Obj(actual_encoding));
+        actual_encoding = ref_enc(new_encoding(&none_enc, &nopoint));
+        allowslowbranch = true; longbranchasjmp = false;
+        reset_waitfor();lpoint.line = vline = 0;outputeor = 0; pline = (const uint8_t *)"";
+        reset_context();
+        current_section = &root_section;
+        current_address = &root_section.address;
+        reset_section(current_section);
+        init_macro();
+        star_tree = init_star((linenum_t)i);
+
+        if (i == opts - 1) {
+            cfile = file_open(&cmdline_name, NULL, FILE_OPEN_DEFINES, &nopoint);
+            if (cfile != NULL) {
+                cfile->open = true;
+                enterfile(cfile, &nopoint);
+                listing_file(";******  Command line definitions", NULL);
+                val = compile();
+                if (val != NULL) val_destroy(val);
+                exitfile();
+                cfile->open = false;
+                val_destroy(Obj(root_section.address.mem));
+                root_section.address.mem = new_memblocks(ln, ln2);
+                if (diagnostics.optimize) cpu_opt_invalidate();
+                continue;
+            }
+            i++;
+            if (i >= argc) break;
+        }
+
+        filename.data = (const uint8_t *)argv[i];
+        filename.len = strlen(argv[i]);
+        cfile = file_open(&filename, NULL, dash_name(argv[i]) ? FILE_OPEN_STDIN : FILE_OPEN_SOURCE, &nopoint);
+        if (cfile != NULL) {
+            cfile->cmdline = true;
+            cfile->open = true;
+            enterfile(cfile, &nopoint);
+            listing_file(";******  Processing input file: ", cfile);
+            val = compile();
+            if (val != NULL) val_destroy(val);
+            exitfile();
+            cfile->open = false;
+        }
+    }
+    ref_labels();
+    if (fwcount != 0 || efwcount != 0) fixeddig = false;
+    if (fixeddig && root_section.members.root != NULL) section_sizecheck(root_section.members.root);
+    /*garbage_collect();*/
+}
+
+int main2(int *argc2, char **argv2[]) {
+    size_t j;
+    int opts;
+    static const struct linepos_s nopoint = {0, 0};
+    char **argv;
+    int argc;
+    bool failed;
+
+    compile_init(*argv2[0]);
+
+    opts = testarg(argc2, argv2); argc = *argc2; argv = *argv2;
+    if (opts <= 0) {
+        compile_destroy();
+        return (opts < 0) ? EXIT_FAILURE : EXIT_SUCCESS;
+    }
+    init_encoding(arguments.to_ascii);
+
+    if (arguments.quiet) {
+        puts("64tass Turbo Assembler Macro V" VERSION "\n"
+             "64TASS comes with ABSOLUTELY NO WARRANTY; This is free software, and you\n"
+             "are welcome to redistribute it under certain conditions; See LICENSE!\n");
+        fflush(stdout);
+    }
+
+    /* assemble the input file(s) */
+    do {
+        if (pass++>max_pass) {err_msg(ERROR_TOO_MANY_PASS, NULL);break;}
+        listing_pccolumn = false;
+        one_pass(argc, argv, opts);
+        if (signal_received) { err_msg_signal(); break; }
+    } while (!fixeddig || constcreated);
+
+    if (arguments.list.name == NULL) {
+        if (diagnostics.unused.macro || diagnostics.unused.consts || diagnostics.unused.label || diagnostics.unused.variable) unused_check(root_namespace);
+    }
+    failed = error_serious();
+    if (!failed) {
+        /* assemble again to create listing */
+        if (arguments.list.name != NULL) {
+            nolisting = 0;
+
+            max_pass = pass; pass++;
+            listing_open(&arguments.list, argc, argv);
+            one_pass(argc, argv, opts);
+            listing_close();
+
+            if (diagnostics.unused.macro || diagnostics.unused.consts || diagnostics.unused.label || diagnostics.unused.variable) unused_check(root_namespace);
+        }
+
+        for (j = 0; j < arguments.symbol_output_len; j++) {
+            labelprint(&arguments.symbol_output[j]);
+        }
+        if (arguments.make != NULL) makefile(argc - opts, argv + opts, arguments.make_phony);
+
+        failed = error_serious();
+    }
+    if (!failed) {
+        memclose(root_section.address.mem);
+        for (j = 0; j < arguments.output_len; j++) {
+            const struct output_s *output = &arguments.output[j];
+            struct section_s *section, *parent;
+            section = find_this_section(output->section);
+            if (section == NULL) {
+                str_t sectionname;
+                sectionname.data = pline;
+                sectionname.len = lpoint.pos;
+                err_msg2(ERROR__SECTION_ROOT, &sectionname, &nopoint);
+                continue;
+            } 
+            parent = section->parent;
+            section->parent = NULL;
+            if (arguments.quiet) { 
+                if (output->name != NULL) {
+                    fputs("Output file:       ", stdout);
+                    argv_print(output->name, stdout);
+                    putc('\n', stdout);
+                }
+                if (!output->mapfile) printmemorymap(section->address.mem);
+                if (output->name != NULL || !output->mapfile) {
+                    if (fflush(stdout) != 0) setvbuf(stdout, NULL, _IOLBF, 1024);
+                }
+            }
+            if (output->mapname != NULL) memorymapfile(section->address.mem, output);
+            if (output->name != NULL) {
+                if (j == arguments.output_len - 1) {
+                    output_mem(section->address.mem, output);
+                } else {
+                    Memblocks *tmp = section->address.mem;
+                    section->address.mem = copy_memblocks(tmp);
+                    output_mem(tmp, output);
+                    val_destroy(Obj(section->address.mem));
+                    section->address.mem = tmp;
+                }
+            }
+            section->parent = parent;
+        }
+        failed = error_serious();
+    }
+
+    error_print(&arguments.error);
+    if (arguments.quiet) {
+        error_status();
+        printf("Passes:            %u\n", pass);
+        fflush(stdout);
+    }
+    compile_destroy();
+    return failed ? EXIT_FAILURE : EXIT_SUCCESS;
 }
