@@ -79,8 +79,7 @@ cd TASS/src
 
 echo Creating TASS - $OS 64-bit version
 make -f Makefile.win
-mv 64tass.exe ../
-make clean
+cp 64tass.exe ../
 cd ../..
 
 #------------------------------------------------------------------------
