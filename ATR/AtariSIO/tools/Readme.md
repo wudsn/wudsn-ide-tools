@@ -9,7 +9,7 @@ You can find the full description in the [README.txt](README.txt).
 
 The binary versions have been compiled by
 * Peter Dell (linux-86-64, macos-aarch64, macos-x86-64, windows-x86-64)
-* Sanny from AtariAge (macos-ppc).
+* [Sanny](https://forums.atariage.com/profile/18336-sanny/) from AtariAge (macos-ppc).
 
 Related tools can be found at
 * [AtrCompiler](https://github.com/rudla/AtrCompiler) - A tool to create and extract ATR images, supports complex directory contents
