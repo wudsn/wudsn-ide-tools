@@ -239,7 +239,7 @@ function compileWithFPC(){
         "${ARCHITECTURE_JAVA}")
         COMMAND="ppcjvm"
         # TODO Does not work yet
-        COMMAND="non"
+        COMMAND="none"
         ;;
         *)
         COMMAND="none"
@@ -255,7 +255,9 @@ function compileWithFPC(){
       ;;
     esac
 
-  compileWithCommand "${NAME}" "${COMMAND}" "${EXECUTABLE}" "${SOURCE}"
+  if [ "${COMMAND}" != "none" ]; then
+      compileWithCommand "${NAME}" "${COMMAND}" "${EXECUTABLE}" "${SOURCE}"
+  fi
 }
 
 #------------------------------------------------------------------------
