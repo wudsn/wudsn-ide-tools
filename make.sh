@@ -140,7 +140,11 @@ installXCodeCommandlineTools(){
   if [ ! -d "${XCODE_COMMANDLINE_TOOLS}" ]; then
     xcode-select --install
   fi
-  export XCODE_COMMANDLINE_TOOLS_LIBS="${XCODE_COMMANDLINE_TOOLS}/SDKs/MacOSX11.1.sdk"
+  export XCODE_COMMANDLINE_TOOLS_LIBS="${XCODE_COMMANDLINE_TOOLS}/SDKs/MacOSX.sdk"
+  if [ ! -d "${XCODE_COMMANDLINE_TOOLS_LIBS}" ]; then
+    echo "ERROR: XCODE command line libs no present at ${XCODE_COMMANDLINE_TOOLS_LIBS}"
+    exit 1
+  fi
 }
 
 
