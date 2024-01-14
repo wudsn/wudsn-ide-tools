@@ -242,7 +242,10 @@ function compileWithFPC(){
     "${OS_MACOS}")
       OPT="$OPT -XR${XCODE_COMMANDLINE_TOOLS_LIBS}"
       case "${ARCHITECTURE}" in
-      	"${ARCHITECTURE_I64}")
+      	"${ARCHITECTURE_A64}")
+        COMMAND="ppca64"
+        ;;
+        "${ARCHITECTURE_I64}")
         COMMAND="ppcx64"
         ;;
         "${ARCHITECTURE_JAVA}")
@@ -507,7 +510,8 @@ function compile_ASM_DASM() {
 function compile_ASM_MADS(){
   printCompileLanguageAndToolAndOSAndArchitecture
   local TARGET="mads"
-  local EXECUTABLE="$(getTeBeExecutableName "$TARGET" "$OS" "${ARCHITECTURE}")"
+  # local EXECUTABLE="$(getTeBeExecutableName "$TARGET" "$OS" "${ARCHITECTURE}")"
+  local EXECUTABLE="$(getExecutableName "$TARGET" "$OS" "${ARCHITECTURE}")"
   compileWithFPC "${TOOL}" mads.pas "${OS}" "${ARCHITECTURE}" "${EXECUTABLE}"
 }
 
@@ -515,6 +519,7 @@ function compile_ASM_MADS(){
 function compile_PAS_MP(){
   printCompileLanguageAndToolAndOSAndArchitecture
   local TARGET="mp"
+#  local EXECUTABLE="$(getExecutableName "$TARGET" "$OS" "${ARCHITECTURE}")"
   local EXECUTABLE="$(getExecutableName "$TARGET" "$OS" "${ARCHITECTURE}")"
   compileWithFPC "${TOOL}" mp.pas "${OS}" "${ARCHITECTURE}" "${EXECUTABLE}"
 }
