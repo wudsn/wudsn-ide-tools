@@ -41,6 +41,8 @@ function getLanguageTools(){
     local TOOLS
     TOOLS="$(ls -d -- */)"
     TOOLS="${TOOLS//\// }"
+#   Uncomment for testing individual tools
+#   TOOLS="MADS"
     echo "${TOOLS}"
     popd >/dev/null
 }
@@ -87,7 +89,7 @@ function getArchitectureList(){
 function getFileExtension(){
     local OS=$1
     local ARCHITECTURE=$2
-    case ${OS} in
+    case "${OS}" in
         "${OS_LINUX}")
         case ${ARCHITECTURE} in
             "${ARCHITECTURE_I32}" | "${ARCHITECTURE_I64}")
@@ -98,6 +100,7 @@ function getFileExtension(){
             ;;
         esac
         ;;
+
         "${OS_MACOS}")
         case "${ARCHITECTURE}" in
             "${ARCHITECTURE_A64}" | "${ARCHITECTURE_I32}" | "${ARCHITECTURE_I64}" | "${ARCHITECTURE_PPC}" )
@@ -108,8 +111,8 @@ function getFileExtension(){
             ;;
         esac
         ;;
+
         "${OS_WINDOWS}")
-        
         case "${ARCHITECTURE}" in
             "${ARCHITECTURE_I32}")
                 echo ".exe"
@@ -181,6 +184,10 @@ function compileWithCommand(){
   # Check if command is present
   if command -v "${COMMAND}" &>/dev/null; then
     echo "Creating ${NAME} for ${OS} on ${ARCHITECTURE} as ${EXECUTABLE} from ${SOURCE}."
+    local EXECUTABLE_FOLDER="$(dirname $EXECUTABLE)"
+    if [ ! -d "${EXECUTABLE_FOLDER}" ]; then
+      mkdir -p "${EXECUTABLE_FOLDER}"
+    fi
   	local EXECUTABLE_TMP
   	local COMMAND_LINE
   	EXECUTABLE_TMP="${EXECUTABLE}.tmp"
@@ -191,7 +198,7 @@ function compileWithCommand(){
 
     local LOG="${EXECUTABLE}.log"
     rm -f "${LOG}"
-    # Don't stop one error.
+    # Don't stop on error.
     set +e
     if command ${COMMAND_LINE} &>"${LOG}"; then
       copyExecutable "${EXECUTABLE_TMP}" "${EXECUTABLE}" "${SOURCE}"
@@ -203,8 +210,8 @@ function compileWithCommand(){
    
     # Do stop on error.
     set -e
-    rm -f *.o
-    rm -f *.tmp
+    rm -f ${EXECUTABLE_FOLDER}/*.o
+    rm -f ${EXECUTABLE_FOLDER}/*.tmp
   else
     echo "Creation of ${NAME} for ${OS} on ${ARCHITECTURE} as ${EXECUTABLE} skipped. Command ${COMMAND} is not available."
   fi
@@ -314,6 +321,7 @@ case "${ARCHITECTURE}" in
 }
 
 #------------------------------------------------------------------------
+# Get default executable name without folders.
 # Function iterator for all OSes and architectures.
 #------------------------------------------------------------------------
 function getExecutableName(){
@@ -321,6 +329,44 @@ function getExecutableName(){
   local OS=$2
   local ARCHITECTURE=$3
   echo "${TARGET}$(getFileExtension "${OS}" "${ARCHITECTURE}")"
+}
+
+#------------------------------------------------------------------------
+# Get default executable name with folders as used by TeBe.
+#------------------------------------------------------------------------
+function getTeBeExecutableName(){
+  local TARGET=$1
+  local EXECUTABLE="$(getExecutableName "$TARGET" "$OS" "${ARCHITECTURE}")"
+  case "${OS}" in
+    "${OS_LINUX}")
+      case "${ARCHITECTURE}" in
+        "${ARCHITECTURE_A64}")
+          EXECUTABLE="bin/linux_aarch64/${TARGET}";
+          ;;
+        "${ARCHITECTURE_I64}")
+          EXECUTABLE="bin/linux_x86_64/${TARGET}";
+          ;;
+      esac
+      ;;
+    "${OS_MACOS}")
+      case "${ARCHITECTURE}" in
+        "${ARCHITECTURE_A64}")
+          EXECUTABLE="bin/macosx_aarch64/${TARGET}";
+          ;;
+        "${ARCHITECTURE_I64}")
+          EXECUTABLE="bin/macosx_x86_64/${TARGET}";
+          ;;
+      esac
+      ;;
+    "${OS_WINDOWS}")
+      case "${ARCHITECTURE}" in
+        "${ARCHITECTURE_I64}")
+          EXECUTABLE="bin/windows/${TARGET}.exe";
+          ;;
+      esac
+      ;;
+    esac
+    echo $EXECUTABLE
 }
 
 #------------------------------------------------------------------------
@@ -457,9 +503,8 @@ function compile_ASM_DASM() {
 function compile_ASM_MADS(){
   printCompileLanguageAndToolAndOSAndArchitecture
   local TARGET="mads"
-  local EXECUTABLE="$(getExecutableName "$TARGET" "$OS" "${ARCHITECTURE}")"
-
-  compileWithFPC "${TOOL}" mads.pas mads "${OS}" "${ARCHITECTURE}" "${EXECUTABLE}"
+  local EXECUTABLE="$(getTeBeExecutableName "$TARGET" "$OS" "${ARCHITECTURE}")"
+  compileWithFPC "${TOOL}" mads.pas "${OS}" "${ARCHITECTURE}" "${EXECUTABLE}"
 }
 
 #------------------------------------------------------------------------
@@ -467,7 +512,7 @@ function compile_PAS_MP(){
   printCompileLanguageAndToolAndOSAndArchitecture
   local TARGET="mp"
   local EXECUTABLE="$(getExecutableName "$TARGET" "$OS" "${ARCHITECTURE}")"
-  compileWithFPC "${TOOL}" mp.pas mp "${OS}" "${ARCHITECTURE}" ${EXECUTABLE}"
+  compileWithFPC "${TOOL}" mp.pas "${OS}" "${ARCHITECTURE}" "${EXECUTABLE}"
 }
 
 
@@ -605,7 +650,7 @@ function main(){
 # Fetch a repo to a new folder. Beware,the existing folder is deleted.
 #------------------------------------------------------------------------
 function fetchGitRepo(){
-
+  return
   URL=$1
   FOLDER=$2
   rm -rf $FOLDER
