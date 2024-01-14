@@ -1,1 +1,7 @@
-/atasm.test
+.*.swp
+*.o
+*.atr
+atr
+.vs
+bin
+large

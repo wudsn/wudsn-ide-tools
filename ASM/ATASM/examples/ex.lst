@@ -1,0 +1,115 @@
+ATasm 1.06 beta (A mostly Mac65 compatible 6502 cross-assembler)
+Pass 1: Success. (0 warnings)
+Pass 2: Success. (0 warnings)
+
+Assembly successful
+  Compiled 286 bytes (~0k)
+    Block: 0600-0602 (3 bytes)
+    Block: 0683-079d (283 bytes)
+
+Compiled to binary file 'ex.65o'
+
+00:06  4C D1 06          JMP AROUND  ; skip buffers, etc.
+
+83:06  9B 9B A0 D4       MESSAGE1 .BYTE +$80," This is a test of the sample program    Type your name here -> "
+87:06  E8 E9 F3 A0 
+8B:06  E9 F3 A0 E1 
+8F:06  A0 F4 E5 F3 
+93:06  F4 A0 EF E6 
+97:06  A0 F4 E8 E5 
+9B:06  A0 F3 E1 ED 
+9F:06  F0 EC E5 A0 
+A3:06  F0 F2 EF E7 
+A7:06  F2 E1 ED A0 
+AB:06  9B A0 A0 A0 
+AF:06  D4 F9 F0 E5 
+B3:06  A0 F9 EF F5 
+B7:06  F2 A0 EE E1 
+BB:06  ED E5 A0 E8 
+BF:06  E5 F2 E5 A0 
+C3:06  AD BE A0 
+C6:06  20           .BYTE " "
+C7:06  48 69 20 74       MESSAGE2 .BYTE "Hi there, "
+CB:06  68 65 72 65 
+CF:06  2C 20 
+D1:06  A2 00               LDX #0*16
+D3:06  A9 0B             LDA #CPBINR
+D5:06  9D 42 03          STA ICCOM,X
+D8:06  A9 83             LDA # <MESSAGE1
+DA:06  9D 44 03          STA ICBADR,X
+DD:06  A9 06             LDA # >MESSAGE1
+DF:06  9D 45 03          STA ICBADR+1,X
+E2:06  A9 44             LDA # <M1LENGTH
+E4:06  9D 48 03          STA ICBLEN,X
+E7:06  A9 00             LDA # >M1LENGTH
+E9:06  9D 49 03          STA ICBLEN+1,X
+EC:06  20 56 E4          JSR CIO
+EF:06  A2 00               LDX #0*16
+F1:06  A9 05             LDA #CGTXTR
+F3:06  9D 42 03          STA ICCOM,X
+F6:06  A9 03             LDA # <BUFFER
+F8:06  9D 44 03          STA ICBADR,X
+FB:06  A9 06             LDA # >BUFFER
+FD:06  9D 45 03          STA ICBADR+1,X
+00:07  A9 FF             LDA # <255
+02:07  9D 48 03          STA ICBLEN,X
+05:07  A9 00             LDA # >255
+07:07  9D 49 03          STA ICBLEN+1,X
+0A:07  20 56 E4          JSR CIO
+0D:07  4C 11 07              JMP *+4
+10:07  9B       @IO     .BYTE $9B
+11:07  A2 00               LDX #0*16
+13:07  A9 09             LDA #CPTXTR
+15:07  9D 42 03          STA ICCOM,X
+18:07  A9 10             LDA # <@IO
+1A:07  9D 44 03          STA ICBADR,X
+1D:07  A9 07             LDA # >@IO
+1F:07  9D 45 03          STA ICBADR+1,X
+22:07  A9 01             LDA # <1
+24:07  9D 48 03          STA ICBLEN,X
+27:07  A9 00             LDA # >1
+29:07  9D 49 03          STA ICBLEN+1,X
+2C:07  20 56 E4          JSR CIO
+2F:07  A2 00               LDX #0*16
+31:07  A9 0B             LDA #CPBINR
+33:07  9D 42 03          STA ICCOM,X
+36:07  A9 C7             LDA # <MESSAGE2
+38:07  9D 44 03          STA ICBADR,X
+3B:07  A9 06             LDA # >MESSAGE2
+3D:07  9D 45 03          STA ICBADR+1,X
+40:07  A9 0A             LDA # <M2LENGTH
+42:07  9D 48 03          STA ICBLEN,X
+45:07  A9 00             LDA # >M2LENGTH
+47:07  9D 49 03          STA ICBLEN+1,X
+4A:07  20 56 E4          JSR CIO
+4D:07  A2 00               LDX #0*16
+4F:07  A9 09             LDA #CPTXTR
+51:07  9D 42 03          STA ICCOM,X
+54:07  A9 03             LDA # <BUFFER
+56:07  9D 44 03          STA ICBADR,X
+59:07  A9 06             LDA # >BUFFER
+5B:07  9D 45 03          STA ICBADR+1,X
+5E:07  A9 FF             LDA # <255
+60:07  9D 48 03          STA ICBLEN,X
+63:07  A9 00             LDA # >255
+65:07  9D 49 03          STA ICBLEN+1,X
+68:07  20 56 E4          JSR CIO
+6B:07  4C 7F 07                JMP *+4+16
+6E:07  54 68 61 74       @IO       .BYTE "That's all folks",$9B
+72:07  27 73 20 61 
+76:07  6C 6C 20 66 
+7A:07  6F 6C 6B 73 
+7E:07  9B 
+7F:07  A2 00               LDX #0*16
+81:07  A9 09             LDA #CPTXTR
+83:07  9D 42 03          STA ICCOM,X
+86:07  A9 6E             LDA # <@IO
+88:07  9D 44 03          STA ICBADR,X
+8B:07  A9 07             LDA # >@IO
+8D:07  9D 45 03          STA ICBADR+1,X
+90:07  A9 11             LDA # <16+1
+92:07  9D 48 03          STA ICBLEN,X
+95:07  A9 01             LDA # >16+1
+97:07  9D 49 03          STA ICBLEN+1,X
+9A:07  20 56 E4          JSR CIO
+9D:07  60                RTS

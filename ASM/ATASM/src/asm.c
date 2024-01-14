@@ -93,17 +93,95 @@
  *               get_signed_expression() function aka CVE-2019-19787
  *               Fixed stacked-base buffer overflow in the parse_expr()
  *               function, aka  CVE-2019-19786
+ *  05/10/21 ph  Fixed #7 Error calculating address with forward references
+ *               If lda ..,x was used the forward reference was not 
+ *               correctly calculated.  Fix was to never return an invalid
+ *               forward reference, nor one that rolls over to 0. 
+ *               65535+1 would have been 0, now it stays at 65535
+ *  05/14/21 ph  Fix a buffer overflow in put_float()
+ *               Changes the output format of the list command slightly
+ *               to allow source level debugging in the Altirra emulator.
+ *               Allows for ;##TRACE and ;##ASSERT Altirra commands to be
+ *               inserted into the source code.
+ *  28/11/21 ph  Added code to print the defined symbol for a memory location
+ *               even if its defined on another line
+ *  01/12/21 ph  Added -hc and -ha switches.  Dumps equated and symbol info
+ *               in CC65 header and Atasm include format.
+ *
+ *               RELEASE 1.14
+ * 02/12/21 ph  -hc and -ha switch dumps now include the source file and line
+ *              number where the equate or label was defined.
+ *              Labels can now contain .
+ *              i.e. DATA.CMD, DATA.LEN, DATA.AUX
+ * 
+ *              RELEASE 1.15
+ * 21/12/21 ph  Added -hv switch to dump all equates, labels, macro defs and
+ *              included source files to the 'plugin.json' file located
+ *              at the root folder from where atasm starts searching for
+ *              source files.  This is to be used my the Atasm-Altirra-Bridge
+ *              VSCode plugin to allow you to quickly manouver your code
+ *              Added modulo/remainder operator. %% or .MOD
+ *              You can now say '.byte 15%%10' and it will store the value of 5.
+ *
+ *              RELEASE 1.16
+ * 22/12/21 ph  Added the << and >> shift operators to the expression parser.
+ *              Code like this now assembles:
+ *              lda #1<<4
+ *              Fixed a bug in .LST output generator.  Filenames were not 
+ *              tracked correctly which caused source lines to be allocated to
+ *              the wrong source file. Thank you to Lars Langhans for reporting this.
+ *
+ *              RELEASE 1.17
+ * 02/02/22 ph  Extended the -hv[clm] option. You can now limit the data export
+ *              to (c)onstants, (l)abels and (m)acros. Or any combination of them.
+ *              -hvcl exports constants and labels. By default all data is exported.
+ *              Used by the "Atasm-Altirra-Bridge" VSCode plugin. Info here:
+ *              (https://bit.ly/3ATTHVR)
+ *              Breaking default behavior change: When running atasm without a
+ *              target assembler file (was test.m65) the command line help is shown.
+ *              Same when specifying -h on the command line.
+ *
+ *              RELEASE 1.18
+ * 15/04/22 ph  The -hv[clm] export option has an extra parameter: L
+ *              -hv[clLm] are the available options.
+ *                l = export defined labels; excluding local labels, those starting with a ?
+ *                L = export ALL labels (including local labels)
+ *              You can use .OPT NO SYMDUMP to turn off the dumping for constants.
+ *                .OPT NO SYMDUMP
+ *                .INCLUDE "ANTIC.asm"
+ *                .OPT SYMDUMP
+ *              First .opt turns off constant tracking. This means all constants
+ *              created from then until the ".opt SYMDUMP" will NOT make it into
+ *              the "asm-symbols.json" file.
+ * 
+ *              RELEASE 1.19
+ * 20/08/22 ph  Modified the * program counter command to also name a memory
+ *              region.
+ *              * = $2000 "BOOT"
+ *              Will name the region starting at $2000 as "Boot", which will be
+ *              dumped after the compile for the vscode extension. Same can be
+ *              done via: .NAME "BOOT" directly after the * command.
+ *              Added -eval command line option to only do the compile and NOT
+ *              write anything to disc.
+ *              Slight warning and error format change to make it external parsable.
+ * 
+ *              RELEASE 1.20
+ * 29/12/22 ph  Added the .ELSEIF directive to build easier .IF .ELSEIF .ELSE .ENDIF 
+ *              control blocks.
+ * 
  *==========================================================================*
  * TODO
  *   indepth testing of .IF,.ELSE,.ENDIF (signal error on mismatches?)
  *   ? add e .FLOAT notation (10e10)
  *   ? distinguish between Equates and Labels for symbol dump
- *   ? allow '.' within label names
+ *   ? allow '.' within label names (this should work now)
  *   .opt are not properly set at beginning of each pass
  *   i.e. .opt no list causes listing to be suppressed completely
  *
  * COMPLETED TODO
  *   determine how to allow INITAD ($2e2) (10/08/2003 use .BANK directive)
+ *   allow '.' within label names
+ *   .IF was fully tested and expanded to include .ELSEIF
  *
  * Bugs: see kill.asm
  *   ORA #16                              (fixed 12/18/98 mws)
@@ -126,6 +204,12 @@
  *  along with this program; if not, write to the Free Software
  *  Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
  *==========================================================================*/
+/*
+#define _CRTDBG_MAP_ALLOC
+#include <stdlib.h>
+#include <crtdbg.h>
+*/
+
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -134,11 +218,17 @@
 #include <stdarg.h>
 
 #include "compat.h"
+#include "atasm.h"
 #include "ops.h"
 #include "directive.h"
 #include "symbol.h"
 #include "inc_path.h"
 #include "atasm_err.h"
+
+
+#define MAX_IF_DEPTH    100
+int dotIfLevel = 0;    // No .IF if active, >0 means we are inside a .IF
+int doneIfPart[MAX_IF_DEPTH] = { 0 };
 
 unsigned short pc;    /* program counter */
 int init_pc;          /* pc orig flag */
@@ -155,6 +245,12 @@ file_stack *fin;
 memBank *banks, *activeBank;
 int bankID;
 char *outline;  /* the line of text written out in verbose mode */
+
+symbol* lastSymbol = NULL;
+symbol* lastLabel = NULL;           // Which is the last label that was defined
+file_tracking* trackedFiles;
+
+memory_name* namedMemoryRegions;    // What name is given to a specific memory region, used in vscode extension
 
 FILE *listFile;
 /*=========================================================================*
@@ -244,11 +340,16 @@ int init_asm() {
   unkLabels=NULL;
   banks=NULL;
   bankID=-1;
+  trackedFiles = NULL; /* keep track of all filenames used, 0 indexed */
+  namedMemoryRegions = NULL;
 
   for(i=0;i<HSIZE;i++)  /* clear symbol table */
     hash[i]=NULL;
   for(i=0;i<ISIZE;i++)  /* clear error/warning table */
     ihash[i]=NULL;
+
+  for (i = 0; i < HSIZE; i++)  /* clear long jump hash table */
+      ljHash[i] = NULL;
 
   process_predef(predefs);
 
@@ -266,6 +367,7 @@ int init_asm() {
     sym->tp=OPCODE;
     sym->addr=i;
     sym->name=nmem[i];
+    sym->orig = sym->name;
     addsym(sym);
   }
   for(i=0;i<NUM_DIR;i++) { /* insert compiler directives into table */
@@ -273,21 +375,118 @@ int init_asm() {
     sym->tp=DIRECT;
     sym->addr=i;
     sym->name=direct[i];
+    sym->orig=sym->name;
     addsym(sym);
   }
   return 1;
 }
+
+/*=========================================================================*
+ * function track_filename(char *fname)
+ * parameters: fname is the file name to track
+ *=========================================================================*/
+file_tracking* track_filename(char* fname)
+{
+    /* First try and find the filename in the currently tracked list */
+    file_tracking* runner;
+    for (runner = trackedFiles; runner; runner = runner->nxt)
+    {
+        if (strcmp(fname, runner->name) == 0)
+            return runner;
+    }
+
+    /* not found, let add the file to the list */
+    file_tracking* tnew = (file_tracking*)malloc(sizeof(file_tracking));
+    if (tnew == NULL) {
+        error("Out of memory allocating filename tracker", 1);
+    }
+    tnew->name = STRDUP(fname);
+    tnew->nxt = trackedFiles;
+    trackedFiles = tnew;
+    
+    return tnew;
+}
+
+void cleanup_FilenameTracking()
+{
+    file_tracking* runner;
+    for (runner = trackedFiles; runner; )
+    {
+        file_tracking* old = runner;
+
+        if (runner->name) free(runner->name);
+        runner = runner->nxt;
+        free(old);
+    }
+}
+
+
+static char* UnknownMemoryRegionName = "CODE";
+char* findNameOfMemoryRegion(int addr)
+{
+    /* Try and find the referenced memory location in the currently tracked list */
+    memory_name* runner;
+    for (runner = namedMemoryRegions; runner; runner = runner->nxt)
+    {
+        if (addr == runner->addr)
+            return runner->name;
+    }
+    return UnknownMemoryRegionName;
+}
+
+memory_name* saveNamedMemoryRegion(int addr, char* name)
+{
+    // Sanity check
+    if (name == NULL || strlen(name) == 0)
+        name = "CODE";
+
+    /* First try and find the referenced memory location in the currently tracked list */
+    memory_name* runner;
+    for (runner = namedMemoryRegions; runner; runner = runner->nxt)
+    {
+        if (addr == runner->addr)
+            return runner;
+    }
+
+    /* not found, let add the file to the list */
+    memory_name* tnew = (memory_name*)malloc(sizeof(memory_name));
+    if (tnew == NULL) {
+        error("Out of memory allocating memory region name tracker", 1);
+    }
+    tnew->addr = addr;
+    tnew->name = STRDUP(name);
+    tnew->nxt = namedMemoryRegions;
+    namedMemoryRegions = tnew;
+
+    return tnew;
+}
+
+void cleanup_MemoryRegionNameTracking()
+{
+    memory_name* runner;
+    for (runner = namedMemoryRegions; runner; )
+    {
+        memory_name* old = runner;
+
+        if (runner->name) free(runner->name);
+        runner = runner->nxt;
+        free(old);
+    }
+}
+
+
 /*=========================================================================*
  * function open_file(char *fname)
  * parameters: fname is the file name to process
  *
  * this functions adds a new file onto the current file processing stack
- * The file stack structure saves the state of each file as it is is
+ * The file stack structure saves the state of each file as it is
  * being processed.  This allows for nested .INCLUDEs
  *=========================================================================*/
 int open_file(char *fname) {
   file_stack *fnew;
   char buf[256];
+  char final_fname[256];
 
   fnew=(file_stack *)malloc(sizeof(file_stack));
   if (!fnew) {
@@ -299,71 +498,80 @@ int open_file(char *fname) {
   }
   strcpy(fnew->name,fname);
 
-  fnew->in = fopen_include(includes, fname, 0);
+  fnew->in = fopen_include(includes, fname, 0, final_fname);
   if (!fnew->in) {
     snprintf(buf,256,"Cannot open file '%s'\n",fname);
     error(buf,1);
   }
+  fnew->trackClear = NULL;          /* Location in aprintf to clear when the file_stack object is deleted */
   fnew->line=0;
   fnew->nxt=fin;
+  fnew->ftrack = track_filename(final_fname);
   fin=fnew;
   return 1;
 }
 
 /*=========================================================================*
- * function open_file(char *fname)
- * parameters: fname is the file name to process
+ * function aprintf(char *msg, ...)
+ * parameters: msg is the formater for the following parameters
  *
- * this functions adds a new file onto the current file processing stack
- * The file stack structure saves the state of each file as it is is
- * being processed.  This allows for nested .INCLUDEs
+ * This function outputs the information to stdout (verbose bit 1 set)
+ * and to the list file (verbose bit 2 set)
+ * PH: 22-12-2021 - Fixed a problem with the tracking of the filename.
+ * The static lfin would point to fin->name, but that entry could have been
+ * freed when another source file was included.  Added a 'trackClear' field.
+ * Now when the fin structure is removed at the end of a file it clears lfin
+ * as well.
  *=========================================================================*/
-void aprintf(char *msg, ...) {
-  char buf[256], line[256];
-  static char *lfin=0;
+void aprintf(char* msg, ...) {
+	char buf[512], line[512];     /* Increased the size of the buffers.  Each line can be 256 bytes but in this case the output can be over the line length */
+	static char* lfin = NULL;
 
-  va_list args;
+	va_list args;
 
-  buf[0]=line[0]=0;
-  va_start(args,msg);
-  vsprintf(buf,msg,args);
-  strcat(line,buf);
-  va_end(args);
+	buf[0] = line[0] = 0;
+	va_start(args, msg);
+	vsprintf(buf, msg, args);
+	strcat(line, buf);
+	va_end(args);
 
-  /* normal verbose output */
-  if (verbose&1) {
-    fputs(line,stdout);
-  }
+	/* normal verbose output */
+	if (verbose & 1) {
+		fputs(line, stdout);
+	}
 
-  /* list file output */
-  if ((verbose&2)&&(listFile)) {
-    strcpy(buf,line);
-    squeeze_str(buf);
-    if (buf[0]) {
-      if ((!lfin)||(lfin!=fin->name)) {
-        lfin=fin->name;
-        fprintf(listFile,"\nSource: %s\n",fin->name);
-      }
-      /* convert address from LE to BE display */
-      strncpy(buf,line+3,2);
-      strncpy(buf+2,line,2);
-      buf[4]=0;
-      fprintf(listFile,"%d %s%s",fin->line,buf,line+5);
-    }
-  }
+	/* list file output */
+	if ((verbose & 2) && (listFile)) {
+		strcpy(buf, line);
+		squeeze_str(buf);
+
+		if (buf[0]) {
+			if (lfin == NULL || (lfin != fin->name)) {
+				lfin = fin->name;
+                fin->trackClear = &lfin;                            /* this ptrs to lfin to clear when the fin structure is freed */
+				fprintf(listFile, "\nSource: %s\n", fin->name);
+			}
+			/* convert address from LE to BE display */
+			strncpy(buf, line + 3, 2);
+			strncpy(buf + 2, line, 2);
+			buf[4] = 0;
+			fprintf(listFile, "%d %s%s", fin->line, buf, line + 5);
+		}
+	}
 }
 
 /*=========================================================================*
  * function get_nxt_word(int tp)
  * parameters: tp denotes the processing mode where(?)
- *   0: normal processing, getting next line
- *   1: get rest of current line
- *   2: return entire current line
- *   3: get rest of current line, but don't advance buffer (peeking ahead)
- *   4: get next word, returning "" when eol is hit (no advance to next line)
- *   5: 'skip' mode, don't subst macro params!
- *   6: replace commas with spaces in reading buffer and return NULL
- *
+ *   0/PARSE_NEXT_LINE: normal processing, getting next line
+ *   1/PARSE_LINE_REST: get rest of current line
+ *   2/PARSE_CURRENT_LINE: return entire current line
+ *   3/PARSE_PEEK_LINE_REST: get rest of current line, but don't advance buffer (peeking ahead)
+ *   4/PARSE_NEXT_WORD: get next word, returning "" when eol is hit (no advance to next line)
+ *   5/PARSE_SKIP: 'skip' mode, don't subst macro params!
+ *   6/PARSE_REPLACE_COMMAS: replace commas with spaces in reading buffer and return NULL
+ *   7/PEEK_COMMENT: look for a comment starting ; and return everything after it
+ * 
  * This function return a pointer to the next 'interesting' word,
  * skipping white space, comments and empty lines
  * Strings are returned verbatim (including spaces)
@@ -376,13 +584,38 @@ char *get_nxt_word(int tp) {
   macro_call *mkill;
   macro_line *lkill;
 
-  if (tp==6) {
+    if (tp == PEEK_COMMENT) {
+        if (!fget)
+            return NULL;
+        strcpy(buf, fget);
+        instr = 0;
+        len = (int)strlen(buf);
+        for (i = 0; i < len; i++) {
+            if (buf[i] == '"')    /* fix embedded ';' problem - mws 11/10/99 */
+                instr ^= 1;
+            else if ((buf[i] == ';') && (!instr)) {
+                if ((i) && (buf[i - 1] == '\''))  /* allow quoted semicolons */
+                    continue;
+                {
+                    char* runner = &buf[i];
+                    ++runner;
+                    while ((*runner == ' ' || *runner == '\t') && *runner != 0) ++runner;
+                    if ((int)strlen(runner) > 0)
+                        return runner;
+                    return NULL;
+                }
+                break;
+            }
+        }
+        return NULL;
+    }
+  if (tp==PARSE_REPLACE_COMMAS) {
     look=fget;
     instr=0;
     while(*look) {
       if ((*look==',')&&(!instr)&&(*(look-1)!='\''))
-        *look=32;
-      if (*look==34)
+        *look=' ';  /* replace , with space */
+      if (*look=='"')   /* start or end of string */
         instr^=1;
       look++;
     }
@@ -392,14 +625,14 @@ char *get_nxt_word(int tp) {
   look=buf;
   *look=0;
 
-  if ((tp==1)||(tp==3)) {
+  if ((tp==PARSE_LINE_REST)||(tp==PARSE_PEEK_LINE_REST)) {
     if (!fget)
       return buf;
     strcpy(buf,fget);
     instr=0;
-    len=strlen(buf);
+    len=(int)strlen(buf);
     for(i=0;i<len;i++) {
-      if (buf[i]==34)    /* fix embedded ';' problem - mws 11/10/99 */
+      if (buf[i]=='"')    /* fix embedded ';' problem - mws 11/10/99 */
         instr^=1;
       else if ((buf[i]==';')&&(!instr)) {
         if ((i)&&(buf[i-1]=='\''))  /* allow quoted semicolons */
@@ -408,17 +641,17 @@ char *get_nxt_word(int tp) {
         break;
       }
     }
-    if (tp==1) {
+    if (tp==PARSE_LINE_REST) {
       fget=NULL;
     }
     return buf;
-  } else if (tp==2)
+  } else if (tp==PARSE_CURRENT_LINE)
     return line;
 
   /* skip over empty space, blank lines and comments */
   do {
     while ((!fget)||(!(*fget))) {
-      if (tp==4) {
+      if (tp==PARSE_NEXT_WORD) {
         buf[0]=0;
         return buf;
       }
@@ -429,7 +662,7 @@ char *get_nxt_word(int tp) {
       memset(buf,0,256);
       if (invoked) {  /* use macro table, if needed */
         strcpy(line,invoked->line->line);
-        if (tp!=5)
+        if (tp!=PARSE_SKIP)
           macro_subst(invoked->orig->name,line,invoked->cmd,invoked->argc);
         invoked->line=invoked->line->nxt;
         if (!invoked->line) {
@@ -466,10 +699,10 @@ char *get_nxt_word(int tp) {
       if (ISDIGIT(line[0])) {
         i=0;
         while(ISDIGIT(line[i]))
-          line[i++]=32;
+          line[i++]=' '; /* space = 32 */
       }
       /* Remove EOL characters */
-      len=strlen(line);
+      len=(int)strlen(line);
       for(i=0;i<len;i++) {
         if ((line[i]==10)||(line[i]==13))
           line[i]=0;
@@ -485,6 +718,7 @@ char *get_nxt_word(int tp) {
         fin=fin->nxt;
         fclose(kill->in);
         free(kill->name);
+        if (kill->trackClear) *kill->trackClear = NULL;
         free(kill);
         fget=NULL;
         if (!fin)
@@ -495,6 +729,25 @@ char *get_nxt_word(int tp) {
       fget++;
     }
     if (((fget)&&(!(*fget)))||(*fget==';')) {
+        /* check for full comment line */
+        if (*fget == ';' && pass) {
+            /* We have a comment on the 2nd pass
+             * 1. Skip white space after the ;
+             * Check if its a ; ## TRACE or ; ## ASSERT for Altirra debugging
+             */
+            ++fget;
+            while ((*fget == ' ' || *fget == '\t') && *fget != 0) ++fget;
+            if (verbose & 2 && fget[0] == '#' && fget[1] == '#') {
+              fprintf(listFile, " %d ;%s\n", fin->line, fget); /* NB: Note the space at the beginning of the line! */
+            }
+            // If the current line and file are the same as that of the last label
+            // then append the comment to the label
+            if (lastLabel && lastLabel->ftrack == fin->ftrack && lastLabel->lineNr == fin->line)
+            {
+                // Add the comment to the label
+                lastLabel->comment = STRDUP(fget);
+            }
+        }
       fget=NULL;
     }
   } while ((!fget)||(!(*fget)));
@@ -506,7 +759,7 @@ char *get_nxt_word(int tp) {
     l=*fget;
     if (l)
       fget++;
-    if (l==34)
+    if (l=='"')
       instr^=1;
     if (!instr) {
       if (l=='=') {
@@ -630,7 +883,7 @@ int put_word(int b,int e) {
   De Re Atari...but beyond that nothing has been verified
  *=========================================================================*/
 int put_float(char *f) {
-  char tmp[64],buf[64],*look,*walk;
+  char tmp[256],buf[256],*look,*walk;
   int n[3],i;
   int neg,d=-1;
 
@@ -658,7 +911,7 @@ int put_float(char *f) {
     strcpy(tmp,"0");
   strcat(tmp,look);
 
-  /* Append decimal point in necessary */
+  /* Append decimal point if necessary */
   if (!strchr(tmp,'.'))
     strcat(tmp,".");
 
@@ -709,9 +962,9 @@ int put_float(char *f) {
 
     d=neg*128+64+d;
     d=d&0xff;
-    snprintf(buf,64,"%.2x",d);
-    strncat(buf,look,2);
-    strcat(buf," ");
+    snprintf(buf,64,"%.2x%c%c ", d, look[0], look[1]);
+    //strncat(buf,look,2);
+    //strcat(buf," ");
     look+=2;
     for(i=0;i<2;i++) {
       strncat(buf,look,4);
@@ -744,18 +997,20 @@ int put_opcode(int b) {
 
   prints the current PC address to output string (or appropriate padding,
   if PC is undefined)
+  Returns the PC address (or 0)
  *=========================================================================*/
 int print_pc() {
   char buf[32];
+  int opc = 0;
 
   if (!init_pc)
     snprintf(buf,32,"      ");
   else {
-    int opc=(pc+activeBank->offset)&0xffff;
+    opc=(pc+activeBank->offset)&0xffff;
     snprintf(buf,32,"%.2X:%.2X  ",opc&0xff,opc>>8);
   }
   strcat(outline,buf);
-  return 0;
+  return opc;
 }
 /*=========================================================================*
   function get_address(char *str)
@@ -807,7 +1062,7 @@ int add_label(char *label) {
   int v;
 
   /* If the last char of a label is a : then remove it*/
-  int labelLength = strlen(label);
+  int labelLength = (int)strlen(label);
   if (*(label + labelLength-1) == ':')
   {
       *(label + labelLength-1) = 0;
@@ -824,19 +1079,26 @@ int add_label(char *label) {
     if (strchr(label,'='))
       error("Illegal label (cannot contain '=')",1);
     sym=get_sym();
+    /* Set the original name of the symbol, nothing is processed yet */
+    sym->orig = STRDUP(label);
+    sym->lineNr = fin->line;
+    sym->ftrack = fin->ftrack;
+
+    sym->dumpOptions = opt.symbolDumpOptions;
+
     if (label[0]=='?') {
       if (opt.MAElocals) {
         int len;
         if (!opt.MAEname) {
           error("Local label must occur after a global label.",1);
         }
-        len=strlen(opt.MAEname)+strlen(label)+1;
+        len=(int)strlen(opt.MAEname)+(int)strlen(label)+1;
         sym->name=(char *)malloc(len);
         snprintf(sym->name,len,"%s%s",opt.MAEname,label);
       } else {
         int len;
         snprintf(num,32,"=%d=",local);
-        len=strlen(label)+strlen(num)+1;
+        len=(int)strlen(label)+(int)strlen(num)+1;
         sym->name=(char *)malloc(len);
         snprintf(sym->name,len,"=%d=%s",local,label+1);
       }
@@ -866,6 +1128,9 @@ int add_label(char *label) {
         invoked=NULL;
         if (!findsym(label)) {
           symbol *nsym=get_sym();
+          nsym->orig = STRDUP(label);
+          nsym->lineNr = fin->line;
+          nsym->ftrack = fin->ftrack;
           nsym->name=(char *)malloc(strlen(label)+1);
           if (!nsym->name) {
             error("Cannot allocate room for macro during macro instantiation.", 1);
@@ -906,7 +1171,7 @@ int add_label(char *label) {
       sprintf(buf,"Cannot find label %s", label);
       error(buf,1);
     }
-    str=get_nxt_word(1);
+    str=get_nxt_word(PARSE_LINE_REST);
 
     if (pass) {
       squeeze_str(str);
@@ -926,135 +1191,156 @@ int add_label(char *label) {
 /*=========================================================================*
   function parse_operand(symbol *sym, char *str)
   parameters: sym - the opcode
-        str - the remaining chars on the line
+              str - the remaining chars on the line
 
   This function assembles a given opcode/operand pair, determing the
   appropriate opcode mode (immediate, indexed, indirect, etc)
  *=========================================================================*/
-int parse_operand(symbol *sym, char *str) {
-  short v,cmd;
-  unsigned short a;
-  char *idx, vidx, xtnd;
-  char buf[80];
+int parse_operand(symbol* sym, char* str) 
+{
+	short v, cmd;
+	unsigned short a;
+	char* idx, vidx, xtnd;
+	char buf[80];
 
-  idx=strchr(str,',');
-  a=0;
-  vidx=xtnd=0;
-  cmd=0;
+	idx = strchr(str, ',');
+	a = 0;
+	vidx = xtnd = 0;
+	cmd = 0;
 
-  if (idx) {
-    if ((idx>str)&&(*(idx-1)!='\'')) {  /* allow quoting: cmp #', */
-      *idx=0;
-      idx++;
-      vidx=TOUPPER(*idx);
-      if ((vidx!='X')&&(vidx!='Y'))
-        error("Illegal index",1);
-      if ((vidx=='X')&&(str[0]=='(')) {
-        *idx=0;
-        idx--;
-        *idx=')';
-      }
-    }
-  }
-  if (str[0]=='#') { /* Immediate mode */
-    if (pass) {   /* determine value */
-      v=get_immediate(str+1);
-      put_opcode(imm[sym->addr]);
-      put_byte(v);
-    } else pc+=2;
-  } else {
-    if (str[0]=='(') {
-      if (pass)
-        a=get_address(str);
+	if (idx) {
+		if ((idx > str) && (*(idx - 1) != '\'')) {  /* allow quoting: cmp #', */
+			*idx = 0;
+			idx++;
+			vidx = TOUPPER(*idx);
+			if ((vidx != 'X') && (vidx != 'Y'))
+				error("Illegal index", 1);
+			if ((vidx == 'X') && (str[0] == '(')) {
+				*idx = 0;
+				idx--;
+				*idx = ')';
+			}
+		}
+	}
+	if (str[0] == '#') { /* Immediate mode */
+		if (pass) {   /* determine value */
+			v = get_immediate(str + 1);
+			put_opcode(imm[sym->addr]);
+			put_byte(v);
+		}
+		else pc += 2;
+	}
+	else {
+		if (str[0] == '(') {
+			if (pass)
+				a = get_address(str);
 
-      if (sym->addr==30) { /* JMP indirect abs */
-        if (vidx)
-          error("Illegal indirect JMP",1);
-        cmd=ind[sym->addr];
-        xtnd=1;           /* fix indirect JMP size */
-      } else {
-        if (!vidx) {
-          error("Illegal indirect reference",1);
-        } else if (vidx=='X')
-          cmd=i_x[sym->addr];
-        else
-          cmd=i_y[sym->addr];
-        if ((pass)&&(a>255))
-          error("Illegal zero page reference.",1);
-      }
-      if (pass) {
-        put_opcode(cmd);
-        put_byte(a&0xff);
-        if ((a>255)||(xtnd))
-          put_byte(a>>8);
-      } else {
-        if (vidx)
-          pc+=2;
-        else
-          pc+=3;
-      }
-    } else { /* absolute reference */
-      a=get_expression(str,0);
-      if (pass) {  /* determine address */
-        a=get_address(str);
-        if (rel[sym->addr]>=0) { /* Relative branch */
-          if (vidx)
-            error("Illegal operand for relative branch",1);
-          cmd=rel[sym->addr];
-          if (a>255) {
-            v=a-pc-2;
-            if ((v>127)||(v<-128)) {
-              snprintf(buf,80,"Branch overflow! Target %d bytes away.",v);
-              error(buf,1);
-            }
-            if (v<0) v+=256;
-            a=v;
-          }
-        } else {
-          if (vidx) { /* Indexed mode */
-            if (vidx=='X') {
-              if (a<256)
-                cmd=z_x[sym->addr];
-              else
-                cmd=a_x[sym->addr];
-            } else {
-              if (a<256) {
-                cmd=z_y[sym->addr];
-                if (cmd==a_y[sym->addr])  /* pad LDA/STA ZP,y and friends */
-                  xtnd=1;
-              } else
-                cmd=a_y[sym->addr];
-            }
-          } else {
-            if (a<256) {
-              cmd=zpg[sym->addr];
-              if ((sym->addr==30)||(sym->addr==31))
-                xtnd=1;          /* pad "zero-page" jump */
-            } else
-              cmd=abl[sym->addr];
-          }
-        }
-        put_opcode(cmd);
-        put_byte(a&0xff);
-        if ((a>255)||(xtnd))
-          put_byte(a>>8);
-      } else {
-        if ((a<256)||(rel[sym->addr]>=0)) {
-          if ((sym->addr==30)|| /* pad a few zero-page opcodes */
-              (sym->addr==31)||
-              ((vidx=='Y')&&((a_y[sym->addr]==z_y[sym->addr]))))
-            pc+=3;
-          else
-            pc+=2;
-        } else if ((str[0]=='>')||(str[0]=='<'))  /* hi,lo are 2 bytes long */
-          pc+=2;
-        else
-          pc+=3;
-      }
-    }
-  }
-  return 1;
+			if (sym->addr == OPI_JMP) { /* JMP indirect abs */
+				if (vidx)
+					error("Illegal indirect JMP", 1);
+				cmd = ind[sym->addr];
+				xtnd = 1;           /* fix indirect JMP size */
+			}
+			else {
+				if (!vidx) {
+					error("Illegal indirect reference", 1);
+				}
+				else if (vidx == 'X')
+					cmd = i_x[sym->addr];
+				else
+					cmd = i_y[sym->addr];
+				if ((pass) && (a > 255))
+					error("Illegal zero page reference.", 1);
+			}
+			if (pass) {
+				put_opcode(cmd);
+				put_byte(a & 0xff);
+				if ((a > 255) || (xtnd))
+					put_byte(a >> 8);
+			}
+			else {
+				if (vidx)
+					pc += 2;
+				else
+					pc += 3;
+			}
+		}
+		else 
+        { 
+            /* absolute reference */
+			a = get_expression(str, 0);
+			if (pass) 
+            {  
+                /* determine address */
+				a = get_address(str);
+				if (rel[sym->addr] >= 0) { /* Relative branch */
+					if (vidx)
+						error("Illegal operand for relative branch", 1);
+					cmd = rel[sym->addr];
+					if (a > 255) {
+						v = a - pc - 2;
+						if ((v > 127) || (v < -128)) {
+							snprintf(buf, 80, "Branch overflow! Target %d bytes away.", v);
+							error(buf, 1);
+						}
+						if (v < 0) v += 256;
+						a = v;
+					}
+				}
+				else {
+					if (vidx) { /* Indexed mode */
+						if (vidx == 'X') {
+							if (a < 256)
+								cmd = z_x[sym->addr];
+							else
+								cmd = a_x[sym->addr];
+						}
+						else {
+							if (a < 256) {
+								cmd = z_y[sym->addr];
+								if (cmd == a_y[sym->addr])  /* pad LDA/STA ZP,y and friends */
+									xtnd = 1;
+							}
+							else
+								cmd = a_y[sym->addr];
+						}
+					}
+					else {
+						if (a < 256) {
+							cmd = zpg[sym->addr];
+							if ((sym->addr == OPI_JMP) || (sym->addr == OPI_JSR))
+								xtnd = 1;          /* pad "zero-page" jump */
+						}
+						else
+							cmd = abl[sym->addr];
+					}
+				}
+				put_opcode(cmd);
+				put_byte(a & 0xff);
+				if ((a > 255) || (xtnd))
+					put_byte(a >> 8);
+			}
+			else 
+            {
+				if ((a < 256) || (rel[sym->addr] >= 0)) 
+                {
+					if ((sym->addr == OPI_JMP) || /* pad a few zero-page opcodes */
+						(sym->addr == OPI_JSR) ||
+						((vidx == 'Y') && ((a_y[sym->addr] == z_y[sym->addr]))))
+						pc += 3;
+					else
+						pc += 2;
+				}
+				else if ((str[0] == '>') || (str[0] == '<'))  /* hi,lo are 2 bytes long */
+					pc += 2;
+				else
+					pc += 3;
+			}
+		}
+	}
+	return 1;
 }
+
 /*=========================================================================*
   function num_cvt(char *num)
   parameters: num - a string containing a numeric value
@@ -1068,29 +1354,29 @@ int num_cvt(char *num) {
   if (!ISDIGIT(num[0])) {
     txt=num+1;
     if (num[0]=='$')
-      tp=1;
+      tp=IS_HEX;
     else if (num[0]=='~')
-      tp=2;
+      tp=IS_BINARY;
     else {
-      tp=0; /* remove annoying compiler warning */
+      tp=IS_DECIMAL; /* remove annoying compiler warning */
       error("Malformed numeric constant.",1);
     }
   } else {
-    tp=0;
+    tp=IS_DECIMAL;
     txt=num;
   }
 
   switch (tp) {
-  case 0:   /* decimal */
+  case IS_DECIMAL:   /* decimal */
     sscanf(txt,"%d",&v);
     break;
-  case 1:   /* hex */
+  case IS_HEX:      /* hex */
     sscanf(txt,"%x",&v);
     break;
-  case 2:   /* binary */
+  case IS_BINARY:   /* binary */
     v=0;
     bit=1;
-    for(i=strlen(txt)-1;i>=0;i--) {
+    for(i=(int)strlen(txt)-1;i>=0;i--) {
       if (txt[i]=='1')
         v+=bit;
       else if (txt[i]!='0') {
@@ -1150,7 +1436,7 @@ int to_comma(char *in, char *out) {
   }
   q=0;
   while (*look) {
-    if (*look==34)
+    if (*look=='"')
       q^=1;
     *out++=*look++;
     c++;
@@ -1178,7 +1464,7 @@ int do_float() {
   char buf[256];
   int d,c,p;
 
-  str=get_nxt_word(1);
+  str=get_nxt_word(PARSE_LINE_REST);
   while(ISSPACE(*str))
     str++;
   look=str+strlen(str)-1;
@@ -1207,7 +1493,7 @@ int do_float() {
 
     if ((pass)&&(verbose)&&(c==2)) {
       if (!p) {
-        aprintf("%s %s\n",outline,get_nxt_word(2));
+        aprintf("%s %s\n",outline,get_nxt_word(PARSE_CURRENT_LINE));
         p=1;
       } else {
         aprintf("%s\n",outline);
@@ -1219,7 +1505,7 @@ int do_float() {
 
   if ((pass)&&(verbose)&&(c)) {
     if (!p) {
-      aprintf("%s %s\n",outline,get_nxt_word(2));
+      aprintf("%s %s\n",outline,get_nxt_word(PARSE_CURRENT_LINE));
     } else {
       aprintf("%s\n",outline);
     }
@@ -1246,7 +1532,7 @@ int do_xword(int tp) {
   add=0;
   tp=(tp==3);
 
-  str=get_nxt_word(1);
+  str=get_nxt_word(PARSE_LINE_REST);
   while(ISSPACE(*str))
     str++;
   look=str+strlen(str)-1;
@@ -1266,8 +1552,8 @@ int do_xword(int tp) {
       c++;
     }
     switch(*look) {
-    case 9:
-    case 32:
+    case '\t':  /* \t = tab = 9*/
+    case ' ':   /* space = 32 */
       look++;
       break;
     case '+':
@@ -1281,7 +1567,7 @@ int do_xword(int tp) {
       if (!look)
         error("Useless statement.",0);
       break;
-    case 34:
+    case '"':
       error("String must be in xbyte format.",1);
       break;
     default:
@@ -1297,7 +1583,7 @@ int do_xword(int tp) {
     }
     if ((pass)&&(verbose)&&(c==3)) {
       if (!p) {
-        aprintf("%s %s\n",outline,get_nxt_word(2));
+        aprintf("%s %s\n",outline,get_nxt_word(PARSE_CURRENT_LINE));
         p=1;
       } else {
         aprintf("%s\n",outline);
@@ -1308,7 +1594,7 @@ int do_xword(int tp) {
   }
   if ((pass)&&(verbose)&&(c)) {
     if (!p) {
-      aprintf("%s %s\n",outline,get_nxt_word(2));
+      aprintf("%s %s\n",outline,get_nxt_word(PARSE_CURRENT_LINE));
     } else {
       aprintf("%s\n",outline);
     }
@@ -1336,7 +1622,7 @@ int do_xbyte(int tp) {
     error("No initial address specified.",1);
 
   add=cb=0;
-  str=get_nxt_word(1);
+  str=get_nxt_word(PARSE_LINE_REST);
   while(ISSPACE(*str))
     str++;
   look=str+strlen(str)-1;
@@ -1356,8 +1642,8 @@ int do_xbyte(int tp) {
       c++;
     }
     switch(*look) {
-    case 9:
-    case 32:
+    case '\t':  /* tab = 9 */
+    case ' ':   /* space = 32*/
       look++;
       break;
     case '+':
@@ -1366,17 +1652,17 @@ int do_xbyte(int tp) {
       look++;
       d=to_comma(look,buf);
       look=look+d;
-      add=get_immediate(buf);
+      add=(unsigned char)get_immediate(buf);
       c=1;
       if (!look)
         error("Useless statement.",0);
       break;
-    case 34:
+    case '"':
       d=to_comma(look,buf);
       look=look+d;
-      d=strlen(buf)-1;
-      if ((d>255)||(((d<0)||(buf[0]!=34))&&(buf[d]!=34))||
-          ((d>0)&&(buf[0]==34)&&(buf[d]!=34))) {
+      d=(int)strlen(buf)-1;
+      if ((d>255)||(((d<0)||(buf[0]!='"'))&&(buf[d]!='"'))||
+          ((d>0)&&(buf[0]== '"')&&(buf[d]!='"'))) {
         error("Malformed string.",1);
       } else {
         if (pass)
@@ -1392,7 +1678,7 @@ int do_xbyte(int tp) {
           c++;
           if ((pass)&&(verbose)&&(c==6)) {
             if (!p) {
-              aprintf("%s %s\n",outline,get_nxt_word(2));
+              aprintf("%s %s\n",outline,get_nxt_word(PARSE_CURRENT_LINE));
               p=1;
             } else {
               aprintf("%s\n",outline);
@@ -1426,7 +1712,7 @@ int do_xbyte(int tp) {
 
     if ((pass)&&(verbose)&&(c==5)) {
       if (!p) {
-        aprintf("%s %s\n",outline,get_nxt_word(2));
+        aprintf("%s %s\n",outline,get_nxt_word(PARSE_CURRENT_LINE));
         p=1;
       } else {
         aprintf("%s\n",outline);
@@ -1437,7 +1723,7 @@ int do_xbyte(int tp) {
   }
   if ((pass)&&(verbose)&&(c)) {
     if (!p) {
-      aprintf("%s %s\n",outline,get_nxt_word(2));
+      aprintf("%s %s\n",outline,get_nxt_word(PARSE_CURRENT_LINE));
     } else {
       aprintf("%s\n",outline);
     }
@@ -1464,16 +1750,16 @@ int get_single(symbol *sym) {
   } else if (acc[sym->addr]<0) {
     error("Illegal operand",1);
   }
-  a=get_nxt_word(3);
+  a=get_nxt_word(PARSE_PEEK_LINE_REST);
   squeeze_str(a);
   if ((!strlen(a))||((strlen(a)==1)&&(TOUPPER(*a)=='A'))) {
-    a=get_nxt_word(1);
+    a=get_nxt_word(PARSE_LINE_REST);
     if (pass)
       put_opcode(acc[sym->addr]);
     else
       pc++;
   } else {
-    a=get_nxt_word(1);
+    a=get_nxt_word(PARSE_LINE_REST);
     squeeze_str(a);
     parse_operand(sym,a);
   }
@@ -1482,55 +1768,245 @@ int get_single(symbol *sym) {
 /*=========================================================================*
  * function incbin(char *fname)
  *
- * this includes a binary file
+ * This includes a binary file
  *=========================================================================*/
-int incbin(char *fname) {
-  FILE *in;
-  int b,v;
+int incbin(char *fname) 
+{
+	FILE* in;
+	int b, v;
+	char final_fname[256];
 
-  in=fopen_include(includes, fname, 1);
-  if (!in) {
-    error("Cannot open binary file",1);
-  }
-  v=verbose;
-  verbose=0;
-  while((in)&&(!feof(in))) {
-    b=fgetc(in);
-    if (!feof(in)) {
-      if (pass)
-        put_byte(b);
-      else
-        pc++;
-    }
-  }
-  verbose=v;
-  fclose(in);
-  return 0;
+	in = fopen_include(includes, fname, 1, final_fname);
+	if (!in) 
+    {
+		error("Cannot open binary file", 1);
+	}
+	track_filename(final_fname);
+	v = verbose;
+	verbose = 0;
+	while ((in) && (!feof(in))) 
+    {
+		b = fgetc(in);
+		if (!feof(in)) 
+        {
+			if (pass)
+				put_byte(b);
+			else
+				pc++;
+		}
+	}
+	verbose = v;
+	fclose(in);
+	return 0;
 }
+
+/*=========================================================================*
+ * function clearDoneIfPartIndicators(int depth)
+ *
+ * Check if the .IF nesting is ok and clear all processed indicators for
+ * levels further up the stack.
+ *=========================================================================*/
+void clearDoneIfPartIndicators(int depth)
+{
+    if (depth >= MAX_IF_DEPTH)
+        error("Too many nested .IF blocks!", 1);
+
+    for (; depth < MAX_IF_DEPTH; ++depth)
+    {
+        doneIfPart[depth] = 0;
+    }
+}
+
 /*=========================================================================*
  * function skip_if()
  *
- * this skips code until a matching .ENDIF or .ELSEIF is found
- * correctly handles nested .IFs
+ * This skips code until a matching .ENDIF,.ELSE or .ELSEIF is found.
+ * Correctly handles nested .IFs
  *=========================================================================*/
-int skip_if() {
-  int i=0;
-  char *str;
+int skip_if()
+{
+	int level = 0;
+	char* str;
+    int evaledExpression;
 
-  while(i>=0) {
-    str=get_nxt_word(5);
-    if (!str)
-      error("Mismached .IF/.ELSE/.ENDIF statements.",1);
-    if (!STRCASECMP(str,".IF"))
-      i++;
-    if (!STRCASECMP(str,".ENDIF"))
-      i--;
-    if ((!STRCASECMP(str,".ELSE"))&&(!i))
-      i--;
-  }
-  eq=0;
-  return 1;
+	while (level >= 0) 
+    {
+		str = get_nxt_word(PARSE_SKIP);
+		if (!str)
+			error("Mismatched .IF/.ELSEIF/.ELSE/.ENDIF statements.", 1);
+
+		if (!STRCASECMP(str, ".IF"))
+			level++;
+        if (!STRCASECMP(str, ".ENDIF"))
+        {
+            level--;
+            if (level < 0)
+            {
+                // Exiting the block
+                --dotIfLevel;
+                if (dotIfLevel < 0)
+                    error("Mismatched .IF/.ELSEIF/.ELSE/.ENDIF statements.", 1);
+            }
+        }
+
+        if (!STRCASECMP(str, ".ELSE") && level == 0)
+        {
+            if (doneIfPart[dotIfLevel] == 0)
+            {
+                level--;
+            }
+        }
+        if (!STRCASECMP(str, ".ELSEIF") && level == 0)
+        {
+            if (doneIfPart[dotIfLevel] == 0)
+            {
+                // Found an .elseif at the top level
+                // Already skipping a block, so check if we need to continue skipping or process this block
+                str = get_nxt_word(PARSE_LINE_REST);
+                squeeze_str(str);
+                eq = 0;
+                evaledExpression = get_expression(str, 1);
+                if (evaledExpression)
+                {
+                    // This is the part to process
+                    doneIfPart[dotIfLevel] = 1;
+                    level--;
+                }
+            }
+        }
+	}
+	eq = 0;
+	return 1;
 }
+
+char* skipWhiteSpace(char* ptr)
+{
+    while ((*ptr == ' ' || *ptr == '\t') && *ptr != 0) ++ptr;
+    return ptr;
+}
+/*=========================================================================*
+ * function do_long_jump(symbol *sym)
+ * parameter sym- the symbol to parse
+ *
+ * This function implements a long jump macro:
+ * jcc bob => bcs $03 --|      $b0 $03
+ *            jmp bob   |      $4c Lo Hi
+ *                   <--|
+ * These macro commands are similar to the 6502 branch instructions BEQ, 
+ * BNE, BPL, BMI, BCC, BCS, BVC, BVS, but can target the entire 64KB 
+ * address space ("jump").
+ *=========================================================================*/
+void do_long_jump(symbol* sym)
+{
+    char* line, * str = NULL;
+    int addr;
+    char buf[80];
+    int currentPC = 0;        /* current PC*/
+
+    longJump* ref = getLongJumpReference(fin->name, fin->line);
+
+    if (pass == 0)
+    {
+        ref->pc = pc;
+        ref->type = sym->addr;
+    }
+
+    str = get_nxt_word(PARSE_NEXT_LINE);
+    addr = get_expression(str, 0);
+
+    if (pass == 0)
+    {
+        ref->targetAddr = addr;
+        ref->targetName = STRDUP(str);
+        if (addr != 65535)
+        {
+            // We know the target address, so can decide if this is a long or short jump
+            int distance = addr - pc - 2;
+            if (distance >= -128 && distance < 127)
+            {
+                // Convert to short jump
+                ref->makeShort = 1;
+                ref->distance = distance;
+            }
+        }
+
+        pc += ref->makeShort ? 2 : 5;
+
+        line = get_nxt_word(PARSE_CURRENT_LINE);
+        ref->origLine = STRDUP(skipWhiteSpace(line));
+        return;
+    }
+
+    if (pass)
+    {
+        ref->targetAddr = addr;
+        if (verbose) {
+            currentPC = print_pc();
+        }
+        sprintf(buf, "%s %s", longJump2ShortOpcodeName[ref->type], str);
+        ref->altLine = STRDUP(buf);
+
+        if (ref->makeShort)
+        {
+            // convert from long jump to the short hand version
+            int opcode = longJump2ShortOpcode[ref->type];
+            put_opcode(opcode);
+            put_byte((unsigned char)ref->distance);
+        }
+        else
+        {
+            ref->distance = addr - pc;
+            // put the inverse of the command
+            int opcode = longJump2InverseOpcode[ref->type];
+            put_opcode(opcode);
+            put_byte(0x03);
+
+            sprintf(buf, "%s $03", longJump2InverseOpcodeName[ref->type]);
+        }
+        ref->outLine1 = STRDUP(buf);
+
+        if (verbose)
+        {
+            if (lastSymbol && ((lastSymbol->addr & 0xFFFF) == currentPC) && lastSymbol->lineNr != fin->line) {
+                /* Write the original/unmodified symbol name to the outline */
+                sprintf(buf, " %s ", lastSymbol->orig);
+                strcat(outline, buf);
+            }
+            while (strlen(outline) < 16)
+                strcat(outline, " ");
+
+            aprintf("%s\t%s\n", outline, ref->outLine1);
+        }
+
+        if (ref->makeShort == 0)
+        {
+            outline[0] = 0;
+            if (verbose) {
+                currentPC = print_pc();
+            }
+            put_opcode(0x4c);       // JMP
+            put_word(addr, 0);
+
+            sprintf(buf, "JMP %s", str);
+            ref->outLine2 = STRDUP(buf);
+
+            if (verbose)
+            {
+                if (lastSymbol && ((lastSymbol->addr & 0xFFFF) == currentPC) && lastSymbol->lineNr != fin->line) {
+                    /* Write the original/unmodified symbol name to the outline */
+                    sprintf(buf, " %s ", lastSymbol->orig);
+                    strcat(outline, buf);
+                }
+                while (strlen(outline) < 16)
+                    strcat(outline, " ");
+                strcpy(buf, str);
+                line = get_nxt_word(PARSE_CURRENT_LINE);
+                aprintf("%s\tJMP %s\t\t;%s\n", outline, buf, line);
+            }
+        }
+    }
+}
+
 /*=========================================================================*
  * function proc_sym(symbol *sym)
  * parameter sym- the symbol to parse
@@ -1538,409 +2014,571 @@ int skip_if() {
  * This function handles operands and system defines, farming out to the
  * appropriate functions
  *=========================================================================*/
-int proc_sym(symbol *sym) {
-  char *line, *str=NULL;
-  short addr;
-  int i,stor;
-  macro_call *mc;
-  char buf[80];
+int proc_sym(symbol *sym) 
+{
+	char* line, * str = NULL;
+	short addr;
+	int i, stor;
+	macro_call* mc;
+	char buf[80];
+	int currentPC = 0;        /* current PC*/
 
-  switch (sym->tp) {
-  case OPCODE:  /* opcode */
-    if (!init_pc)
-      error("No initial address specified.",1);
-    if ((verbose)&&(pass))
-      print_pc();
+	if (pass == 1 && lastLabel && lastLabel->ftrack == fin->ftrack && lastLabel->lineNr == fin->line) {
+		// On the 2nd pass look if there is a comment after the equate
+		str = get_nxt_word(PEEK_COMMENT);
+		if (str)
+		{
+			// Add the comment to the label
+			lastLabel->comment = STRDUP(str);
+		}
+		str = NULL;
+	}
 
-    if(sym->addr >= LEGAL_OPS && !opt.ill)
-      error("6502 `illegal' opcode used without `.OPT ILL' or -u",1);
-
-    if (num_args[sym->addr]) {
-      str=get_nxt_word(1);
-      squeeze_str(str);
-      parse_operand(sym,str);
-    } else {
-      get_single(sym);
-    }
-    if ((verbose)&&(pass)) {
-      while(strlen(outline)<16)
-        strcat(outline," ");
-      line=get_nxt_word(2);
-      aprintf("%s%s\n",outline,line);
-      /*      if (invoked) {
-  printf("\t\t[inside %s]\n",invoked->orig->name);
-      } else {
-  printf("\n");
-      }  */
-    }
-    break;
-  case DIRECT:  /* system def */
-    switch(sym->addr) {
-    case 0:  /* .BYTE */
-    case 1:  /* .SBYTE */
-    case 2:  /* .CBYTE */
-      do_xbyte(sym->addr);
-      break;
-    case 3:  /* .DBYTE */
-      do_xword(sym->addr);
-      break;
-    case 4: /* .ELSE */
-      skip_if();
-      break;
-    case 5:  /* .END */
-      break;
-    case 6: /* .ENDIF */
-      break;
-    case 7: /* .ERROR */
-      str=get_nxt_word(0);
-      error(str,1);
-      break;
-    case 8: /* .FLOAT */
-      do_float();
-      break;
-    case 9: /* .IF */
-      str=get_nxt_word(1);
-      squeeze_str(str);
-      eq=0;
-      addr=get_expression(str,1);
-      if (!addr)
-        skip_if();
-      break;
-    case 10:  /* .INCLUDE */
-      str=get_nxt_word(0);
-      if (str[0]==34) {
-        str++;
-        str[strlen(str)-1]=0;
-      }
-      open_file(str);
-      break;
-    case 11: /* .LOCAL */
-      local++;
-      if (local>62)
-        error("Over 62 local regions defined, will not compile on MAC/65.",0);
-      break;
-    case 12: { /* .OPT */
-        int i,len,negated=0;
-        do {
-          str=get_nxt_word(4);
-          len=strlen(str);
-          for(i=0;i<len;i++) {
-            str[i]=TOUPPER(str[i]);
-          }
-          if (!strcmp(str,"NO")) {
-            negated=1;
-          } else if (!strcmp(str,"OBJ")) {
-            opt.obj=!negated;
-          } else if (!strcmp(str,"ERR")) {
-            opt.warn=!negated;
-          } else if (!strcmp(str,"LIST")) {
-            verbose=!negated;
-          } else if (!strcmp(str,"ILL")) {
-            opt.ill=!negated;
-            error(".OPT ILL encountered (code would not compile on MAC/65)",0);
-          } else if (strlen(str)) {
-            error("Unknown .OPT directive.",0);
-          }
-        } while(strlen(str));
-        break;
-      }
-    case 14: /* .SET */
-      get_nxt_word(6);
-      str=get_nxt_word(4);
-      if (!str)
-        squeeze_str(str);
-      if (strlen(str)) {
-        int opt;
-        sscanf(str,"%d",&opt);
-        /* only honor option 6 at the moment... */
-        if (opt==6) {
-          int ofs;
-          str=get_nxt_word(1);
-          squeeze_str(str);
-          if (strlen(str)) {
-            if (pass) {
-              ofs=get_signed_expression(str,1);
-            } else {
-              ofs=0;
+    switch (sym->tp)
+    {
+        case OPCODE:  /* opcode */
+        {
+            if (!init_pc)
+                error("No initial address specified.", 1);
+            if ((verbose) && (pass)) {
+                currentPC = print_pc();
             }
-            if ((ofs>=-65535)&&(ofs<=65535)) {
-              activeBank->offset=ofs;
-            } else {
-              error("Illegal .SET 6 offset ignored",0);
+
+            if (sym->addr >= LEGAL_OPS && !opt.ill)
+                error("6502 `illegal' opcode used without `.OPT ILL' or -u", 1);
+
+            if (num_args[sym->addr]) {
+                str = get_nxt_word(PARSE_LINE_REST);
+                squeeze_str(str);
+                parse_operand(sym, str);
             }
-          }
-        } else {
-          error("Unhandled .SET ignored",0);
-          str=get_nxt_word(1);
-        }
-      }
-      break;
-    case 13: /* .PAGE */
-    case 15: /* .TAB */
-    case 16: /* .TITLE */
-      do {
-        str=get_nxt_word(4);
-      } while(strlen(str));
-      break;
-    case 17: /* .WORD */
-      do_xword(sym->addr);
-      break;
-    case 18: /* '*' operator */
-      if ((!eq)||(eq==2)) {
-        error("Malformed * operator.",1);
-      }
-      if ((verbose)&&(pass))
-        aprintf("\n");
-      eq=0;
-      str=get_nxt_word(1);
-      squeeze_str(str);
-      if (str[0]=='*') {  /* Relative adjustment */
-        if (!init_pc)
-          error("No inital address specified.",1);
-        if (str[1]!='+')
-          error("Illegal relative adjustment.",1);
-        str[0]='0';
-        addr=get_expression(str,1);
-        pc=pc+addr;
-      } else {            /* Absolute value */
-        init_pc=1;
-        addr=get_expression(str,1);
-        pc=addr;
-      }
-      break;
-    case 19:  /* .ENDM */
-      error("No matching .MACRO definition for .ENDM",1);
-      break;
-    case 20:  /* .MACRO definition */
-      if (!pass)
-        create_macro(sym);
-      else
-        skip_macro();
-      eq=0;
-      break;
-    case 21:  /* .DS directive */
-      str=get_nxt_word(1);
-      squeeze_str(str);
-      addr=get_expression(str,1);
-      pc=pc+addr;
-      break;
-    case 22: /* .INCBIN */
-      str=get_nxt_word(0);
-      if (str[0]==34) {
-        str++;
-        str[strlen(str)-1]=0;
-      }
-      incbin(str);
-      break;
-    case 23: /* .REPT */
-      do_rept(sym);
-      break;
-    case 24:  /* .ENDR */
-      error("No matching .REPT definition for .ENDR",1);
-      break;
-    case 25: /* .WARN */
-      str=get_nxt_word(0);
-      error(str,0);
-      break;
-    case 26: /* .DC */
-      str=get_nxt_word(0);
-      addr=get_expression(str,1);
-
-      str=get_nxt_word(0);
-      stor=get_expression(str,1);
-
-      for(i=0;i<addr;i++) {
-        if ((verbose)&&(pass)&&(!(i&3))) {
-          if (i)
-            aprintf("%s\n",outline);
-          outline[0]=0;
-          print_pc();
-        }
-        if (pass)
-          put_byte(stor);
-        else
-          pc++;
-      }
-      if ((verbose)&&(pass))
-        aprintf("%s\n",outline);
-      outline[0]=0;
-      break;
-    case 27: { /* .BANK */
-      unsigned short symbolID=0;
-      int p1,p2;
-
-      p1=p2=-1;
-      str=get_nxt_word(3);
-      if (strlen(str)) {
-        squeeze_str(str);
-        if (str[0]==',')
-          p2=-2;
-
-        get_nxt_word(6);
-        str=get_nxt_word(4);
-        if (strlen(str)) {
-          squeeze_str(str);
-          if (strlen(str)) {
-            p1=get_expression(str,1);
-          }
-          str=get_nxt_word(4);
-          if (strlen(str)) {
-            squeeze_str(str);
-            if (strlen(str)) {
-              p2=get_expression(str,1);
+            else {
+                get_single(sym);
             }
-          }
-          if (p2>0) {
-            bankID=p1;
-            symbolID=p2;
-          } else if (p2==-1) {
-            bankID=symbolID=p1;
-          } else {
-            bankID++;
-            symbolID=p1;
-          }
+            if ((verbose) && (pass)) {
+                if (lastSymbol && ((lastSymbol->addr & 0xFFFF) == currentPC) && lastSymbol->lineNr != fin->line) {
+                    /* Write the original/unmodified symbol name to the outline */
+                    sprintf(buf, " %s ", lastSymbol->orig);
+                    strcat(outline, buf);
+                }
+                while (strlen(outline) < 16)
+                    strcat(outline, " ");
+                line = get_nxt_word(PARSE_CURRENT_LINE);
+                aprintf("%s%s\n", outline, line);
+                /*      if (invoked) {
+            printf("\t\t[inside %s]\n",invoked->orig->name);
+                } else {
+            printf("\n");
+                }  */
+            }
+            break;
         }
-      } else {
-        bankID++;
-        symbolID=bankID;
-      }
-      if (pass) {
-        if (bankID>=0) {
-          char buf[256];
-          sprintf(buf,"Using bank %d,%d\n",bankID,symbolID);
-          error(buf,0);
-          activeBank=get_bank(bankID,symbolID);
-        }
-      } else if (bankID>=0) {
-        activeBank=get_bank(bankID,symbolID);
-      }
-      /* Skip for now... */
-      do {
-        str=get_nxt_word(4);
-      } while(strlen(str));
-      break;
-    }
-    default:
-      error("Illegal directive.",1);
-      break;
-    }
-    break;
-  case MACRON: /* MACRO */
-    mc=get_macro_call(sym->name);
-    if (!mc)
-      error("Missing entry in macro table",1);
+        case DIRECT:  /* system def */
+        {
+            switch (sym->addr) 
+            {
+                case DOT_BYTE:  /* .BYTE */
+                case DOT_CBYTE:  /* .CBYTE */
+                case DOT_SBYTE:  /* .SBYTE */
+                    do_xbyte(sym->addr);
+                    break;
+                case DOT_DBYTE:  /* .DBYTE */
+                    do_xword(sym->addr);
+                    break;
+                case DOT_ELSE: /* .ELSE */
+                    skip_if();
+                    break;
+                case DOT_END:  /* .END */
+                    break;
+                case DOT_ENDIF: /* .ENDIF */
+                    --dotIfLevel;
+                    break;
+                case DOT_ERROR: /* .ERROR */
+                    str = get_nxt_word(PARSE_NEXT_LINE);
+                    error(str, 1);
+                    break;
+                case DOT_FLOAT: /* .FLOAT */
+                    do_float();
+                    break;
+                case DOT_IF: /* .IF */
+                    ++dotIfLevel;
+                    clearDoneIfPartIndicators(dotIfLevel);
 
-    macro_param(mc,str);
-    mc->nxt=invoked;
-    invoked=mc;
-    mc->orig->times++;
-    break;
-  case MACROL: /* MACRO label/equate/tequate */
-  case MACROQ:
-    if (!pass) {
-      if (eq==1) {
-        snprintf(buf,80,"Equate '%s' defined multiple times",sym->name);
-        error(buf,1);
-      }
-      sym->num++;
-    }
-    if (eq) {
-      if (sym->tp!=MACROQ) {
-        snprintf(buf,80,"Symbol '%s' is not a transitory equate!",sym->name);
-        error(buf,1);
-      }
-      str=get_nxt_word(1);
-      if (eq==2) {
-        squeeze_str(str);
-        addr=get_address(str);
-        sym->addr=addr;
-        sym->bank=activeBank->sym_id;
-      }
-      eq=0;
-    } else {
-      /* Update macro shadow definition */
-      if (sym->macroShadow) {
-        symbol *update;
-        macro_call *hold=invoked;
-        invoked=NULL;
-        update=findsym(sym->macroShadow);
-        invoked=hold;
-        if (update) {
-          update->addr=pc;
-        }
-        defUnk(sym->name,pc);
-      }
-    }
-    break;
-  case LABEL:  /* labels and equates */
-  case EQUATE:
-    if (!pass) {
-      if (eq==1) {  /* was 2? probably a typo - mws */
-        snprintf(buf,80,"Symbol '%s' is not a transitory equate!",sym->name);
-        error(buf,1);
-      } else {
-        if (sym->addr>255) {
-          snprintf(buf,80,"Symbol '%s' already defined!",sym->name);
-          error(buf,1);
-        }
-      }
-    } else {
-      if ((sym->tp==LABEL)&&(sym->name)&&(sym->name[0]!='?'))
-        if (!strchr(sym->name,'?'))
-          opt.MAEname=sym->name;
-    }
-    if (eq==1) {
-      if (sym->tp==LABEL) {
-        snprintf(buf,80,"Cannot use label '%s' as an equate",sym->name);
-        error(buf,1);
-      }
-      str=get_nxt_word(1);
-      if (sym->addr==0xffff) {  /* allow forward equate references */
-        squeeze_str(str);
-        addr=get_address(str);
-        sym->addr=addr;
-        sym->bank=activeBank->sym_id;
-        defUnk(sym->name,addr);
-      }
-      eq=0;
-    }
-    break;
-  case TEQUATE: /* transitory equates */
-    if (!pass) {
-      if (eq==2) {
-        str=get_nxt_word(1);
+                    str = get_nxt_word(PARSE_LINE_REST);
+                    squeeze_str(str);
+                    eq = 0;
+                    addr = get_expression(str, 1);
+                    if (addr)
+                        doneIfPart[dotIfLevel] = 1;
+                    else
+                        skip_if();      // Skip until .ELSE, .ELSEIF or .ENDIF
+                    break;
+                case DOT_INCLUDE:  /* .INCLUDE */
+                    str = get_nxt_word(PARSE_NEXT_LINE);
+                    if (str[0] == '"') {
+                        str++;
+                        str[strlen(str) - 1] = 0;
+                    }
+                    open_file(str);
+                    break;
+                case DOT_LOCAL: /* .LOCAL */
+                    local++;
+                    if (local > 62)
+                        error("Over 62 local regions defined, will not compile on MAC/65.", 0);
+                    break;
+                case DOT_OPT: { /* .OPT */
+                    int i, len, negated = 0;
+                    do {
+                        str = get_nxt_word(PARSE_NEXT_WORD);
+                        len = (int)strlen(str);
+                        for (i = 0; i < len; i++) {
+                            str[i] = TOUPPER(str[i]);
+                        }
+                        if (!strcmp(str, "NO")) {
+                            negated = 1;
+                        }
+                        else if (!strcmp(str, "OBJ")) {
+                            opt.obj = !negated;
+                        }
+                        else if (!strcmp(str, "ERR")) {
+                            opt.warn = !negated;
+                        }
+                        else if (!strcmp(str, "LIST")) {
+                            verbose = !negated;
+                        }
+                        else if (!strcmp(str, "ILL")) {
+                            opt.ill = !negated;
+                            error(".OPT ILL encountered (code would not compile on MAC/65)", 0);
+                        }
+                        else if (!strcmp(str, "SYMDUMP"))
+                        {
+                            opt.symbolDumpOptions = negated;
+                        }
+                        else if (strlen(str)) {
+                            error("Unknown .OPT directive.", 0);
+                        }
+                    } while (strlen(str));
+                    break;
+                }
+                case DOT_SET: /* .SET */
+                    get_nxt_word(PARSE_REPLACE_COMMAS);
+                    str = get_nxt_word(PARSE_NEXT_WORD);
+                    if (!str)
+                        squeeze_str(str);
+                    if (strlen(str)) {
+                        int opt;
+                        sscanf(str, "%d", &opt);
+                        /* only honor option 6 at the moment... */
+                        if (opt == 6) {
+                            int ofs;
+                            str = get_nxt_word(PARSE_LINE_REST);
+                            squeeze_str(str);
+                            if (strlen(str)) {
+                                if (pass) {
+                                    ofs = get_signed_expression(str, 1);
+                                }
+                                else {
+                                    ofs = 0;
+                                }
+                                if ((ofs >= -65535) && (ofs <= 65535)) {
+                                    activeBank->offset = ofs;
+                                }
+                                else {
+                                    error("Illegal .SET 6 offset ignored", 0);
+                                }
+                            }
+                        }
+                        else {
+                            error("Unhandled .SET ignored", 0);
+                            str = get_nxt_word(PARSE_LINE_REST);
+                        }
+                    }
+                    break;
+                case DOT_PAGE: /* .PAGE */
+                case DOT_TAB: /* .TAB */
+                case DOT_TITLE: /* .TITLE */
+                    do {
+                        str = get_nxt_word(PARSE_NEXT_WORD);
+                    } while (strlen(str));
+                    break;
+                case DOT_WORD: /* .WORD */
+                    do_xword(sym->addr);
+                    break;
+                case DOT_STAR: /* '*' operator */
+                {
+                    // * = expression ["Region name"]
+                    // * = * + expression ["Region name"]
+                    if ((!eq) || (eq == 2)) {
+                        error("Malformed * operator.", 1);
+                    }
+                    if ((verbose) && (pass))
+                        aprintf("\n");
+                    eq = 0;
+                    str = get_nxt_word(PARSE_LINE_REST);
+                    char* lineDup = str ? STRDUP(str) : NULL;           // Duplicate the line so that we can look for memory region name in it
+                    squeeze_str(str);
+                    // Check if there is a " somewhere.  Can't be part of the expression, so must be the region name
+                    char* regionName = strchr(str, '"');
+                    if (regionName) {
+                        *regionName = 0;        // " to 0
+                        ++regionName;
+                    }
 
-        /* even in first pass allow .= updates for .IFs */
-        squeeze_str(str);
-        addr=get_address(str);
-        sym->addr=addr;
-        sym->bank=activeBank->sym_id;
-        defUnk(sym->name,addr);
+                    if (str[0] == '*') {
+                        // Relative adjustment
+                        if (!init_pc)
+                            error("No inital address specified.", 1);
+                        if (str[1] != '+')
+                            error("Illegal relative adjustment.", 1);
+                        str[0] = '0';
+                        addr = get_expression(str, 1);
+                        pc = pc + addr;
+                    }
+                    else {            /* Absolute value */
+                        init_pc = 1;
+                        addr = get_expression(str, 1);
+                        pc = addr;
+                    }
+                    if (regionName && lineDup)
+                    {
+                        regionName = strchr(lineDup, '"');
+                        if (regionName) {
+                            *regionName = 0;
+                            ++regionName;
+                        }
+                        // Find the last " in the region name
+                        char* lastInvComma = strrchr(regionName, '"');
+                        if (lastInvComma) *lastInvComma = 0;
+                        saveNamedMemoryRegion(pc, regionName);
+                    }
+                    break;
+                }
+                case DOT_ENDM:  /* .ENDM */
+                    error("No matching .MACRO definition for .ENDM", 1);
+                    break;
+                case DOT_MACRO:  /* .MACRO definition */
+                    if (!pass)
+                        create_macro(sym);
+                    else
+                        skip_macro();
+                    eq = 0;
+                    break;
+                case DOT_DS:  /* .DS directive */
+                    str = get_nxt_word(PARSE_LINE_REST);
+                    squeeze_str(str);
+                    addr = get_expression(str, 1);
+                    pc = pc + addr;
+                    break;
+                case DOT_INCBIN: /* .INCBIN */
+                    str = get_nxt_word(PARSE_NEXT_LINE);
+                    if (str[0] == '"') {
+                        str++;
+                        str[strlen(str) - 1] = 0;
+                    }
+                    incbin(str);
+                    break;
+                case DOT_REPT: /* .REPT */
+                    do_rept(sym);
+                    break;
+                case DOT_ENDR:  /* .ENDR */
+                    error("No matching .REPT definition for .ENDR", 1);
+                    break;
+                case DOT_WARN: /* .WARN */
+                    str = get_nxt_word(PARSE_NEXT_LINE);
+                    error(str, 0);
+                    break;
+                case DOT_DC: /* .DC */
+                    str = get_nxt_word(PARSE_NEXT_LINE);
+                    addr = get_expression(str, 1);
 
-        eq=0;
-      } else {
-        snprintf(buf,80,"Use .= to assign '%s' new a value.",sym->name);
-        error(buf,1);
-      }
-    } else {
-      if (eq==2) {   /* allow .= updates */
-        str=get_nxt_word(1);
-        squeeze_str(str);
-        addr=get_address(str);
-        sym->addr=addr;
-        sym->bank=activeBank->sym_id;
-        defUnk(sym->name,addr);
-        eq=0;
-      }
-    }
-    break;
-  default:
-    if (!pass) {
-      snprintf(buf,80,"Symbol '%s' already defined!",sym->name);
-      error(buf,1);
-    }
-  }
-  return 1;
+                    str = get_nxt_word(PARSE_NEXT_LINE);
+                    stor = get_expression(str, 1);
+
+                    for (i = 0; i < addr; i++) {
+                        if ((verbose) && (pass) && (!(i & 3))) {
+                            if (i)
+                                aprintf("%s\n", outline);
+                            outline[0] = 0;
+                            print_pc();
+                        }
+                        if (pass)
+                            put_byte(stor);
+                        else
+                            pc++;
+                    }
+                    if ((verbose) && (pass))
+                        aprintf("%s\n", outline);
+                    outline[0] = 0;
+                    break;
+                case DOT_BANK: { /* .BANK */
+                    unsigned short symbolID = 0;
+                    int p1, p2;
+
+                    p1 = p2 = -1;
+                    str = get_nxt_word(PARSE_PEEK_LINE_REST);
+                    if (strlen(str)) {
+                        squeeze_str(str);
+                        if (str[0] == ',')
+                            p2 = -2;
+
+                        get_nxt_word(PARSE_REPLACE_COMMAS);
+                        str = get_nxt_word(PARSE_NEXT_WORD);
+                        if (strlen(str)) {
+                            squeeze_str(str);
+                            if (strlen(str)) {
+                                p1 = get_expression(str, 1);
+                            }
+                            str = get_nxt_word(PARSE_NEXT_WORD);
+                            if (strlen(str)) {
+                                squeeze_str(str);
+                                if (strlen(str)) {
+                                    p2 = get_expression(str, 1);
+                                }
+                            }
+                            if (p2 > 0) {
+                                bankID = p1;
+                                symbolID = p2;
+                            }
+                            else if (p2 == -1) {
+                                bankID = symbolID = p1;
+                            }
+                            else {
+                                bankID++;
+                                symbolID = p1;
+                            }
+                        }
+                    }
+                    else {
+                        bankID++;
+                        symbolID = bankID;
+                    }
+                    if (pass) {
+                        if (bankID >= 0) {
+                            if (verbose & 1) {
+                                char buf[256];
+                                sprintf(buf, "Using bank %d,%d\n", bankID, symbolID);
+                                error(buf, 0);
+                            }
+                            activeBank = get_bank(bankID, symbolID);
+                        }
+                    }
+                    else if (bankID >= 0) {
+                        activeBank = get_bank(bankID, symbolID);
+                    }
+                    /* Skip for now... */
+                    do {
+                        str = get_nxt_word(PARSE_NEXT_WORD);
+                    } while (strlen(str));
+                    break;
+                }
+                case DOT_ALIGN: { /* .ALIGN */
+                    int ok = 0;
+                    if (!init_pc)
+                        error("No inital address specified.", 1);
+                    str = get_nxt_word(PARSE_LINE_REST);
+                    squeeze_str(str);
+                    if (strlen(str) == 0) {
+                        error("Need to specify an alignment boundary", 1);
+                    }
+                    init_pc = 1;
+                    addr = get_expression(str, 1);
+                    /* Valid boundary values are 2^n (n=0-15) */
+                    for (i = 0; i < 16; ++i) {
+                        if ((1 << i) == (unsigned short)addr) {
+                            pc = (pc + addr - 1) & (0x10000 - addr);
+                            ok = 1;
+                            break;
+                        }
+                    }
+                    if (ok == 0) {
+                        error("Align boundary needs to be power of 2", 1);
+                    }
+                    break;
+                }
+                case DOT_REGION_NAME: /* .NAME to give a name to a memory area*/
+                {
+                    str = get_nxt_word(PARSE_NEXT_LINE);
+                    if (str[0] == '"') {
+                        str++;
+                        str[strlen(str) - 1] = 0;
+                    }
+                    if (pass == 1)
+                    {
+                        saveNamedMemoryRegion(pc, str);
+                    }
+                    break;
+                }
+                case DOT_ELSEIF:
+                {
+                    if (doneIfPart[dotIfLevel])
+                        skip_if();
+                    else
+                    {
+                        str = get_nxt_word(PARSE_LINE_REST);
+                        squeeze_str(str);
+                        eq = 0;
+                        addr = get_expression(str, 1);
+                        if (addr)
+                            doneIfPart[dotIfLevel] = 1;
+                        else
+                            skip_if();      // Skip until .ELSE, .ELSEIF or .ENDIF
+                    }
+                    break;
+                }
+
+                case EX_JEQ:
+                case EX_JNE:
+                case EX_JPL:
+                case EX_JMI:
+                case EX_JCC:
+                case EX_JCS:
+                case EX_JVC:
+                case EX_JVS:
+                {
+                    // jcc xyz
+                    // bcs *+4 --|      $b0 $03
+                    // jmp xyz   |      $4c Lo Hi
+                    // ....    <-|
+                    do_long_jump(sym);
+                    break;
+                }
+                default:
+                    error("Illegal directive.", 1);
+                    break;
+            }
+            break;
+        }
+        case MACRON: /* MACRO */
+        {
+            mc = get_macro_call(sym->name);
+            if (!mc)
+                error("Missing entry in macro table", 1);
+
+            macro_param(mc, str);
+            mc->nxt = invoked;
+            invoked = mc;
+            mc->orig->times++;
+            break;
+        }
+        case MACROL: /* MACRO label/equate/tequate */
+        case MACROQ:
+        {
+            if (!pass) {
+                if (eq == 1) {
+                    snprintf(buf, 80, "Equate '%s' defined multiple times", sym->name);
+                    error(buf, 1);
+                }
+                sym->num++;
+            }
+            if (eq) {
+                if (sym->tp != MACROQ) {
+                    snprintf(buf, 80, "Symbol '%s' is not a transitory equate!", sym->name);
+                    error(buf, 1);
+                }
+                str = get_nxt_word(PARSE_LINE_REST);
+                if (eq == 2) {
+                    squeeze_str(str);
+                    addr = get_address(str);
+                    sym->addr = addr;
+                    sym->bank = activeBank->sym_id;
+                }
+                eq = 0;
+            }
+            else {
+                /* Update macro shadow definition */
+                if (sym->macroShadow) {
+                    symbol* update;
+                    macro_call* hold = invoked;
+                    invoked = NULL;
+                    update = findsym(sym->macroShadow);
+                    invoked = hold;
+                    if (update) {
+                        update->addr = pc;
+                    }
+                    defUnk(sym->name, pc);
+                }
+            }
+            break;
+        }
+		case LABEL:  /* labels and equates */
+		case EQUATE:
+        {
+            if (!pass) {
+                if (eq == 1) {  /* was 2? probably a typo - mws */
+                    snprintf(buf, 80, "Symbol '%s' is not a transitory equate!", sym->name);
+                    error(buf, 1);
+                }
+                else {
+                    if (sym->addr > 255) {
+                        snprintf(buf, 80, "Symbol '%s' already defined!", sym->name);
+                        error(buf, 1);
+                    }
+                }
+            }
+            else {
+                // 2nd pass
+                if ((sym->tp == LABEL) && (sym->name) && (sym->name[0] != '?'))
+                    if (!strchr(sym->name, '?'))
+                        opt.MAEname = sym->name;
+            }
+            if (eq == 1) {
+                // Equate (=)
+                if (sym->tp == LABEL) {
+                    snprintf(buf, 80, "Cannot use label '%s' as an equate", sym->name);
+                    error(buf, 1);
+                }
+                str = get_nxt_word(PARSE_LINE_REST);
+                if (sym->addr == 0xffff) {  /* allow forward equate references */
+                    squeeze_str(str);
+                    addr = get_address(str);
+                    sym->addr = addr;
+                    sym->bank = activeBank->sym_id;
+                    defUnk(sym->name, addr);
+                }
+                eq = 0;
+            }
+            break;
+        }
+		case TEQUATE: /* transitory equates */
+        {
+            if (!pass) {
+                if (eq == 2) {
+                    str = get_nxt_word(PARSE_LINE_REST);
+
+                    /* even in first pass allow .= updates for .IFs */
+                    squeeze_str(str);
+                    addr = get_address(str);
+                    sym->addr = addr;
+                    sym->bank = activeBank->sym_id;
+                    defUnk(sym->name, addr);
+
+                    eq = 0;
+                }
+                else {
+                    snprintf(buf, 80, "Use .= to assign '%s' new a value.", sym->name);
+                    error(buf, 1);
+                }
+            }
+            else {
+                if (eq == 2) {   /* allow .= updates */
+                    str = get_nxt_word(PARSE_LINE_REST);
+                    squeeze_str(str);
+                    addr = get_address(str);
+                    sym->addr = addr;
+                    sym->bank = activeBank->sym_id;
+                    defUnk(sym->name, addr);
+                    eq = 0;
+                }
+            }
+            break;
+        }
+		default:
+			if (!pass) {
+				snprintf(buf, 80, "Symbol '%s' already defined!", sym->name);
+				error(buf, 1);
+			}
+	}
+	return 1;
 }
 /*=========================================================================*
  * function do_cmd(char *buf)
@@ -1952,22 +2590,33 @@ int do_cmd(char *buf) {
   symbol *sym;
   int i,len;
 
-  len=strlen(buf);
+  len=(int)strlen(buf);
   for(i=0;i<len;i++)
     buf[i]=TOUPPER(buf[i]);
 
   sym=findsym(buf);
 
+  if (sym && (sym->tp == LABEL || sym->tp == EQUATE) && sym->name) {
+      lastLabel = sym;
+  }
+ 
   if ((!sym)||((sym->tp==MACROL)&&(!sym->macroShadow))) {
     /* must be a label or define */
     add_label(buf);
     sym=findsym(buf);
-    if ((sym)&&(sym->tp==LABEL)&&(sym->name)&&(sym->name[0]!='?')) {
+    lastLabel = sym;
+    if (sym && sym->tp == LABEL && sym->name && sym->name[0] != '?') 
+    {
       if (!strchr(sym->name,'?'))
         opt.MAEname=sym->name;
     }
   } else {
     proc_sym(sym);
+    if (pass && sym && sym->tp == LABEL) {
+        lastSymbol = sym;
+    }
+    else
+        lastSymbol = NULL;
   }
   return 1;
 }
@@ -2004,13 +2653,13 @@ int assemble(char *fname) {
     fflush(stderr);
     open_file(fname);
     do {
-      str=get_nxt_word(0);
+      str=get_nxt_word(PARSE_NEXT_LINE);
       if (str) {
         do_cmd(str);
       }
       if (repass) {
         fixRepass();
-        while(get_nxt_word(0))
+        while(get_nxt_word(PARSE_NEXT_LINE))
           ;
         break;
       }
@@ -2260,6 +2909,8 @@ void process_predef(str_list *head) {
     sym->name=malloc(strlen(def)+1);
     strcpy(sym->name,def);
 
+    sym->orig = STRDUP(def);
+
     svalue=strchr(sym->name,'=');
     if(svalue==NULL) {
       sym->addr = 1; /* -Dfoo defines foo to 1, like cpp does */
@@ -2292,175 +2943,359 @@ int find_extension(char *name) {
   end=look=name+strlen(name);
   while(look!=name) {
     if (*look=='.')
-      return look-name;
+      return (int)(look-name);
     if ((*look=='/')||(*look=='\\'))
-      return end-name;
+      return (int)(end-name);
     look--;
   }
-  return end-name;
+  return (int)(end-name);
 }
+
+/*=========================================================================*
+ * function showMemoryLayout()
+ * Dump the memory layout to the output stream
+ * Memory Map
+ * ----------
+ * $xxxx-$yyyy Name ...
+ * $xxxx-$yyyy Name ...
+ *=========================================================================*/
+int showMemoryLayout()
+{
+	unsigned char* scan, * end;
+	int len, a, b, i, walk, start;
+	memBank* walkBank = activeBank;
+
+    fprintf(stderr, "Memory Map\n----------\n");
+
+	while (walkBank)
+	{
+		scan = walkBank->bitmap;
+		end = scan + 8192;
+		walk = start = len = 0;
+
+		while (scan != end)
+		{
+			a = *scan;
+			b = 128;
+			for (i = 0; i < 8; i++) 
+            {
+				if (a & b) 
+                {
+					if (!len) 
+                    {
+						len = 1;
+						start = walk;
+					}
+					else len++;
+				}
+				else 
+                {
+					if (len) 
+                    {
+                        fprintf(stderr, "$%.4x-$%.4x %s\n",
+                            start,
+                            start + len - 1,
+                            findNameOfMemoryRegion(start)
+                        );
+						len = start = 0;
+					}
+				}
+				b = b >> 1;
+				walk++;
+			}
+			scan++;
+		}
+		walkBank = walkBank->nxt;
+	}
+	if (count_banks() > 1)
+		fprintf(stderr, "\nCompiled %d banks\n", count_banks());
+
+	return 1;
+}
+
+/*=========================================================================*
+ * Show command line help
+ *=========================================================================*/
+void showHelp(char *executable)
+{
+    fprintf(stderr, "\nUsage: %s [-v] [-s] [-r] [-d[symbol=value] [-o[fname.out] [-m[fname.state]] <fname.m65>\n", executable ? executable : "atasm");
+    fputs("  where  -v: prints assembly trace\n", stderr);
+    fputs("         -s: prints symbol table\n", stderr);
+    fputs("         -u: enables undocumented opcodes\n", stderr);
+    fputs("         -m[fname]: defines template emulator state file\n", stderr);
+    fputs("         -x[fname]: saves object file to .XFD/.ATR disk image [fname]\n", stderr);
+    fputs("         -r: saves object code as a raw binary image\n", stderr);
+    fputs("         -f[value]: set raw binary fill byte to [value]\n", stderr);
+    fputs("         -o[fname]: saves object file to [fname] instead of <fname>.65o\n", stderr);
+    fputs("         -d[symbol=value]: pre-defines [symbol] to [value]\n", stderr);
+    fputs("         -l[fname]: dumps labels to file [fname]\n", stderr);
+    fputs("         -g[fname]: dumps debug list to file [fname]\n", stderr);
+    fputs("         -Idirectory: search [directory] for .INCLUDE files\n", stderr);
+    fputs("         -mae: treats local labels like MAE assembler\n", stderr);
+    fputs("         -hc[fname]: dumps equates and labels to header file for CC65\n", stderr);
+    fputs("         -ha[fname]: dumps equates and labels to header file for assembler\n", stderr);
+    fputs("         -hv[clLm]: dumps all info for VSCode plugin. c=constants, l=labels (primary/no?), L=labels (ALL), m=macros\n", stderr);
+    fputs("         -noshowmem: Do not dump the memory layout\n", stderr);
+    fputs("         -eval: Just run the assembler producing data but don't write the output to disc\n", stderr);
+
+}
+
 /*=========================================================================*
  * function main
  *
  * starts the whole process
  *=========================================================================*/
-int main(int argc, char *argv[]) {
-  char outfile[256],fname[256],snap[256],xname[256],labelfile[256],listfile[256];
-  int dsymbol,i,state;
+int main(int argc, char* argv[]) 
+{
+	char outfile[256], fname[256], snap[256], xname[256], labelfile[256], listFilename[256];
+	char cheaderfile[256 + 2], asmheaderfile[256 + 4];
+	int dsymbol, i, state;
+	int dumpVSCode;
 
-  fprintf(stderr,"ATasm %d.%.2d%s(A mostly Mac65 compatible 6502 cross-assembler)\n",MAJOR_VER,MINOR_VER,BETA_VER?" beta ":" ");
+	int create_c_header_fn, create_asm_header_fn;
 
-  dsymbol=state=0;
-  strcpy(snap,"atari800.a8s");
-  fname[0]=outfile[0]=labelfile[0]=listfile[0]='\0';
-  opt.savetp=opt.verbose=opt.MAElocals=0;
-  opt.fillByte=0xff;
+	fprintf(stderr, "ATasm %d.%.2d%s(A mostly Mac65 compatible 6502 cross-assembler)\n", MAJOR_VER, MINOR_VER, BETA_VER ? " beta " : " ");
 
-  includes=init_include();
-  predefs=NULL;
-  listFile=NULL;
+	create_c_header_fn = create_asm_header_fn = 0;
+	dsymbol = state = 0;
+	dumpVSCode = DUMP_NOTHING;          // No dumping of constant, label, macros, and includes to 'asm-symbols.json' file
+	strcpy(snap, "atari800.a8s");
+	fname[0] = outfile[0] = labelfile[0] = listFilename[0] = cheaderfile[0] = asmheaderfile[0] = '\0';
+	memset(&opt, 0, sizeof(opt));
+	opt.savetp = opt.verbose = opt.MAElocals = 0;
+	opt.fillByte = 0xff;
+	opt.symbolDumpOptions = 0;        /* no restriction */
+	opt.showMemory = 1;               // Show memory layout at end of compilation
+	opt.evalOnly = 0;                 // Do the normal assemble and output. If turned on then no binary file is written to disk
 
-  for(i=1;i<argc;i++) {
-    if (!STRCASECMP(argv[i],"-v"))
-      opt.verbose|=1;
-    else if (!STRCASECMP(argv[i],"--version"))
-      return 0;
-    else if (!STRCASECMP(argv[i],"-u"))
-      opt.ill=1;
-    else if (!STRCASECMP(argv[i],"-mae"))
-      opt.MAElocals=1;
-    else if (!STRCASECMP(argv[i],"-r"))
-      opt.savetp=2;
-    else if (!STRNCASECMP(argv[i],"-f",2)) {
-      if (strlen(argv[i])>2)
-        opt.fillByte=get_address(argv[i]+2);
-      else {
-        fprintf(stderr, "Missing fill value for -f (example: -f0)\n");
-      }
-    } else if (!STRNCASECMP(argv[i],"-o",2)) {
-      if (strlen(argv[i])>2) {
-        strcpy(outfile, argv[i]+2);
-      } else {
-        fprintf(stderr, "Must specify output file for -o (example: -omyprog.bin)\n");
-        return 1;
-      }
-    } else if (!STRNCASECMP(argv[i],"-l",2)) {
-      if (strlen(argv[i])>2) {
-        strcpy(labelfile, argv[i]+2);
-      } else {
-        fprintf(stderr, "Must specify label output file for -l (example: -llabels.lab)\n");
-        return 1;
-      }
-    }
-    else if (!STRNCASECMP(argv[i],"-g",2)) {
-      if (strlen(argv[i])>2) {
-        strcpy(listfile, argv[i]+2);
-        listFile=fopen(listfile,"wt");
+	includes = init_include();
+	predefs = NULL;
+	listFile = NULL;
+
+	for (i = 1; i < argc; i++) 
+    {
+		if (!STRCASECMP(argv[i], "-v"))
+			opt.verbose |= 1;
+		else if (!STRCASECMP(argv[i], "--version"))
+			return 0;
+		else if (!STRCASECMP(argv[i], "-u"))
+			opt.ill = 1;
+		else if (!STRCASECMP(argv[i], "-mae"))
+			opt.MAElocals = 1;
+		else if (!STRCASECMP(argv[i], "-r"))
+			opt.savetp = 2;
+		else if (!STRNCASECMP(argv[i], "-f", 2)) {
+			if (strlen(argv[i]) > 2)
+				opt.fillByte = (unsigned char)get_address(argv[i] + 2);
+			else {
+				fprintf(stderr, "Missing fill value for -f (example: -f0)\n");
+			}
+		}
+		else if (!STRNCASECMP(argv[i], "-o", 2)) {
+			if (strlen(argv[i]) > 2) {
+				strcpy(outfile, argv[i] + 2);
+			}
+			else {
+				fprintf(stderr, "Must specify output file for -o (example: -omyprog.bin)\n");
+				return 1;
+			}
+		}
+		else if (!STRNCASECMP(argv[i], "-l", 2)) {
+			if (strlen(argv[i]) > 2) {
+				strcpy(labelfile, argv[i] + 2);
+			}
+			else {
+				fprintf(stderr, "Must specify label output file for -l (example: -llabels.lab)\n");
+				return 1;
+			}
+		}
+		else if (!STRNCASECMP(argv[i], "-hc", 3))
+		{
+			if (strlen(argv[i]) > 3) {
+				strcpy(cheaderfile, argv[i] + 3);
+			}
+			else {
+				create_c_header_fn = 1;
+			}
+		}
+		else if (!STRNCASECMP(argv[i], "-ha", 3)) {
+			if (strlen(argv[i]) > 3) {
+				strcpy(asmheaderfile, argv[i] + 3);
+			}
+			else {
+				create_asm_header_fn = 1;
+			}
+		}
+		else if (!STRNCASECMP(argv[i], "-hv", 3)) {
+			if (strlen(argv[i]) > 3) {
+				/* There are special selectors after the -hv switch */
+				/* c = constants, l = labels, m = macros */
+				char* param = argv[i];
+				for (int x = 3; x < (int)strlen(param); ++x) {
+					if (!STRNCASECMP(&param[x], "c", 1)) { dumpVSCode |= DUMP_CONSTANTS; }
+					else if (!STRNCASECMP(&param[x], "l", 1)) { dumpVSCode |= DUMP_LABELS_PRIMARY; }
+					else if (!STRNCASECMP(&param[x], "L", 1)) { dumpVSCode |= DUMP_LABELS_ALL; }
+					else if (!STRNCASECMP(&param[x], "m", 1)) { dumpVSCode |= DUMP_MACROS; }
+				}
+				// Hmm, did not select anything useful, so dump it all
+				if (dumpVSCode == DUMP_NOTHING)
+					dumpVSCode = DUMP_ALL;
+			}
+			else {
+				/* Dump all the items */
+				dumpVSCode = DUMP_ALL; /* constants, labels, macros, (includes are always dumped) */
+			}
+		}
+		else if (!STRNCASECMP(argv[i], "-g", 2)) {
+			if (strlen(argv[i]) > 2) {
+				strcpy(listFilename, argv[i] + 2);
+			}
+			else {
+				fprintf(stderr, "Must specify list output file for -g (example: -glist.lst)\n");
+				return 1;
+			}
+		}
+		else if (!strncmp(argv[i], "-I", 2))
+		{
+			if (strlen(argv[i]) > 2)
+				append_include(includes, argv[i] + 2);
+			else {
+				fprintf(stderr, "Must specify directory for -I (example: -Imyincludes or -I" DIR_SEP "stuff" DIR_SEP "nonsense)\n");
+				return 1;
+			}
+		}
+		else if (!STRNCASECMP(argv[i], "-d", 2)) {
+			str_list* str = (str_list*)malloc(sizeof(str_list));
+			str->str = (char*)malloc(strlen(argv[i] + 1));
+			strcpy(str->str, argv[i] + 2);
+			str->next = predefs;
+			predefs = str;
+		}
+		else if (!STRCASECMP(argv[i], "-s"))
+			dsymbol = 1;
+		else if (!STRNCASECMP(argv[i], "-x", 2)) {
+			if (strlen(argv[i]) > 2)
+				strcpy(xname, argv[i] + 2);
+			else {
+				fprintf(stderr, "Must specify .XFD file.\n");
+				return 1;
+			}
+			opt.savetp = 1;
+		}
+		else if (!STRNCASECMP(argv[i], "-m", 2)) {
+			if (strlen(argv[i]) > 2)
+				strcpy(snap, argv[i] + 2);
+			else
+				fprintf(stderr, "Using default state file: '%s'\n", snap);
+			state = 1;
+		}
+		else if (!STRCASECMP(argv[i], "-h")) {
+			showHelp(argv[0]);
+			return 1;
+		}
+		else if (!STRCASECMP(argv[i], "-noshowmem"))
+		{
+			opt.showMemory = 0;
+		}
+		else if (!STRCASECMP(argv[i], "-eval"))
+		{
+			opt.evalOnly = 1;
+		}
+		else strcpy(fname, argv[i]);
+	}
+
+	if (!strlen(fname)) {
+		// strcpy(fname,"test.m65");
+		showHelp(argv[0]);
+		return 1;
+	}
+
+    if (strlen(listFilename) > 0 && opt.evalOnly == 0)
+    {
+        listFile = fopen(listFilename, "wt");
         if (!listFile) {
-          fprintf(stderr, "Cannot write to list file'%s'\n",listfile);
-          return 1;
+            fprintf(stderr, "Cannot write to list file'%s'\n", listFilename);
+            return 1;
         }
-        opt.verbose|=2;
-      } else {
-        fprintf(stderr, "Must specify list output file for -g (example: -glist.lst)\n");
-        return 1;
-      }
-    } else if (!strncmp(argv[i], "-I", 2))
-      if (strlen(argv[i])>2)
-        append_include(includes, argv[i]+2);
-    else {
-      fprintf(stderr, "Must specify directory for -I (example: -Imyincludes or -I" DIR_SEP "stuff" DIR_SEP "nonsense)\n");
-      return 1;
+        opt.verbose |= 2;
+        /* Write a fake header so that Altirra will recognise this as a listing */
+        fprintf(listFile, "mads (generated by atasm)\n");
     }
-    else if (!STRNCASECMP(argv[i],"-d",2)) {
-      str_list *str=(str_list *)malloc(sizeof(str_list));
-      str->str=(char *)malloc(strlen(argv[i]+1));
-      strcpy(str->str,argv[i]+2);
-      str->next=predefs;
-      predefs=str;
-    } else if (!STRCASECMP(argv[i],"-s"))
-      dsymbol=1;
-    else if (!STRNCASECMP(argv[i],"-x",2)) {
-      if (strlen(argv[i])>2)
-        strcpy(xname,argv[i]+2);
-      else {
-        fprintf(stderr,"Must specify .XFD file.\n");
-        return 1;
-      }
-      opt.savetp=1;
-    } else if (!STRNCASECMP(argv[i],"-m",2)) {
-      if (strlen(argv[i])>2)
-        strcpy(snap,argv[i]+2);
-      else
-        fprintf(stderr,"Using default state file: '%s'\n",snap);
-      state=1;
-    } else if (!STRCASECMP(argv[i],"-h")) {
-      fprintf(stderr,"\nUsage: %s [-v] [-s] [-r] [-d[symbol=value] [-o[fname.out] [-m[fname.state]] <fname.m65>\n",argv[0]);
-      fputs("  where  -v: prints assembly trace\n",stderr);
-      fputs("         -s: prints symbol table\n",stderr);
-      fputs("         -u: enables undocumented opcodes\n",stderr);
-      fputs("         -m[fname]: defines template emulator state file\n",stderr);
-      fputs("         -x[fname]: saves object file to .XFD/.ATR disk image [fname]\n",stderr);
-      fputs("         -r: saves object code as a raw binary image\n",stderr);
-      fputs("         -f[value]: set raw binary fill byte to [value]\n",stderr);
-      fputs("         -o[fname]: saves object file to [fname] instead of <fname>.65o\n",stderr);
-      fputs("         -d[symbol=value]: pre-defines [symbol] to [value]\n",stderr);
-      fputs("         -l[fname]: dumps labels to file [fname]\n",stderr);
-      fputs("         -g[fname]: dumps debug list to file [fname]\n",stderr);
-      fputs("         -Idirectory: search [directory] for .INCLUDE files\n",stderr);
-      fputs("         -mae: treats local labels like MAE assembler\n",stderr);
-      return 1;
-    } else strcpy(fname,argv[i]);
-  }
 
-  if (!strlen(fname)) {
-    strcpy(fname,"test.m65");
-  }
+	/* If the -hc or -ha options did not specify a filename lets create them now */
+	if (create_c_header_fn)
+		sprintf(cheaderfile, "%s.h", fname);
+	if (create_asm_header_fn)
+		sprintf(asmheaderfile, "%s.inc", fname);
 
-  init_asm();
-  assemble(fname);
+	init_asm();
+	assemble(fname);
 
-  if (dsymbol)
-    dump_symbols();
+	if (dsymbol)
+		dump_symbols();
 
-  if (labelfile[0])
-    dump_labels(labelfile);
+	if (labelfile[0] && opt.evalOnly == 0)
+		dump_labels(labelfile);
 
-  fputs("\nAssembly successful\n",stderr);
-  fprintf(stderr,"  Compiled %d bytes (~%dk)\n",bsize,bsize/1024);
+	if (cheaderfile[0] && opt.evalOnly == 0)
+		dump_c_header(cheaderfile, fname);
 
-  if (listFile) {
-    fclose(listFile);
-    listFile=NULL;
-    listfile[0]=0;
-  }
+	if (asmheaderfile[0] && opt.evalOnly == 0)
+		dump_assembler_header(asmheaderfile);
 
-  activeBank=banks;
+	if (dumpVSCode)
+		dump_VSCode(trackedFiles, dumpVSCode);
 
-  if(!strlen(outfile)) {
-    fname[find_extension(fname)]=0;
-    strcat(fname,(opt.savetp)&2 ? ".bin" : ".65o");
-    strcpy(outfile, fname);
-  }
-  if (opt.savetp&2)
-    save_raw(outfile,opt.fillByte);
-  else
-    save_binary(outfile);
+	fputs("\nAssembly successful\n", stderr);
+	fprintf(stderr, "  Compiled %d bytes (~%dk)\n", bsize, bsize / 1024);
 
-  if (opt.savetp&1) {
-    if(write_xfd_file(xname,outfile)<0)
-      error("Atari disk image not updated.",0);
-  }
+	if (listFile) {
+		fclose(listFile);
+		listFile = NULL;
+		listFilename[0] = 0;
+	}
 
-  if (state) {
-    if (count_banks()>1) {
-      error("Banks currently not supported in save state files.  Save state not updated.",0);
-    } else {
-      save_state(snap,fname);
-    }
-  }
+	activeBank = banks;
 
-  clean_up();
-  return 0;
+	if (!strlen(outfile)) {
+		fname[find_extension(fname)] = 0;
+		strcat(fname, (opt.savetp) & 2 ? ".bin" : ".65o");
+		strcpy(outfile, fname);
+	}
+	if (opt.evalOnly == 0)
+	{
+		if (opt.savetp & 2)
+			save_raw(outfile, opt.fillByte);
+		else
+			save_binary(outfile);
+
+		if (opt.savetp & 1) {
+			if (write_xfd_file(xname, outfile) < 0)
+				error("Atari disk image not updated.", 0);
+		}
+		if (state) {
+			if (count_banks() > 1) {
+				error("Banks currently not supported in save state files.  Save state not updated.", 0);
+			}
+			else {
+				save_state(snap, fname);
+			}
+		}
+	}
+	if (opt.showMemory)
+	{
+		showMemoryLayout();
+	}
+
+    dumpLongJumpOptimizations();
+
+
+
+	clean_up();
+	cleanup_FilenameTracking();
+	cleanup_MemoryRegionNameTracking();
+
+	/* _CrtDumpMemoryLeaks(); */
+	return 0;
 }
 /*=========================================================================*/

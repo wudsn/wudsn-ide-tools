@@ -1,0 +1,69 @@
+ATasm 1.06 beta (A mostly Mac65 compatible 6502 cross-assembler)
+Pass 1: Success. (0 warnings)
+Pass 2: Success. (0 warnings)
+
+Assembly successful
+  Compiled 53 bytes (~0k)
+    Block: 0600-0634 (53 bytes)
+
+Compiled to binary file 'OMNI-EX.COM'
+
+00:06  68       	PLA
+01:06  A9 04    	LDA #$04		;* $04D2 give us 1234 in decimal
+03:06  85 D5    	STA FR0+1		;* By storing in in FR0
+05:06  A9 D2    	LDA #$D2		;* I can return it to BASIC
+07:06  85 D4    	STA FR0			;* when called with X=USR(1536)
+09:06  EA       	NOP			;* Start this with NOP, BRK will Jump to Omnimon
+0A:06  60       	RTS
+0B:06  68       	PLA
+0C:06  A9 00    	LDA #00			;* Change it to a BRK
+0E:06  8D 09 06 	STA Inject
+11:06  4C 01 06 	JMP Main+1		;* Jump over the PLA
+14:06  68       	PLA
+15:06  20 01 C0 	JSR $C001
+18:06  EA       	NOP
+19:06  60       	RTS
+1A:06  68       	PLA
+1B:06  68       	PLA
+1C:06  85 CC    	STA $CC
+1E:06  68       	PLA
+1F:06  85 CB    	STA $CB
+21:06  68       	PLA
+22:06  85 CF    	STA $CF
+24:06  68       	PLA
+25:06  85 CE    	STA $CE
+27:06  18       	CLC
+28:06  A5 CB    	LDA $CB
+2A:06  65 CE    	ADC $CE
+2C:06  85 D4    	STA FR0			;* $D4 (FR0)
+2E:06  A5 CC    	LDA $CC
+30:06  65 CF    	ADC $CF
+32:06  85 D5    	STA FR0+1		;* $D5 (FR0+1)
+34:06  60       	RTS
+
+Equates:
+ APPMHI: 000e		 CARTLOC: bffa		 CCLOSE: 000c		
+ CERA: 0021		 CGBINR: 0007		 CGTXTR: 0005		
+ CIO: e456		 CNOTE: 0026		 COPN: 0003		
+ CPALOC: 000a		 CPBINR: 000b		 CPBUFP: 000a		
+ CPCMDB: 003f		 CPCMDGO: 00f3		 CPDFDV: 0007		
+ CPEXFL: 000b		 CPEXFN: 000c		 CPEXNP: 001c		
+ CPFNAM: 0021		 CPGNFN: 0003		 CPOINT: 0025		
+ CPRO: 0023		 CPTXTR: 0009		 CREN: 0020		
+ CSTAT: 000d		 CUNP: 0024		 EOL: 009b		
+ EXCNEW: 0010		 EXCSCR: 0040		 EXCSUP: 0020		
+ EXCYES: 0080		 FR0: 00d4		 GOADR: 02e0		
+ INITADR: 02e2		 IOCBLEN: 0010		 MEMLO: 02e7		
+ MEMTOP: 02e5		 OPAPND: 0009		 OPDIR: 0006		
+ OPIN: 0004		 OPOUT: 0008		 OPUPD: 000c		
+ RUNLOC: 003d		 SAVEPC: ffff		 WARMST: 0008		
+
+
+Symbol table:
+ICAUX1: 034a		ICAUX2: 034b		ICAUX3: 034c		
+ICAUX4: 034d		ICAUX5: 034e		ICAUX6: 034f		
+ICBADR: 0344		ICBLEN: 0348		ICCOM: 0342		
+ICDNO: 0341		ICHID: 0340		ICPUT: 0346		
+ICSTA: 0343		INJECT: 0609		IOCB: 0340		
+L0625: 0614		L0640: 061a		L1: 060b		
+MAIN: 0600		

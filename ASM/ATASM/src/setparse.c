@@ -44,7 +44,7 @@ char *parse_string;
  *=========================================================================*/
 int yylex()
 {
-  char terminals[]="[]<>-N/*+-&|^=#GLAOv";
+  char terminals[]="[]<>-N/*+-&|^=#GLAOvMQW";
   char *look,c;
 
   if (parse_string) {
@@ -91,6 +91,10 @@ int parse_expr(char *a) {
       sscanf(walk,"%d",&v);
       nums[num]=v;
       num++;
+    } else if ((*look=='<')&&(*(look+1)=='<')) {
+      look+=2; *walk++='Q';
+    } else if ((*look == '>') && (*(look + 1) == '>')) {
+      look += 2; *walk++ = 'W';
     } else if ((*look=='<')&&(*(look+1)=='>')) {
       look+=2; *walk++='#';
     } else if ((*look=='<')&&(*(look+1)=='=')) {
@@ -127,6 +131,18 @@ int get_name(char *src, char *dst) {
   return l;
 }
 
+int get_dotname(char* src, char* dst) {
+    int l = 0;
+
+    while ((ISALNUM(*src)) || (*src == '_') || (*src == '?') || (*src == '@') || (*src=='.')) 
+    {
+        *dst++ = TOUPPER(*src++);
+        l++;
+    }
+    *dst = 0;
+    return l;
+}
+
 /*=========================================================================*
   function validate_symbol(char *str)
   parameters: str - the symbol to check
@@ -156,8 +172,15 @@ symbol *validate_symbol(char *str) {
 
   This function calculates the value of an expression, or generates an error
  *=========================================================================*/
-unsigned short get_expression(char *str, int tp) {
-  return (unsigned short) get_signed_expression(str, tp);
+unsigned short get_expression(char* str, int tp)
+{
+	// Bug #7 Error calculating address with forward references
+	// The problem is that a forward reference can wrap around to (65535+1) = 0
+	// In that case the assembler looks for a zero-page access and things start going wrong
+	int expr = get_signed_expression(str, tp);
+	if (expr > 65535)
+        return 65535;
+	return (unsigned short)expr;
 }
 
 int get_signed_expression(char *str, int tp) {
@@ -236,8 +259,14 @@ int get_signed_expression(char *str, int tp) {
       snprintf(work,256,"%d",v);
       strcpy(walk,work);
       walk+=strlen(work);
+    } else if (*look == '%') {
+      if (!STRNCASECMP(look, "%%", 2)) {
+        look += 2; *walk++ = 'M';
+      }
     } else if (*look=='.') {
-      if (!STRNCASECMP(look,".NOT",4)) {
+      if (!STRNCASECMP(look, ".MOD", 4)) {
+          look += 4; *walk++ = 'M';
+      } else if (!STRNCASECMP(look,".NOT",4)) {
         look+=4; *walk++='N';
       } else if (!STRNCASECMP(look,".AND",4)) {
         look+=4; *walk++='A';
@@ -272,7 +301,14 @@ int get_signed_expression(char *str, int tp) {
         look+=v;
         sym=validate_symbol(work);
         if (!sym)
-          *walk++='0';
+        {
+            // The symbol does not exist yet, but we can still look in the undefined label list, it might be there later 
+            unkLabel* look = isUnk(work);
+            if (look)
+                *walk++ = '1';
+            else
+                *walk++ = '0';
+        }
         else {
           if (sym->ref)
             *walk++='1';
@@ -289,7 +325,15 @@ int get_signed_expression(char *str, int tp) {
       look++;
       *walk++=']';
     } else {
-      v=get_name(look,work);
+      /* Try and get a name including . so DATA.CMD would be valid
+       * If there is a symbol hit on that symbol the we assume that its NOT a .some command
+       */
+      v = get_dotname(look, work);
+      sym = findsym(work);
+      if (sym == NULL) {
+          /* symbol was not found so retry with the non . method */
+          v = get_name(look, work);
+      }
       look+=v;
       sym=validate_symbol(work);
       if ((!sym)&&(tp)) {

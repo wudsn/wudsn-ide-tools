@@ -601,6 +601,20 @@ function generateREADME(){
   fi
 }
 
+#------------------------------------------------------------------------
+# Fetch a repo to a new folder. Beware,the existing folder is deleted.
+#------------------------------------------------------------------------
+function fetchGitRepo(){
+  # return
+  URL=$1
+  FOLDER=$2
+  rm -rf $FOLDER
+  echo Getting latest version from $URL to folder $FOLDER
+  # Git clone only works into empty folders
+  git clone --depth=1 $URL $FOLDER
+  rm -rf $FOLDER/.git
+}
+
 #-------------------------------------------------------------------------
 # Main function to compile all tools.
 #-------------------------------------------------------------------------
@@ -638,8 +652,9 @@ function main(){
   esac
 
   # Fetch latest versions for comparison
-  fetchGitRepo https://github.com/tebe6502/Mad-Assembler ASM/MADS.git
-  fetchGitRepo https://github.com/tebe6502/Mad-Pascal PAS/MP.git
+  fetchGitRepo https://github.com/CycoPH/atasm ASM/ATASM.git
+  #fetchGitRepo https://github.com/tebe6502/Mad-Assembler ASM/MADS.git
+  #fetchGitRepo https://github.com/tebe6502/Mad-Pascal PAS/MP.git
 
   # The following line is only for testing the script functions.
   #forAllLanguagesAndToolsAndOSesAndArchitectures testFunctionLanguageAndToolAndOSAndArchitecture
@@ -655,18 +670,5 @@ function main(){
  
 }
 
-#------------------------------------------------------------------------
-# Fetch a repo to a new folder. Beware,the existing folder is deleted.
-#------------------------------------------------------------------------
-function fetchGitRepo(){
-  return
-  URL=$1
-  FOLDER=$2
-  rm -rf $FOLDER
-  echo Getting latest version from $URL to folder $FOLDER
-  # Git clone only works into empty folders
-  git clone --depth=1 $URL $FOLDER
-  rm -rf $FOLDER/.git
-}
 
 main

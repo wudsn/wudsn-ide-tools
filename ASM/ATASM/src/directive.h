@@ -21,12 +21,112 @@
 #ifndef DIRECTIVE_H
 #define DIRECTIVE_H
 
-#define NUM_DIR 28
+#define NUM_DIR 31+8
 
-char *direct[]={".BYTE",".CBYTE",".SBYTE",".DBYTE",".ELSE",".END",".ENDIF",
+/* Give names to the 'directives' entries */
+#define DOT_BYTE 0
+#define DOT_CBYTE 1
+#define DOT_SBYTE 2
+#define DOT_DBYTE 3
+#define DOT_ELSE 4
+#define DOT_END 5
+#define DOT_ENDIF 6
+#define DOT_ERROR 7
+#define DOT_FLOAT 8
+#define DOT_IF 9
+#define DOT_INCLUDE 10
+#define DOT_LOCAL 11
+#define DOT_OPT 12
+#define DOT_PAGE 13
+#define DOT_SET 14
+#define DOT_TAB 15
+#define DOT_TITLE 16
+#define DOT_WORD 17
+#define DOT_STAR 18
+#define DOT_ENDM 19
+#define DOT_MACRO 20
+#define DOT_DS 21
+#define DOT_INCBIN 22
+#define DOT_REPT 23
+#define DOT_ENDR 24
+#define DOT_WARN 25
+#define DOT_DC 26
+#define DOT_BANK 27
+#define DOT_ALIGN 28
+#define DOT_REGION_NAME 29
+#define DOT_ELSEIF 30
+
+// Extended the directives with some long jump hard coded macros
+// JEQ, JNE, JPL, JMI, JCC, JCS, JVC, JVS
+#define EX_JEQ 31
+#define EX_JNE 32
+#define EX_JPL 33
+#define EX_JMI 34
+#define EX_JCC 35
+#define EX_JCS 36
+#define EX_JVC 37
+#define EX_JVS 38
+
+char *direct[NUM_DIR]={".BYTE",".CBYTE",".SBYTE",".DBYTE",".ELSE",".END",".ENDIF",
 		".ERROR",".FLOAT",".IF",".INCLUDE",".LOCAL",".OPT",".PAGE",
 		".SET",".TAB",".TITLE",".WORD","*",".ENDM",".MACRO",".DS",
-		".INCBIN",".REPT",".ENDR",".WARN",".DC",".BANK"};
+		".INCBIN",".REPT",".ENDR",".WARN",".DC",".BANK",".ALIGN", ".NAME",
+        ".ELSEIF",
+        // Long jumps
+        "JEQ","JNE","JPL","JMI","JCC","JCS","JVC","JVS"
+};
+
+unsigned longJump2ShortOpcode[NUM_DIR] = {
+    0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+    0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+    0xF0,       // JEQ -> BEQ 
+    0xD0,       // JNE -> BNE
+    0x10,       // JPL -> BPL
+    0x30,       // JMI -> BMI
+    0x90,       // JCC -> BCC
+    0xB0,       // JCS -> BCS
+    0x50,       // JVC -> BVC
+    0x70,       // JVS -> BVS
+};
+
+char* longJump2ShortOpcodeName[NUM_DIR] = {
+    0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+    0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+    "BEQ",
+    "BNE",
+    "BPL",
+    "BMI",
+    "BCC",
+    "BCS",
+    "BVC",
+    "BVS",
+};
+
+unsigned longJump2InverseOpcode[NUM_DIR] = {
+    0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+    0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+    0xD0,       // JEQ -> BNE 
+    0xF0,       // JNE -> BEQ
+    0x30,       // JPL -> BMI
+    0x10,       // JMI -> BPL
+    0xB0,       // JCC -> BCS
+    0x90,       // JCS -> BCC
+    0x70,       // JVC -> BVS
+    0x50,       // JVS -> BVC
+};
+
+char* longJump2InverseOpcodeName[NUM_DIR] = {
+    0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+    0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+    "BNE",
+    "BEQ",
+    "BMI",
+    "BPL",
+    "BCS",
+    "BCC",
+    "BVS",
+    "BVC",
+};
 
 unsigned char ascii_to_screen[128] =
 {

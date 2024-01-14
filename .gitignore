@@ -4,11 +4,11 @@
 *.log
 *.res
 *.o
-ASM/MADS.git/
+ASM/*.git/
 ASM/MADS/ppaslink.sh
 ASM/MADS/linkfiles.res
 ASM/MADS/link.res
-PAS/MP.git/
+PAS/*.git/
 PAS/MP/link.res
 PAS/MP/linkfiles.res
 PAS/MP/ppaslink.sh

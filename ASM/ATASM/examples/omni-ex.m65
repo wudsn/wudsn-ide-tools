@@ -1,0 +1,79 @@
+; --------------------------------------
+	.TITLE "Fooling around with Omnimon, USING IOMAC.LIB"
+	.OPT NO LIST
+	.INCLUDE sysequ.m65
+	.INCLUDE iomac.lib
+	.OPT LIST
+	.PAGE "   [end of equates and libraries...begin code]"
+;	.OPT NO MLIST ; Gets an error
+; --------------------------------------
+	*=  $0600   ; an arbitrary location
+; --------------------------------------
+
+; -[ Note ]-----------------------------
+; A PLA is required for a call from BASIC
+; The first PLA gives you the number of
+; ARGs passed from the USR call. The
+; rest are for the arguments that are
+; passed.
+; --------------------------------------
+
+; Need to create a memmap.m65
+FR0 = $D4
+AN1 = 1234			;* Decimal, I hope
+AN2 = 4321			;* Decimal, I hope
+
+; Two fold test, first see if the correct
+; value gets returned to BASIC. Also to
+; see if Omnimon gets called when INJECT
+; is a BRK instead of a NOP
+Main
+	PLA
+	LDA #$04		;* $04D2 give us 1234 in decimal
+	STA FR0+1		;* By storing in in FR0
+	LDA #$D2		;* I can return it to BASIC
+	STA FR0			;* when called with X=USR(1536)
+Inject
+	NOP			;* Start this with NOP, BRK will Jump to Omnimon
+	RTS
+
+; Inject a BRK into the INJECT Location
+L1
+	PLA
+	LDA #00			;* Change it to a BRK
+	STA Inject
+	JMP Main+1		;* Jump over the PLA
+
+; Jump to Omnimon use USR(x) from
+; BASIC and return
+L0625
+	PLA
+	JSR $C001
+	NOP
+	RTS
+
+; Fancy (but incorrect) math to return
+; a value to BASIC
+L0640
+	PLA
+	PLA
+	STA $CC
+	PLA
+	STA $CB
+	PLA
+	STA $CF
+	PLA
+	STA $CE
+	CLC
+	LDA $CB
+	ADC $CE
+	STA FR0			;* $D4 (FR0)
+	LDA $CC
+	ADC $CF
+	STA FR0+1		;* $D5 (FR0+1)
+	RTS
+
+; --------------------------------------
+	.OPT NO LIST
+	.END 
+; -[ Fini ]-----------------------------
