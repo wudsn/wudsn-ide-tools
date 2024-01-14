@@ -217,11 +217,9 @@ function compileWithFPC(){
 
   local NAME=$1
   local SOURCE=$2
-  local TARGET=$3
-  local OS=$4
-  local ARCHITECTURE=$5
-  local EXECUTABLE
-  EXECUTABLE="$(getExecutableName "$TARGET" "$OS" "${ARCHITECTURE}")"
+  local OS=$3
+  local ARCHITECTURE=$4
+  local EXECUTABLE=$5
 
   OPT="-Mdelphi -O3"
   
@@ -458,13 +456,18 @@ function compile_ASM_DASM() {
 #------------------------------------------------------------------------
 function compile_ASM_MADS(){
   printCompileLanguageAndToolAndOSAndArchitecture
-  compileWithFPC "${TOOL}" mads.pas mads "${OS}" "${ARCHITECTURE}"
+  local TARGET="mads"
+  local EXECUTABLE="$(getExecutableName "$TARGET" "$OS" "${ARCHITECTURE}")"
+
+  compileWithFPC "${TOOL}" mads.pas mads "${OS}" "${ARCHITECTURE}" "${EXECUTABLE}"
 }
 
 #------------------------------------------------------------------------
 function compile_PAS_MP(){
   printCompileLanguageAndToolAndOSAndArchitecture
-  compileWithFPC "${TOOL}" mp.pas mp "${OS}" "${ARCHITECTURE}"
+  local TARGET="mp"
+  local EXECUTABLE="$(getExecutableName "$TARGET" "$OS" "${ARCHITECTURE}")"
+  compileWithFPC "${TOOL}" mp.pas mp "${OS}" "${ARCHITECTURE}" ${EXECUTABLE}"
 }
 
 
@@ -579,7 +582,11 @@ function main(){
       echo "ERROR: Unknown OS type ${OSTYPE}."
       return 
   esac
- 
+
+  # Fetch latest versions for comparison
+  fetchGitRepo https://github.com/tebe6502/Mad-Assembler ASM/MADS.git
+  fetchGitRepo https://github.com/tebe6502/Mad-Pascal PAS/MP.git
+
   # The following line is only for testing the script functions.
   #forAllLanguagesAndToolsAndOSesAndArchitectures testFunctionLanguageAndToolAndOSAndArchitecture
 
@@ -595,17 +602,17 @@ function main(){
 }
 
 #------------------------------------------------------------------------
-# TODO: Use
+# Fetch a repo to a new folder. Beware,the existing folder is deleted.
 #------------------------------------------------------------------------
 function fetchGitRepo(){
 
   URL=$1
-  rm -rf .git
-  echo Getting latest MADS sources from github.
-  git init -b master  --quiet
-  git remote add origin $URL
-  git fetch origin master --force  --quiet
-  rm -rf .git
+  FOLDER=$2
+  rm -rf $FOLDER
+  echo Getting latest version from $URL to folder $FOLDER
+  # Git clone only works into empty folders
+  git clone --depth=1 $URL $FOLDER
+  rm -rf $FOLDER/.git
 }
 
 main

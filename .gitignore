@@ -1,11 +1,13 @@
 /IDE/
 /JDK/
 .DS_Store
-PAS/MP/link.res
-PAS/MP/linkfiles.res
-PAS/MP/ppaslink.sh
+*.log
 *.o
+ASM/MADS.git/
 ASM/MADS/ppaslink.sh
 ASM/MADS/linkfiles.res
 ASM/MADS/link.res
-*.log
+PAS/MP.git/
+PAS/MP/link.res
+PAS/MP/linkfiles.res
+PAS/MP/ppaslink.sh
