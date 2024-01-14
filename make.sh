@@ -14,7 +14,7 @@ function getLanguageList(){
 }
 
 #------------------------------------------------------------------------
-# Get human readabe name of a language.
+# Get human readable name of a language.
 #------------------------------------------------------------------------
 function getLanguageName(){
     local LANGUAGE=$1
@@ -48,7 +48,7 @@ function getLanguageTools(){
 }
 
 #------------------------------------------------------------------------
-# Get human readabe name of an OS.
+# Get human readable name of an OS.
 #------------------------------------------------------------------------
 function getOSName(){
   local OS=$1
@@ -133,7 +133,7 @@ function getFileExtension(){
 }
 
 #------------------------------------------------------------------------
-# Install XCode Commnd Line Tools if required.
+# Install XCode Command Line Tools if required.
 #------------------------------------------------------------------------
 installXCodeCommandlineTools(){
   export XCODE_COMMANDLINE_TOOLS="/Library/Developer/CommandLineTools"
@@ -531,7 +531,7 @@ function encodeHTML(){
 
 #------------------------------------------------------------------------
 # Display files in ${PATH_PREFIX} that have file extension 
-# ${FILE_EXTENSION} abd their details as HTML table rows.
+# ${FILE_EXTENSION} and their details as HTML table rows.
 #------------------------------------------------------------------------
 function displayFiles() {
   local FILTER
