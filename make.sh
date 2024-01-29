@@ -232,12 +232,24 @@ function compileWithFPC(){
   local ARCHITECTURE=$4
   local EXECUTABLE=$5
 
+# Compile only if host OS matches.
+  if [ "${OS}" != "${OS_TYPE}" ]; then
+  	return
+  fi
+
   OPT="-Mdelphi -O3"
   
   case "${OS}" in
 
     "${OS_LINUX}")
-      COMMAND="none";
+      case "${ARCHITECTURE}" in
+        "${ARCHITECTURE_I64}")
+        COMMAND="ppcx64"
+        ;;
+        *)
+        COMMAND="none"
+        ;;
+        esac
       ;;
     "${OS_MACOS}")
       OPT="$OPT -XR${XCODE_COMMANDLINE_TOOLS_LIBS}"
@@ -259,7 +271,7 @@ function compileWithFPC(){
       esac
       ;;
     "${OS_WINDOWS}")
-      COMMAND="FPC.exe";
+      COMMAND="FPC.exe"
       ;;
     *)
       echo "ERROR: Unknown OS '${OS}' in compileWithFPC()."
@@ -480,7 +492,12 @@ function compile_ASM_ATASM() {
   local ARCH
   ARCH="$(getCCARCH)"
   if [ -z "${ARCH}" ]; then
-  	return
+    return
+  fi
+
+  if [ "${ARCH}" == "-m32" ]; then
+    echo "TODO: 32-bit not working"
+    return
   fi
 
   local LOG="${EXECUTABLE}.log"
