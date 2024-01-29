@@ -20,7 +20,7 @@ UNIX    = -DUNIX
 CFLAGS  = -Wall $(USEZ) $(DOS) $(UNIX) -O3 -fomit-frame-pointer
 
 L       =  $(ZLIB)
-CC      = clang
+# CC      = 
 DESTDIR	= /usr/local/bin
 MANDIR	= /usr/local/man/man1
 DOCDIR	= /usr/local/doc/atasm

@@ -286,11 +286,13 @@ function compileWithCC(){
   
   local OPT
   OPT="$(getCCARCH)"
+  # Return if no options were found
   if [ -z "${OPT}" ]; then
   	return
   fi
 
   printCompileLanguageAndToolAndOSAndArchitecture
+  # The "cc" alias is part of the "gcc" and the "clang" package
   compileWithCommand "${NAME}" "cc" "${EXECUTABLE}" "${SOURCE}"
 }
 
@@ -303,26 +305,44 @@ function getCCARCH(){
   	return
   fi
 
-case "${ARCHITECTURE}" in
-  "${ARCHITECTURE_A64}")
-    echo "-arch arm64"
+  case "${OS}" in
+# Architectures supported by gcc on Linux
+  "${OS_LINUX}" )
+    case "${ARCHITECTURE}" in
+    "${ARCHITECTURE_A64}")
+      return
+      ;;
+    "${ARCHITECTURE_I32}")
+      echo "-m32"
+      ;;
+    "${ARCHITECTURE_I64}")
+      echo "-m64"
+      ;;
+    "${ARCHITECTURE_PPC}")
+      return
+      ;;
+    esac
     ;;
-  "${ARCHITECTURE_I32}")
-  	# No longer supported on macOS
-  	if [ "${OS}" == "${OS_MACOS}" ]; then
-  	  return
-    fi
-    echo "-arch i386"
-    ;;
-  "${ARCHITECTURE_I64}")
-    echo "-arch x86_64"
-    ;;
-  "${ARCHITECTURE_PPC}")
-  	# No longer supported on macOS
-   	if [ "${OS}" == "${OS_MACOS}" ]; then
-  	  return
-    fi
-    echo"-arch ppc"
+  
+  
+# Architectures supported clang on macOS
+  "${OS_MACOS}" )
+    case "${ARCHITECTURE}" in
+    "${ARCHITECTURE_A64}")
+      echo "-arch arm64"
+      ;;
+    "${ARCHITECTURE_I32}")
+      # No longer supported on macOS
+      return
+      ;;
+    "${ARCHITECTURE_I64}")
+      echo "-arch x86_64"
+      ;;
+    "${ARCHITECTURE_PPC}")
+      # No longer supported on macOS
+      return
+      ;;
+    esac
     ;;
   esac
 }
@@ -462,10 +482,11 @@ function compile_ASM_ATASM() {
   if [ -z "${ARCH}" ]; then
   	return
   fi
-  export ARCH
 
   local LOG="${EXECUTABLE}.log"
   pushd "src" >/dev/null
+  
+  export CC="cc ${ARCH}"
   make "clean" >"${LOG}"
   make >>"${LOG}"
   copyExecutable "atasm" "${EXECUTABLE}" "asm.c"
