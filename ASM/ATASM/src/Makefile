@@ -2,7 +2,7 @@
 # the following lines, specifing the path to the zlib header file
 # and the library.
 # The zlib library homepage can be found at:
-#   http://www.gzip.org/zlib/
+# https://zlib.net/
 
 # for DOS (adjust paths as appropriate)
 #USEZ    = -DZLIB_CAPABLE -I/work/djgpp/src/zlib/
@@ -11,16 +11,16 @@
 
 # if you are compiling under UNIX, change the above lines to
 # reflect the location of zlib.  I use:
-USEZ    = -DZLIB_CAPABLE -I../zlib
-ZLIB    = -L../zlib -lz
+USEZ    = -DZLIB_CAPABLE
+ZLIB    = -lz
 UNIX    = -DUNIX
 
 # Compiler flags, if you are using egcs, pgcs, or gcc >2.8.1 use:
-#CFLAGS  = -g -Wall $(USEZ) $(DOS) $(UNIX) $(ARCH)
-CFLAGS  = -Wall $(USEZ) $(DOS) $(UNIX) -O3 -fomit-frame-pointer $(ARCH)
+#CFLAGS  = -g -Wall $(USEZ) $(DOS) $(UNIX)
+CFLAGS  = -Wall $(USEZ) $(DOS) $(UNIX) -O3 -fomit-frame-pointer
 
 L       =  $(ZLIB)
-CC      = gcc
+CC      = clang
 DESTDIR	= /usr/local/bin
 MANDIR	= /usr/local/man/man1
 DOCDIR	= /usr/local/doc/atasm
