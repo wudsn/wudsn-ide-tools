@@ -479,7 +479,7 @@ function compileLanguageAndToolAndOSAndArchitecture(){
 
 #------------------------------------------------------------------------
 function compile_ASM_ASM6() {
-  compileWithCC "${TOOL}" asm6.c asm6
+  compileWithCC "${TOOL}" asm6f.c asm6f
 }
 
 #------------------------------------------------------------------------
@@ -689,7 +689,8 @@ function main(){
       return 
   esac
 
-  # Fetch latest versions for comparison
+  # Fetch latest versions for manual comparison
+  fetchGitRepo https://github.com/freem/asm6f  ASM/ASM6.git
   fetchGitRepo https://github.com/CycoPH/atasm ASM/ATASM.git
   #fetchGitRepo https://github.com/tebe6502/Mad-Assembler ASM/MADS.git
   #fetchGitRepo https://github.com/tebe6502/Mad-Pascal PAS/MP.git
