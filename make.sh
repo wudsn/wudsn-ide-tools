@@ -586,7 +586,7 @@ function displayFiles() {
   local FILES
   FILTER="*${FILE_EXTENSION}"
   FILE_FOUND="false"
-  FILES=$(find "${PATH_PREFIX}" -name "${FILTER}")
+  FILES=$(find "${PATH_PREFIX}" -name "${FILTER}" | grep -v '\.git' )
   for FILE in ${FILES}
   do
     if [ -f "${FILE}" ]; then
