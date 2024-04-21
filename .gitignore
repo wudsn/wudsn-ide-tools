@@ -5,10 +5,12 @@
 *.res
 *.o
 ASM/*.git/
+ASM/*.ols/
 ASM/MADS/ppaslink.sh
 ASM/MADS/linkfiles.res
 ASM/MADS/link.res
 PAS/*.git/
+PAS/*.old/
 PAS/MP/link.res
 PAS/MP/linkfiles.res
 PAS/MP/ppaslink.sh
