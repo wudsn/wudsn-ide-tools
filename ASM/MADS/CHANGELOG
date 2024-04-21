@@ -1,3 +1,20 @@
+2022-02-21
+- etykiety automodyfikacji 'lda temp:  #$40'
+ 
+2022-01-22
+- dodano kolorowanie komunikatów konsoli
+- dodana funkcja Tab2Space
+
+2021-12-04
+- poprawiony zapis pliku RAW (opt h-f+)
+
+2021-11-08
+- poprawiona procedura 'get_maeData', dodany komunikat błędu w przypadku braku parametru +xx
+
+2021-11-01
+- poprawione działanie .UNDEF, dodatkowy test czy usuwamy makro
+- poprawione wykonywanie zagnieżdzonych pętli .REPT (dodany licznik RPT w funkcji dirENDR)
+
 2021-10-22
 - dla .IFDEF dodany test 'exclude procedure', odpowiednio reaguje na etykiety które należały do wykluczonych procedur
 

@@ -1,11 +1,11 @@
 (*----------------------------------------------------------------------------*)
-(*  Mad-Assembler v2.1.4 by Tomasz Biela (aka Tebe/Madteam)                   *)
+(*  Mad-Assembler v2.1.5 by Tomasz Biela (aka Tebe/Madteam)                   *)
 (*                                                                            *)
 (*  support 6502, 65816, Sparta DOS X, virtual banks                          *)
 (*  .LOCAL, .MACRO, .PROC, .STRUCT, .ARRAY, .REPT, .PAGES, .ENUM              *)
 (*  #WHILE, #IF, #ELSE, #END, #CYCLE                                          *)
 (*                                                                            *)
-(*  last changes: 2021-10-22                                                  *)
+(*  last changes: 2022-02-21                                                  *)
 (*----------------------------------------------------------------------------*)
 
 // Free Pascal Compiler http://www.freepascal.org/
@@ -20,7 +20,11 @@ program MADS;
 
 {$I-}
 
-//uses SysUtils;
+uses
+{$IFDEF WINDOWS}
+	windows,
+{$ENDIF}
+	crt;
 
 type
 
@@ -66,7 +70,7 @@ type
                 pas: byte;        // numer przebiegu dla danej etykiety
                 typ: char;        // typ etykiety (V-ARIABLE, P-ROCEDURE, C-ONSTANT)
 		lop: byte;
-                use: Boolean;     // czy etykieta jest u�ywana
+                use: Boolean;     // czy etykieta jest używana
                 atr: t_attrib;    // atrybut __R, __W, __RW
               end;
 
@@ -127,6 +131,7 @@ type
 
    mesTab   = record
                pas: byte;         // numer przebiegu
+	       col: byte;	  // kolor
                mes: string;       // tresc komunikatu bledu
               end;
 
@@ -404,7 +409,7 @@ var lst, lab, hhh, mmm: textfile;
     ReadEnum    : Boolean = false;      // dla odczytu etykiet @dma(narrow|dma)
     VerifyProc  : Boolean = false;
     exProcTest  : Boolean = false;      // wymagany w celu wyeliminowania 'Unreferenced procedures'
-    NoAllocVar  : Boolean = false;      // wstrzymaj si� z alokacj� zmiennych .VAR
+    NoAllocVar  : Boolean = false;      // wstrzymaj się z alokacją zmiennych .VAR
     code6502    : Boolean = false;
     unused_label: Boolean = false;
     regAXY_opty : Boolean = false;      // OPT R+- registry optymisation MW?,MV?
@@ -472,7 +477,7 @@ var lst, lab, hhh, mmm: textfile;
     tCRC32:    t256c;     // tablica dla kodow CRC 32           (proc INITIALIZE)
 
 
-    reptPar: _strArray;   // globalna tablica dla parametr�w przekazywanych do .REPT
+    reptPar: _strArray;   // globalna tablica dla parametrów przekazywanych do .REPT
 
 
     // zmienna przechowujaca 2 adresy wstecz
@@ -496,7 +501,7 @@ var lst, lab, hhh, mmm: textfile;
     // bufor pamieci dla zapisu
     t_buf: m4kb;
 
-    // 256 znacznik�w dla zmiennych odkladanych na stronie zerowej
+    // 256 znaczników dla zmiennych odkladanych na stronie zerowej
     t_zpv: t256b;
 
     // T_HEA zapamieta dlugosc bloku
@@ -746,7 +751,7 @@ var lst, lab, hhh, mmm: textfile;
 
 // version
 
-{130} chr(ord('m') + $80),'a','d','s',' ','2','.','1','.','4',chr($80),' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',
+{130} chr(ord('m') + $80),'a','d','s',' ','2','.','1','.','5',chr($80),' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',
 
      chr($80));
 
@@ -818,7 +823,7 @@ const
   __inwdew = $9C;
   __addsub = $9D;
   __movaxy = $9E;
-  __jskip  = $9F;       // koniec kod�w makro rozkaz�w
+  __jskip  = $9F;       // koniec kodów makro rozkazów
 
   __macro  = $A0;       // kody dyrektyw, kolejnosc wg tablicy 'MAC' + $A0
   __if     = $A1;
@@ -917,7 +922,7 @@ const
   __addSet = $F2;
   __xasm   = $F3;
 
-// !!! of $F4 zaczyna si� __id_
+// !!! of $F4 zaczyna się __id_
 // !!! to koniec !!!
 
   __rel    = $0000;	// wartosc dla etykiet relokowalnych
@@ -1025,6 +1030,37 @@ begin
 end;
 
 
+function Tab2Space(a: string; spc: byte = 8): string;
+var column, nextTabStop: integer;
+    ch: char;
+begin
+
+ Result := '';
+ column:=0;
+
+ for ch in a do
+  case ch of
+
+   #9:
+	begin
+		nextTabStop := (column + spc) div spc * spc;
+		while column <> nextTabStop do begin Result := Result + ' '; inc(column) end;
+	end;
+
+   CR, LF:
+	begin
+		Result := Result + ch;
+		column:=0;
+        end;
+
+  else
+		Result := Result + ch;
+		inc(column);
+  end;
+
+end;
+
+
 procedure __inc(var i:integer; var a:string);
 (*----------------------------------------------------------------------------*)
 (*----------------------------------------------------------------------------*)
@@ -1095,7 +1131,6 @@ function StrToInt(const a: string): Int64;
 var i: integer;
 begin
  val(a,Result, i);
- assert(i=0);
 end;
 
 
@@ -1104,8 +1139,8 @@ procedure flush_dst;
 (*  oproznienie bufora zapisu                                                 *)
 (*----------------------------------------------------------------------------*)
 begin
- if buf_i>0 then blockwrite(dst,t_buf,buf_i);
- buf_i:=0;
+ if buf_i > 0 then blockwrite(dst,t_buf,buf_i);
+ buf_i := 0;
 end;
 
 
@@ -1116,13 +1151,13 @@ procedure put_dst(const a: byte);
 var v: byte;
 begin
 
-  if fill>0 then begin
+  if fill > 0 then begin
 
    flush_dst;
 
    v := fvalue;
 
-   while fill>0 do begin
+   while fill > 0 do begin
     blockwrite(dst, v, 1);
     dec(fill);
    end;
@@ -1173,6 +1208,7 @@ begin
 
  SetLength(Result, i);
  move(mes[imes[b-1]], Result[1], i);
+
 end;
 
 
@@ -1276,8 +1312,13 @@ begin
   warning_mes:=show_full_name(nam,full_name,false)+' ('+IntToStr(lin)+') WARNING: '+txt;
 
   if warning_mes<>warning_old then begin
+
+   TextColor(LIGHTCYAN);
+
    writeln(warning_mes);
    warning_old:=warning_mes;
+
+   NormVideo;
   end;
 
  end;
@@ -1312,13 +1353,15 @@ begin
 end;
 
 
-procedure new_message(var a: string);
+procedure new_message(var a: string; cl: byte = 0);
 (*----------------------------------------------------------------------------*)
 (*----------------------------------------------------------------------------*)
 var i: integer;
 begin
 
  if a='' then exit;
+
+ a:=Tab2Space(a);
 
  for i := High(messages)-1 downto 0 do
   if messages[i].mes=a then begin a:=''; Exit end;
@@ -1327,6 +1370,7 @@ begin
 
  messages[i].pas:=pass;
  messages[i].mes:=a;
+ messages[i].col:=cl;
 
  SetLength(messages,i+2);
 
@@ -1365,7 +1409,7 @@ begin
    CloseFile(lst);
 
    txt:=load_mes(105+1);                // Writing listing file...
-   if not(silent) then new_message(txt);
+   if not(silent) then new_message(txt, DARKGRAY);
   end;
 
 
@@ -1373,7 +1417,7 @@ begin
    Erase(dst)                           // usuwamy plik OBX (plik DST wczesniej musi zostac zamkniety)
   else begin
    txt:=load_mes(106+ord(raw.use)+1);
-   if not(silent) then new_message(txt);
+   if not(silent) then new_message(txt, DARKGRAY);
   end;
 
 
@@ -1387,11 +1431,11 @@ begin
      txt:=IntToStr(line_all)+load_mes(48+1)+' in '+IntToStr(pass_end)+' pass';
      if pass>pass_max then txt:=txt+' (infinite loop)';
 
-     new_message(txt);
+     new_message(txt, BROWN);
 
      if a>0 then begin
       txt:=IntToStr(a)+load_mes(49+1);
-      new_message(txt);
+      new_message(txt, BROWN);
      end;
 
    end;
@@ -1435,10 +1479,14 @@ begin
  for a:=0 to High(messages)-1 do
   {if messages[a].pas < pass_max then} begin
 
+   if messages[a].col <> 0 then TextColor(messages[a].col);
+
    if a>0 then
     write(#13#10,messages[a].mes)
    else
     write(messages[a].mes);
+
+   NormVideo;
 
    for b:=High(messages)-1 downto 0 do    // usuwamy powtarzajace sie komunikaty
 //    if messages[b].pas=messages[a].pas then
@@ -1513,13 +1561,13 @@ var x, y, ex, ey: integer;
     znk: char;
 begin
 
- if (pass=pass_end) and (opt and opt_O>0) then begin
+ if (pass=pass_end) and (opt and opt_O > 0) then begin
 
   if org then begin
 
    SetLength(t,7);
 
-   if hea and (opt and opt_H>0) and not(dreloc.sdx) then t:=t+'FFFF> ';
+   if hea and (opt and opt_H>0) and not(dreloc.sdx) then t := t + 'FFFF> ';
 
    x:=adres;
    y:=t_hea[hea_i];
@@ -1529,7 +1577,7 @@ begin
     dec(y,rel_ofs);
    end;
 
-   if hea_ofs.adr>=0 then begin
+   if hea_ofs.adr >= 0 then begin
     y:=hea_ofs.adr+(y-x); x:=hea_ofs.adr;
    end;
 
@@ -1545,17 +1593,17 @@ begin
    end else
     znk:='-';
 
-   if adres>=0 then begin
+   if adres >= 0 then begin
     if ex>ey then bank_adres(t_hea[hea_i-1]+1) else bank_adres(x);
     if (ex<=ey) and (opt and opt_H>0) then t:=t+znk+Hex(y,4)+'>';
    end;
 
   // wyjatek kiedy nowy blok ma adres $FFFF - zapisujemy dodatkowo dwa bajty naglowka FF FF
-   if (hea and (opt and opt_H>0) and not(dreloc.sdx)) or ({hea and} (opt and opt_H>0) and not(dreloc.sdx) and (adres=$FFFF)) then begin
+   if (hea and (opt and opt_H>0) and not(dreloc.sdx)) or ({hea and} (opt and opt_H>0) and not(dreloc.sdx) and (adres = $FFFF)) then begin
     put_dst($FF); put_dst($FF);
    end;
 
-   if (opt and opt_H>0) then begin
+   if (opt and opt_H > 0) then begin
     put_dst( byte(x) ); put_dst( byte(x shr 8) );
     put_dst( byte(y) ); put_dst( byte(y shr 8) );
    end;
@@ -1713,10 +1761,10 @@ begin
 
  status := 2;
 
- new_message(con);
+ new_message(con, LIGHTRED);
 
 // pewne bledy wymagaja natychmiastowego zakonczenia asemblacji
-// jesli wystapi za duzo bledow (>512) to te� konczymy asemblacje
+// jesli wystapi za duzo bledow (>512) to też konczymy asemblacje
  if (b in AssemblyAbort) or (High(messages)>512) then begin over:=true; koniec(2) end;
 end;
 
@@ -1794,7 +1842,7 @@ end;
 function GetFile(a: string; var zm: string): string;
 (*----------------------------------------------------------------------------*)
 (*  szukamy pliku w zadeklarowanych sciezkach poszukiwan                      *)
-(*  PATH          sciezka z kt�rej uruchomiony jest glowny asemblowany plik   *)
+(*  PATH          sciezka z której uruchomiony jest glowny asemblowany plik   *)
 (*  GLOBAL_NAME   ostatnio uzywana sciezka do operacji ICL, INS itp.          *)
 (*----------------------------------------------------------------------------*)
 var c, p: string;
@@ -1846,7 +1894,7 @@ begin
  x:=$ffffffff;
 
  i:=1;
- while i<=len do begin                           // WHILE jest kr�tsze od FOR
+ while i<=len do begin                           // WHILE jest krótsze od FOR
   x:=tCRC32[byte(x) xor byte(a[i])] xor (x shr 8);
   inc(i);
  end;
@@ -2112,7 +2160,7 @@ begin
  tmp:=$ffffffff;		// CRC32
 
  i:=1;
- while i<=len do begin		// WHILE jest kr�tsze od FOR
+ while i<=len do begin		// WHILE jest krótsze od FOR
   tmp:=tCRC32[byte(tmp) xor byte(a[i])] xor (tmp shr 8);
   inc(i);
  end;
@@ -2244,7 +2292,7 @@ procedure save_hea;
 (*----------------------------------------------------------------------------*)
 (*----------------------------------------------------------------------------*)
 begin
- t_hea[hea_i]:=adres-1 - fill;
+ t_hea[hea_i]:=adres - 1 - fill;
 
  fill:=0;
 
@@ -2570,7 +2618,7 @@ begin
  x:=$ffff;
 
  i:=1;
- while i<=length(a) do begin                     // WHILE jest kr�tsze od FOR
+ while i<=length(a) do begin                     // WHILE jest krótsze od FOR
   x:=tCRC16[byte(x shr 8) xor byte(a[i])] xor (x shl 8);
   inc(i);
  end;
@@ -2952,7 +3000,7 @@ begin
    ' ',#9:
         if sep=' ' then exit else __inc(i,a);
 
-   '.','$'{,'%'}:  // blad jesli po znakach '.', '$' jest "bia�y znak"
+   '.','$'{,'%'}:  // blad jesli po znakach '.', '$' jest "biały znak"
         if a[i+1] in AllowWhiteSpaces then
          exit
         else begin
@@ -4336,7 +4384,7 @@ LOOP:
        end;
 
    end else
-      if pass=0 then begin              // teraz nie znamy wszystkich struktur, musimy ko�czyc
+      if pass=0 then begin              // teraz nie znamy wszystkich struktur, musimy kończyc
 
         if a[i]<>'[' then warning(102); // 'Constant expression expected', brakuje indeksu [idx]
 
@@ -4797,7 +4845,7 @@ LOOP:
 
 
 // jesli przetwarzamy wartosc numeryczna to zapisz na stosie
-// t� wartosc i operator
+// tą wartosc i operator
   if value then begin
 
    op[op_idx]:='+';
@@ -4873,7 +4921,7 @@ LOOP:
     iarg := stos[i+1].wart;
 
  // obliczaj wg kolejnosci operatorow z 'prior'
- // operatory '/','*','%' maja ten sam piorytet, stanowi� wyj�tek
+ // operatory '/','*','%' maja ten sam piorytet, stanowią wyjątek
 
      if (oper=cash[len]) or ((oper in ['/','*','%']) and (len in [5..7])) then begin
         case oper of
@@ -6504,7 +6552,7 @@ if k in [__cpbcpd..__jskip] then begin
     if not(opty) then
     if op='#' then
      tmp[1]:='>'
-    else                                     // wyj�tek MWA (ZP),Y ADR
+    else                                     // wyjątek MWA (ZP),Y ADR
      if Result.h[0]<>$B1 then begin          // $B1 = LDA(ZP),Y
 
       if Result.tmp=$91 then begin
@@ -6881,6 +6929,24 @@ end;
 // omin spacje i przejdz do argumentu
  omin_spacje(i,a);
 
+
+ if _lab_first(a[i]) then begin					// sprawdz czy etykieta konczy sie znakiem ':'
+
+  j:=i;
+
+  tmp:=get_lab(i,a,false);
+
+  if (tmp <> '') and (a[i] = ':') then begin
+   save_lab(tmp, adres+1, bank, zm);				// etykieta do automodyfikacji kodu
+
+   inc(i);
+   omin_spacje(i,a);
+  end else
+   i:=j;
+
+ end;
+
+
 // if (a[i]='#') and (a[i] in ['<','>']) then inc(i);  // !!! to nie jest kompatybilne !!!
 
 // jesli wystepuja operatory #<, #> to omin pierwszy znak i pozostaw <,>
@@ -6918,10 +6984,11 @@ end;
    222: test_siz(a,siz,'Z',pomin);		// SEP #Z
   end;
 
+
   zm:=get_dat_noSPC(i,a,old,';');
 
  if zm<>'' then
- if (zm[2]=':') and (UpCase(zm[1]) in ['A','Z']) then begin            // wymuszenie trybu A-BSOLUTE, Z-ERO PAGE w stylu XASM
+ if (zm[2]=':') and (UpCase(zm[1]) in ['A','Z']) then begin		// wymuszenie trybu A-BSOLUTE, Z-ERO PAGE w stylu XASM
   case UpCase(zm[1]) of
    'A': siz:='Q';
    'Z': siz:='Z';
@@ -7233,7 +7300,7 @@ end;
 // writeln(mnemo,',',k,',',op_,',',j,',',hex(adres,4),' / ',hex(war,4));
 
 
-// zmienna K bezpieczna, nie zosta�a zmodyfikowana do tego miejsca
+// zmienna K bezpieczna, nie została zmodyfikowana do tego miejsca
 
  if opt and opt_C>0 then begin
   ile:=0;
@@ -7449,7 +7516,7 @@ end;
 procedure create_struct_variable(var zm,ety: string; var mne: int5; const head: Boolean; var adres: integer);
 (*----------------------------------------------------------------------------*)
 (*  wykonaj .STRUCT (np. deklaracja pola struktury za pomoca innej struktury) *)
-(*  mo�liwe jest przypisanie pol zdefiniowanych przez strukture nowej zmiennej*)
+(*  możliwe jest przypisanie pol zdefiniowanych przez strukture nowej zmiennej*)
 (*----------------------------------------------------------------------------*)
 var indeks, _doo, j, k, idx, hlp: integer;
     txt, str: string;
@@ -7580,7 +7647,7 @@ begin
 
             end else begin
 
-         // w TMP tworzymy nazwe uwzgledniaj�c� lokalnosc 'TMP:= ??? + ETY'
+         // w TMP tworzymy nazwe uwzgledniającą lokalnosc 'TMP:= ??? + ETY'
              if run_macro then tmp:=macro_nr+{lokal_name+}ety else
               if proc then tmp:=proc_name+lokal_name+ety else
                tmp:=lokal_name+ety;
@@ -7595,7 +7662,7 @@ begin
 
            end;
 
-           save_lab(ety,cardinal(_odd),integer(_doo),zm);     // zapisujemy etykiete normalnie poza struktur�
+           save_lab(ety,cardinal(_odd),integer(_doo),zm);     // zapisujemy etykiete normalnie poza strukturą
 end;
 
 
@@ -8115,7 +8182,7 @@ begin
 
  if dreloc.sdx then exit;
 
- //if not(dreloc.use) then blad(zm,53);   <- mo�liwosc wygenerowania bloku BLK UPDATE EXTRN
+ //if not(dreloc.use) then blad(zm,53);   <- możliwosc wygenerowania bloku BLK UPDATE EXTRN
  //                                       <- dla plikow innych niz relokowalne
 
  if extn_idx>0 then begin
@@ -8282,7 +8349,7 @@ begin
 
           // okreslamy typ etykiety PUBLIC, czy jest relokowalna
 
-             branch:=false;       // umo�liwiamy relokowalnosc
+             branch:=false;       // umożliwiamy relokowalnosc
 
              old_rel_idx      := rel_idx;
              old_siz_idx      := siz_idx;
@@ -8812,7 +8879,7 @@ begin
 
 
            // odczytujemy nazwe parametru lub !!! wyrazenie !!! (np. label+1)
-           // parametry mo�emy rozdzielac znakiem przecinka
+           // parametry możemy rozdzielac znakiem przecinka
            // spacja sluzy do okreslenia nowego typu parametru
 
              omin_spacje(j,txt);
@@ -9099,7 +9166,7 @@ begin
 
    _doo:=High(par);
 
-   if _doo>0 then begin
+   if _doo > 0 then begin
 
     _odd:=0;
     war:=0;
@@ -9108,6 +9175,8 @@ begin
 
      txt:=par[0];     // mozliwa wartosc, ktora bedziemy dodawac do reszty ciagu
                       // pod warunkiem ze ciag liczy wiecej niz 1 element
+
+     if txt = '' then blad(zm, 58);
 
      if txt[1] in ['+','-'] then begin
       j:=1; war:=byte( oblicz_wartosc_noSPC(txt,zm,j,#0,'B') );
@@ -9178,7 +9247,8 @@ begin
 
     end;
 
-   end;
+   end else
+    blad(zm,58);		// np. '.by .len(temp)'
 
 end;
 
@@ -9204,7 +9274,7 @@ begin
   txt:='CPD';
  end;
 
- TestWhileOpt:=not(op in [0,4]);    // kr�tszy kod jesli operator '=', '<>'
+ TestWhileOpt:=not(op in [0,4]);    // krótszy kod jesli operator '=', '<>'
 
  txt:=txt+#32+lar+#32+rar;
  Result:=asm_mnemo(txt, old);
@@ -9294,7 +9364,7 @@ begin
    k:=1;
 
    right:='';
-   left:='';        // czytamy do LEFT dop�ki nie napotkamy operator�w '=', '<', '>', '!'
+   left:='';        // czytamy do LEFT dopóki nie napotkamy operatorów '=', '<', '>', '!'
 
    if str<>'' then
     while not(_ope(str[k])) and not(test_char(k,str)) do begin
@@ -9329,9 +9399,9 @@ begin
 (*  2 <=      6 >                                                             *)
 (*----------------------------------------------------------------------------*)
 
-   case str[k] of            // szukamy znanej kombinacji operator�w
+   case str[k] of            // szukamy znanej kombinacji operatorów
 
-      #0: v:=$80;             // koniec ci�gu
+      #0: v:=$80;             // koniec ciągu
 
      '=': case str[k+1] of
            '=': begin
@@ -9394,7 +9464,7 @@ begin
    end;
 
 
- // jesli wyst�puj� operatory .OR, .AND to generujemy specjalny kod
+ // jesli występują operatory .OR, .AND to generujemy specjalny kod
 
   omin_spacje(k,str);
 
@@ -9594,7 +9664,7 @@ end;
 function dirMACRO(var zm:string): byte;
 (*----------------------------------------------------------------------------*)
 (*  odczyt makra zdefiniowanego przez dyrektywy .MACRO, .ENDM [.MEND]         *)
-(*  !!! wyjatkowo dyrektywa .END nie mo�e ko�czyc definicji makra !!!         *)
+(*  !!! wyjatkowo dyrektywa .END nie może kończyc definicji makra !!!         *)
 (*----------------------------------------------------------------------------*)
 var k: integer;
 begin
@@ -9655,7 +9725,7 @@ function dirENDR(var zm,a,old_str:string; cnt: integer): integer;
 (*----------------------------------------------------------------------------*)
 (*  .ENDR  -  wykonanie petli .REPT                                           *)
 (*----------------------------------------------------------------------------*)
-var lntmp, i, j, k, max, rile: integer;
+var lntmp, i, j, k, max, rile, rpt: integer;
     tmp, ety: string;
     old_if_test: Boolean;
     tmpPar: _strArray;
@@ -9677,17 +9747,18 @@ begin
 
          tmpPar      := reptPar;
 
+         line_add    := t_rep[cnt].lin;
 
-{         writeln(pass,',','-------------------');
+         old_if_test := if_test;
+
+
+{
+	 writeln(pass,',','-------------------');
          for i := t_rep[cnt].fln to t_rep[cnt].lln do writeln(t_mac[i]);
          for i := 0 to High(t_rep)-1 do  writeln(t_rep[i].fln,',',t_rep[i].lln,',',t_rep[i].lin,' - ',t_rep[i].lln-t_rep[i].fln);
 
          halt;
 }
-
-         line_add    := t_rep[cnt].lin;
-
-         old_if_test := if_test;
 
 
          if not(run_macro) then begin
@@ -9715,29 +9786,34 @@ begin
           max := oblicz_wartosc(reptPar[0],zm);           // liczba powtorzen petli
           if max<0 then blad(zm, 0);                      // !!! mozliwa wartosc powyzej $ffff !!!
 
-          reptPar[0]:=IntToStr(Int64(High(reptPar))-1);   // liczba parametr�w przekazana do .REPT
+          reptPar[0]:=IntToStr(Int64(High(reptPar))-1);   // liczba parametrów przekazana do .REPT
          end;
 
 
          ___rept_ile := 0;          // !!! koniecznie w tym miejscu po odczycie linii .REPT
 
 
-
          for  j:=0 to max-1 do begin
+
+	  rpt:=0;
 
           i := t_rep[cnt].fln+1;                          // first line
 
           while i <= t_rep[cnt].lln do begin
 
-            tmp:=t_mac[i];
+            tmp := t_mac[i];
 
             k:=1;
             omin_spacje(k, tmp);
             ety:=get_directive(k, tmp);
 
-            if fCRC16(ety)=__rept then
-             inc(i, dirENDR(zm,a,old_str, cnt+1))
-            else
+            if fCRC16(ety) = __rept then begin
+
+	     inc(rpt);
+
+             inc(i, dirENDR(zm,a,old_str, cnt + rpt));
+
+            end else
              analizuj_mem(i,i+1, zm,a,old_str, j,j+1, true);
 
             inc(i);
@@ -9762,7 +9838,6 @@ begin
          Result := t_rep[cnt].lln - t_rep[cnt].fln;
 
        end;
-
 end;
 
 
@@ -9794,7 +9869,7 @@ begin
  SetLength(t_rep, k+2);
 
 
- save_mac('.REPT '+copy(zm,j,length(zm)));
+ save_mac('.REPT ' + copy(zm,j,length(zm)));
 
 // save_end(__endr);
 
@@ -9841,8 +9916,10 @@ begin
 
   //  if not(komentarz) then
 
-    if if_test and not(Result in [__rept, __endr, __dend]) then save_mac(zm);
-    zapisz_lst(zm);
+    if if_test and not(Result in [__rept, __endr, __dend]) then begin
+      save_mac(zm);
+      zapisz_lst(zm);
+    end;
 
    if str[i]='\' then
     inc(i)
@@ -10248,7 +10325,7 @@ LOOP:
 
 
 (*----------------------------------------------------------------------------*)
-(* odczyt wiekszej liczby p�l struktury .STRUCT                               *)
+(* odczyt wiekszej liczby pól struktury .STRUCT                               *)
 (* jesli wiersz zaczyna sie od np.: .BYTE odczyt realizuje __dta ...          *)
 (*----------------------------------------------------------------------------*)
   if struct.use and (ety<>'') then begin
@@ -10835,7 +10912,7 @@ JUMP:
 
    if struct.use or aray or enum.use then blad(zm,58);
 
- // po zmianie adresu asemblacji bloku .PROC, .LOCAL nie ma mo�liwosci u�ywania dyrektywy .DS
+ // po zmianie adresu asemblacji bloku .PROC, .LOCAL nie ma możliwosci używania dyrektywy .DS
 
    if (org_ofset>0) then blad(zm,71);
 
@@ -11228,7 +11305,7 @@ JUMP:
      line_add:=line-1;
 
      _odd:=High(t_mac);                      // procedura z parametrami
-     t_mac[_odd]:=txt;                       // wymuszamy wykonanie wi�kszej liczby linii
+     t_mac[_odd]:=txt;                       // wymuszamy wykonanie większej liczby linii
      _doo:=_odd+1;
      analizuj_mem(_odd,_doo, zm,a,old_str, 0,1, false);
 
@@ -11433,7 +11510,7 @@ JUMP:
 
 (*----------------------------------------------------------------------------*)
 (*  wykonaj .STRUCT (np. deklaracja pola struktury za pomoca innej struktury) *)
-(*  mo�liwe jest przypisanie pol zdefiniowanych przez strukture nowej zmiennej*)
+(*  możliwe jest przypisanie pol zdefiniowanych przez strukture nowej zmiennej*)
 (*----------------------------------------------------------------------------*)
   if mne.l in [__struct_run, __struct_run_noLabel, __enum_run] then
    if ety='' then blad(zm,15) else
@@ -11808,19 +11885,19 @@ JUMP:
 
  	  if ety='' then ety:=get_lab(i,zm, true);
 
-	  if if_test then begin                  // .UNDEF mozna zmieniac w tym samym przebiegu
+	  if if_test then begin			// .UNDEF mozna zmieniac w tym samym przebiegu
 
             k := load_lab(ety,true);
 
-            if k >= 0 then begin
+            if (k >= 0) and (t_lab[k].bnk = __id_define) then begin
 
              idx := t_lab[k].adr;
 
 	     if t_mac[idx][1] <> '~' then
- 	      t_mac[idx] := '~' + t_mac[idx];    // zaznaczamy jako wylaczone
+ 	      t_mac[idx] := '~' + t_mac[idx];	// zaznaczamy jako wylaczone
 
             end else
-	     blad_und(zm,ety,5);
+	     blad_und(zm,ety,35);
 
 	  end;
 
@@ -12047,7 +12124,6 @@ JUMP:
          begin
 
            save_lab(ety,adres,bank,zm);
-
 
            txt:=zm;              // TXT = ZM, w celu pozniejszej modyfikacji TXT
 
@@ -12298,7 +12374,7 @@ JUMP:
 
         if not(rept) then blad(zm,51);
 
-//          writeln(pass,',','stop'); halt;       // !!! to nie powinno wystapi�
+//          writeln(pass,',','stop'); halt;       // !!! to nie powinno wystapić
 //          dirENDR(zm,a,old_str, 0);
 
           ety:='';
@@ -13226,7 +13302,7 @@ JUMP:
             _odd:=load_lab(ety, true); // !!! TRUE
 
 
-            if etyArray='' then                          // by�a deklaracja przez .ARRAY
+            if etyArray='' then                          // była deklaracja przez .ARRAY
 
              t_arr[array_idx-1].adr := war               // auaktualniamy adres .ARRAY
 
@@ -13348,7 +13424,7 @@ JUMP:
          if (org_ofset>0) and ((lokal_name<>'') or proc) then blad(zm,71);
 
 
-         if hea_ofs.adr>=0 then
+         if hea_ofs.adr >= 0 then
           raw.old := hea_ofs.adr+(adres-hea_ofs.old)
          else
           raw.old := adres;
@@ -13505,39 +13581,38 @@ JUMP:
                 end else
                  idx:=integer( oblicz_wartosc_noSPC(zm,zm,i,',',typ) );
 
-
                 omin_spacje(i,zm);
                 if (i<=length(zm)) and (zm[i]=',') then begin
                  __inc(i,zm);
 
-                 {org_ofs:=idx;}
                  hea_ofs.adr := integer( oblicz_wartosc_noSPC(zm,zm,i,#0,typ) );
-                 if hea_ofs.adr<0 then blad(zm,10);
+                 if hea_ofs.adr < 0 then blad(zm,10);
 
                  hea_ofs.old := idx;
-
-                { if adres<0 then
-                  org_ofset := hea_ofs.adr
-                 else   }
-                  org_ofset := idx - hea_ofs.adr;
+                 org_ofset := idx - hea_ofs.adr;
 
                 end;
 
 
                 if not(first_org) then           // koniecznie IF NOT(FIRST_ORG) inaczej nic nie zapisze
-                 if (adres<>idx) and raw.use then begin
+                 if (adres <> idx) and raw.use then begin
 
-                  if raw.old<0 then
+                  if raw.old < 0 then
                    k:=0
                   else
-                   if hea_ofs.adr>=0 then
+                   if hea_ofs.adr >= 0 then
                     k:=hea_ofs.adr-raw.old
                    else
                     k:=idx-raw.old;
 
-                  if k<0 then blad(zm,108, hex(idx,4));
 
-                  if not(hea) then inc(fill,k);  // IF NOT(HEA) czeka az zacznie zapisywac cos do pliku
+                  if k < 0 then begin
+
+		    if pass > 0 then blad(zm,108, hex(idx,4));
+
+		  end else
+                   if not(hea) then inc(fill,k);  // IF NOT(HEA) czeka az zacznie zapisywac cos do pliku
+
 
                   adres:=idx;
 
@@ -13583,7 +13658,7 @@ JUMP:
           first_org:=false
          else
           blad(zm,0,'('+IntToStr(idx)+' must be between 0 and 65535)');		// !!! koniecznie blad(zm,0) !!! w celu akceptacji
-										// ORG-�w < 0 w poczatkowych przebiegach asemblacji
+										// ORG-ów < 0 w poczatkowych przebiegach asemblacji
 
          if raw.use and (r in [__run, __ini]) then first_org:=true;
 
@@ -13793,7 +13868,7 @@ JUMP:
 
        save_dstW( __relHea );              // dodatkowy naglowek bloku relokowalnego 'MR'
 
-       save_dst( byte(war) );              // kod bloku .RELOC u�ytkownika
+       save_dst( byte(war) );              // kod bloku .RELOC użytkownika
        save_dst( byte(rel_ofs shr 8) );    // informacja o rodzaju bloku .BYTE (0) , .WORD (1)
 
      // zapisujemy wartosci etykiet dla stosu programowego
@@ -14548,7 +14623,7 @@ JUMP:
 //          if (GetFileName(txt)=GetFileName(a)) or (GetFileName(txt)=GetFileName(plik_asm)) then blad(txt,18);
           if (txt=a) or (txt=plik_asm) then blad(txt,18);
 
-        // sprawdzamy czy jest to plik tekstowy w pierwszych dw�ch przebiegach asemblacji
+        // sprawdzamy czy jest to plik tekstowy w pierwszych dwóch przebiegach asemblacji
           if pass<2 then begin
            assignfile(f, txt); FileMode:=0; Reset(f);
            readln(f, tmp);
@@ -14639,7 +14714,7 @@ JUMP:
        t_seg[idx].atr:=t_Attrib(v);             // atrybut segmentu
 
        if _doo=5 then begin
-        tmp:=par[4];                            // bank segmentu, je�li brak to 0
+        tmp:=par[4];                            // bank segmentu, jeśli brak to 0
         war:=oblicz_wartosc(tmp, zm);           //
         t_seg[idx].bnk:=war;                    //
        end else
@@ -14693,7 +14768,7 @@ JUMP:
        line_add:=line-1;
 
        _odd:=High(t_mac);                       // procedura z parametrami
-       t_mac[_odd]:=txt;                        // wymuszamy wykonanie wi�kszej liczby linii
+       t_mac[_odd]:=txt;                        // wymuszamy wykonanie większej liczby linii
        _doo:=_odd+1;
        analizuj_mem(_odd,_doo, zm,a,old_str, 0,1, false);
 
@@ -14735,7 +14810,7 @@ JUMP:
        line_add:=line-1;
 
        _odd:=High(t_mac);                       // procedura z parametrami
-       t_mac[_odd]:=txt;                        // wymuszamy wykonanie wi�kszej liczby linii
+       t_mac[_odd]:=txt;                        // wymuszamy wykonanie większej liczby linii
        _doo:=_odd+1;
        analizuj_mem(_odd,_doo, zm,a,old_str, 0,1, false);
 
@@ -14854,7 +14929,7 @@ JUMP:
  end;
 
 
- if runini.use then begin   // RUN, INI zachowaj� aktualny adres asemblacji
+ if runini.use then begin   // RUN, INI zachowają aktualny adres asemblacji
   save_hea;
   adres:=runini.adr;
   runini.use:=false;
@@ -14892,7 +14967,7 @@ begin
 
 
     if not(komentarz) then
-    if not(macro) and not(rept) and (pos('\',zm)>0) then begin   // pobie�ny test na obecnosc znaku '\'
+    if not(macro) and not(rept) and (pos('\',zm)>0) then begin   // pobieżny test na obecnosc znaku '\'
      i:=1;
      str:=get_dat(i,zm,'\',false);                 // tutaj sprawdzamy dokladniej
 
@@ -15343,9 +15418,15 @@ procedure Syntax;
 (*----------------------------------------------------------------------------*)
 (*  wyswietlamy informacje na temat przelacznikow, konfiguracji MADS'a        *)
 (*----------------------------------------------------------------------------*)
+var s: string;
 begin
- Writeln(load_mes(mads_version));
- Writeln(load_mes(mads_version-2));
+ TextColor(WHITE);
+ Writeln(Tab2Space(load_mes(mads_version)));
+
+ TextColor(DARKGRAY);
+ Writeln(Tab2Space(load_mes(mads_version-2)));
+ NormVideo;
+
  halt(3);
 end;
 
@@ -15725,22 +15806,16 @@ begin
 end;
 
 
-{
-procedure tttt(a: string);
-begin
- case length(a) of
-  1,2: writeln(hex(ord(a[1]) shl 8+ord(a[2]),8));
-  3: writeln(hex(ord(a[1]) shl 16+ord(a[2]) shl 8+ord(a[3]),8));
-  4: writeln(hex(ord(a[1]) shl 24+ord(a[2]) shl 16+ord(a[3]) shl 8+ord(a[4]),8));
- end;
-end;
-}
-
-
 (*----------------------------------------------------------------------------*)
 (*                         M A I N   P R O G R A M                            *)
 (*----------------------------------------------------------------------------*)
 begin
+
+{$IFDEF WINDOWS}
+ if GetFileType(GetStdHandle(STD_OUTPUT_HANDLE)) = 3 then begin
+  Assign(Output, ''); Rewrite(Output);
+ end;
+{$ENDIF}
 
  SetLength(t_lin,1);
  SetLength(t_lab,1);
@@ -15819,4 +15894,3 @@ begin
  koniec(status);
 
 end.
-
