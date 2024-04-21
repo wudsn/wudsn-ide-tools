@@ -1,5 +1,5 @@
 #!/bin/bash
-# Run from BASH terminal.
+# Run from a BASH terminal.
 # Check using https://www.shellcheck.net/.
 # Hints:
 # -always use "${VARIABLE}" unless it is the list of "for ... in ${VARIABLE}"
@@ -7,14 +7,14 @@
 set -e
 
 #------------------------------------------------------------------------
-# Get list of supported languages.
+# Get the list of supported languages.
 #------------------------------------------------------------------------
 function getLanguageList(){
     echo "${LANGUAGE_ASM} ${LANGUAGE_PAS}"
 }
 
 #------------------------------------------------------------------------
-# Get human readable name of a language.
+# Get the human-readable name of a language.
 #------------------------------------------------------------------------
 function getLanguageName(){
     local LANGUAGE=$1
@@ -33,7 +33,7 @@ function getLanguageName(){
 }
 
 #------------------------------------------------------------------------
-# Get list of tools for a language.
+# Get the list of tools for a language.
 #------------------------------------------------------------------------
 function getLanguageTools(){
     local LANGUAGE=$1
@@ -48,7 +48,7 @@ function getLanguageTools(){
 }
 
 #------------------------------------------------------------------------
-# Get human readable name of an OS.
+# Get a human-readable name for an OS.
 #------------------------------------------------------------------------
 function getOSName(){
   local OS=$1
@@ -69,14 +69,14 @@ function getOSName(){
 }
 
 #------------------------------------------------------------------------
-# Get list of supported OSes.
+# Get the list of supported OSes.
 #------------------------------------------------------------------------
 function getOSList(){
   echo "${OS_LINUX} ${OS_MACOS} ${OS_WINDOWS}"
 }
 
 #------------------------------------------------------------------------
-# Get list of supported architectures.
+# Get the list of supported architectures.
 #------------------------------------------------------------------------
 function getArchitectureList(){
   echo "${ARCHITECTURE_I32} ${ARCHITECTURE_I64} ${ARCHITECTURE_A64} ${ARCHITECTURE_PPC} ${ARCHITECTURE_JAVA}"
@@ -84,7 +84,7 @@ function getArchitectureList(){
 
 #------------------------------------------------------------------------
 # Get executable file extension for an OS and architecture.
-# Returns empty string if not supported 
+# Returns an empty string if not supported 
 #------------------------------------------------------------------------
 function getFileExtension(){
     local OS=$1
@@ -159,11 +159,11 @@ function copyExecutable(){
  local EXECUTABLE=$2
  local SOURCE=$3
 
- # Check if new file is different from old file.
+ # Check if the new file is different from the old file.
  if cmp --silent "${EXECUTABLE_TMP}" "${EXECUTABLE}"; then
    echo "Binary file ${EXECUTABLE} is unchanged."
  else
-   # Overwrite old file and take over version information from source.
+   # Overwrite the old file and take over version information from the source.
    mv "${EXECUTABLE_TMP}" "${EXECUTABLE}"
    if [ -f "${SOURCE}.version" ]; then
      cp "${SOURCE}.version" "${EXECUTABLE}.version"
@@ -185,7 +185,7 @@ function compileWithCommand(){
   local COMMAND=$2
   local EXECUTABLE=$3
   local SOURCE=$4
-  # Check if command is present
+  # Check if the command is present
   if command -v "${COMMAND}" &>/dev/null; then
     echo "Creating ${NAME} for ${OS} on ${ARCHITECTURE} as ${EXECUTABLE} from ${SOURCE}."
     local EXECUTABLE_FOLDER="$(dirname $EXECUTABLE)"
@@ -232,7 +232,7 @@ function compileWithFPC(){
   local ARCHITECTURE=$4
   local EXECUTABLE=$5
 
-# Compile only if host OS matches.
+# Compile only if the host OS matches.
   if [ "${OS}" != "${OS_TYPE}" ]; then
   	return
   fi
@@ -318,7 +318,7 @@ function getCCARCH(){
   fi
 
   case "${OS}" in
-# Architectures supported by gcc on Linux
+# Architectures supported by GCC on Linux
   "${OS_LINUX}" )
     case "${ARCHITECTURE}" in
     "${ARCHITECTURE_A64}")
@@ -337,7 +337,7 @@ function getCCARCH(){
     ;;
   
   
-# Architectures supported clang on macOS
+# Architectures supported by clang on macOS
   "${OS_MACOS}" )
     case "${ARCHITECTURE}" in
     "${ARCHITECTURE_A64}")
@@ -360,7 +360,7 @@ function getCCARCH(){
 }
 
 #------------------------------------------------------------------------
-# Get default executable name without folders.
+# Get the default executable name without folders.
 # Function iterator for all OSes and architectures.
 #------------------------------------------------------------------------
 function getExecutableName(){
@@ -371,7 +371,7 @@ function getExecutableName(){
 }
 
 #------------------------------------------------------------------------
-# Get default executable name with folders as used by TeBe.
+# Get the default executable name with folders as used by TeBe.
 #------------------------------------------------------------------------
 function getTeBeExecutableName(){
   local TARGET=$1
@@ -433,7 +433,7 @@ function forAllOSesAndArchitectures(){
 }
 
 #------------------------------------------------------------------------
-# Function iterator for all languages, tools, OSes and architectures.
+# Function iterator for all languages, tools, OSes, and architectures.
 #------------------------------------------------------------------------
 
 function forAllLanguagesAndToolsAndOSesAndArchitectures(){
@@ -626,12 +626,12 @@ function generateREADME(){
     echo "<!DOCTYPE html><html><head><title>WUDSN IDE Tools</title><style>table { border-collapse: collapse; } th, td { border: 1px solid black; }</style></head><body>">>${README_FILE}
   fi
 
-  echo "This project contains the contents for the \"Tools\" folder of the WUDSN IDE installation. This includes all supported assemblers, compilers and emulators.">>${README_FILE}
+  echo "This project contains the contents for the \"Tools\" folder of the WUDSN IDE installation. This includes all supported assemblers, compilers, and emulators.">>${README_FILE}
   echo "<table>">>${README_FILE}
   echo "<tr><th>Language</th><th>Tool</th><th>Version</th><th>OS</th><th>Architecture</th><th>File Name (File Type in Tooltip)</th><th>File Date</th></tr>">>${README_FILE}
   forAllLanguagesAndToolsAndOSesAndArchitectures displayFiles
   echo "</table>">>${README_FILE}
-  echo "The paths defined in this repository are the defaults inside WUDSN IDE. They have to be maintained in class \"com.wudsn.ide.lng.compiler.CompilerPaths\".">>${README_FILE}
+  echo "The paths defined in this repository are the defaults inside WUDSN IDE. They must be maintained in class \"com.wudsn.ide.lng.compiler.CompilerPaths\".">>${README_FILE}
 
   if [ "${README_TYPE}" == ".html" ]; then
     echo "</body></html>">>"${README_FILE}"
@@ -640,15 +640,15 @@ function generateREADME(){
 }
 
 #------------------------------------------------------------------------
-# Fetch a repo to a new folder. Beware,the existing folder is deleted.
+# Fetch a repo to a new folder. Beware, the existing folder is deleted.
 #------------------------------------------------------------------------
 function fetchGitRepo(){
   # return
   URL=$1
   FOLDER=$2
   rm -rf $FOLDER
-  echo Getting latest version from $URL to folder $FOLDER
-  # Git clone only works into empty folders
+  echo Getting the latest version from $URL to folder $FOLDER.
+  # Git clone only works in empty folders.
   git clone --depth=1 $URL $FOLDER
   rm -rf $FOLDER/.git
 }
@@ -689,7 +689,7 @@ function main(){
       return 
   esac
 
-  # Fetch latest versions for manual comparison
+  # Fetch the latest versions for manual comparison
   fetchGitRepo https://github.com/freem/asm6f  ASM/ASM6.git
   fetchGitRepo https://github.com/CycoPH/atasm ASM/ATASM.git
   #fetchGitRepo https://github.com/tebe6502/Mad-Assembler ASM/MADS.git
