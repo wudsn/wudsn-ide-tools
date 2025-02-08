@@ -22,6 +22,7 @@ FillPoly
 FillRect
 FloodFill
 FloodFillH
+MoveTo
 MoveRel
 NewBuffer
 PieSlice
@@ -539,8 +540,8 @@ procedure FloodFillH(x,y: smallint; color: byte);
 @description:
 Horizontal flood fill
 *)
-var xStack: array [0..255] of word absolute $400;
-    yStack: array [0..255] of byte absolute $600;
+var xStack: array [0..255] of word;
+    yStack: array [0..255] of byte;
     stackEntry, sx: word;
     oldColor: byte;
     spanAbove: Boolean register;
@@ -985,6 +986,7 @@ begin
    if ((rcode1 or rcode2) = 0) then
    begin
 //      Image1.Canvas.Pen.Color := clGreen;
+
       fLine(x1, y1, x2, y2);
    end
    else
@@ -1038,9 +1040,11 @@ begin
          end;
       until (((rcode1 and rcode2) <> 0) or ((rcode1 or rcode2) = 0));
 
+
       if ((rcode1 or rcode2) = 0) then
       begin
 //         Image1.Canvas.Pen.Color := clBlue;
+
          fLine(x1, y1, x2, y2);
       end
 //      else
@@ -1058,22 +1062,34 @@ procedure DrawPoly(amount: byte; var vertices);
 @description:
 Draw polygon
 *)
-var i: byte;
-    P, Q: PWord;
-begin
-  
- if amount < 2 then exit;
+type
+    PPoint = ^TPoint;
 
- P:=@vertices;
- Q:=@vertices;
+var i: byte;
+    p0, p1, p2: PPoint;
+
+    pc: PPointer;		// nie moze byc REGISTER bo ClipLine wykorzystuje wszystkie EAX:ECX:EDX do operacji MUL, DIV
+begin
+
+ if amount < 3 then exit;
+
+ pc:=@vertices;
+ p0:=PPoint(pc^);
+
+ p2:=p0;
 
  for i:=amount-2 downto 0 do begin
-  Line(P[0], P[1], P[2], P[3]);
 
-  inc(P, 2);
+  inc(pc);
+
+  p1:=PPoint(pc^);
+
+  ClipLine(p0.x, p0.y, p1.x, p1.y);
+
+  p0:=p1;
  end;
 
- Line(Q[0], Q[1], P[0], P[1]);
+ ClipLine(p0.x, p0.y, p2.x, p2.y);
 
 end;
 
@@ -1087,40 +1103,54 @@ Adapted from  http://alienryderflex.com/polygon_fill/
 
 https://github.com/tuupola/hagl/blob/master/src/hagl_polygon.c
 *)
-var P, Q: PWord;
+type
+    PPoint = ^TPoint;
 
-    i: byte register;
-    j: byte register;
-    k: byte register;
-    y: byte register;
-    count: byte register;
+var
+    p0, p1, p2: PPoint;
+
+    pc: PPointer register;
+
     miny: byte register;
     maxy: byte register;
 
-    x0,y0,x1,y1, swap: word;
-    nodes: array [0..63] of word;
+    swap: word register;
+
+    i, j, k, y, count: byte;
+
+    x0, x1: word;
+
+    y0, y1: byte;
+
+    [striped] nodes: array [0..63] of word;
+
 begin
 
- if amount < 2 then exit;
+ if amount < 3 then exit;
 
  miny := 255;
  maxy := 0;
 
  k := amount - 1;
-	
- P:=@vertices;
+
+ pc:=@vertices;
+ p0:=PPoint(pc^);
+
 
  for i := k downto 0 do begin
- 
-   swap := P[1];
+
+   swap := p0.y;
 
    if (miny > swap) then miny := swap;
 
    if (maxy < swap) then maxy := swap;
 
-   inc(P, 2);
+   inc(p0);
 
  end;
+
+	p2:=p0;
+	dec(p2);
 
  // Loop through the rows of the image.
     for y := miny to maxy-1 do begin
@@ -1128,16 +1158,18 @@ begin
         // Build a list of nodes.
         count := 0;
 
-	P:=@vertices;
-	Q:=@vertices + k shl 2;
+	pc:=@vertices;
+	p0:=PPoint(pc^);
+
+	p1:=p2;
 
         for i := k downto 0 do begin
 
-            x0 := P[0];
-            y0 := P[1];
+            x0 := p0.x;
+            y0 := p0.y;
 
-            x1 := Q[0];
-            y1 := Q[1];
+            x1 := p1.x;
+            y1 := p1.y;
 
             if ( ((y0 < y) and (y1 >= y)) or ((y1 < y) and (y0 >= y)) ) then begin
 
@@ -1146,17 +1178,19 @@ begin
                 inc(count);
             end;
 
-	    Q:=P;
+	    p1:=p0;
 
-	    inc(P, 2);
+	    inc(p0);
 	end;
 
+
  // Sort the nodes, via a simple 'Bubble' sort.
+
      if count > 0 then begin
-     
+
 	j := count - 1;
-        i := 0;
-	
+        //i := 0;
+
         while (i < j) do begin
 
             if (nodes[i] > nodes[i + 1]) then begin
@@ -1171,7 +1205,7 @@ begin
              inc(i);
 
         end;
-	
+
      end;
 
 
@@ -1187,3 +1221,4 @@ begin
     end;
 
 end;
+

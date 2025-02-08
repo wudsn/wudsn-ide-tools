@@ -2,28 +2,58 @@
 ; @move -> memmove.asm
 
 /*
+	@movePCHAR
 	@moveSTRING
-	@moveSTRING_1
+	@moveSTRING_P
 	@buf2str
 */
 
-.proc	@moveSTRING (.word @move.dst .word @move.cnt) .var
-
-.nowarn	@move
-
-	dec @move.cnt
+.proc	@movePCHAR (.word @move.dst .byte @move.cnt) .var
 
 	ldy #$00
-	lda @move.cnt
-	cmp (@move.src),y
-	scs
+
+lp	lda (@move.src),y
+	beq skp
+
+	iny
+
+	sta (@move.dst),y
+	
+	cpy @move.cnt
+	bne lp
+skp	
+	tya
+	ldy #$00
 	sta (@move.dst),y
 
 	rts
 .endp
 
 
-.proc	@moveSTRING_1 (.word ya) .reg
+.proc	@moveSTRING (.word @move.dst .byte len) .var
+
+	ldy #$00
+	sty @move.cnt+1
+	lda (@move.src),y	; string[0]
+
+	cmp len: #$00		; maximum availible destination string length
+	bcc ok
+	beq ok
+
+	lda len
+
+ok	sta (@move.dst),y
+
+	sta @move.cnt
+
+	inw @move.src
+	inw @move.dst
+
+	jmp @move
+.endp
+
+
+.proc	@moveSTRING_P (.word ya) .reg
 
 	sta @move.dst
 	sty @move.dst+1

@@ -1,5 +1,5 @@
 
-uses crt, graph, types, graphics;
+uses crt, graphics, types;
 
 {$r txtout.rc}
 
@@ -14,8 +14,6 @@ var   canvas: TCanvas;
       b: TBrushBitmap;
 
 begin
-
-InitGraph(8);
 
 canvas.create;
 
@@ -43,8 +41,8 @@ canvas.fillrect(Rect(12,14,88,28));
 
 canvas.pen.color:=1;
 
-canvas.textout((320-canvas.textwidth(s)) shr 1, 80, s);
 
+canvas.textout((320-canvas.textwidth(s)) shr 1, 80, s);
 
 GetResourceHandle(p, 'weirdo');
 
@@ -55,8 +53,16 @@ s:='POWER with PRICE';
 canvas.textout((320-canvas.textwidth(s)) shr 1, 89, s);
 
 
+canvas.pen.color:=10;
+
+canvas.moveto(20,31);
+
+canvas.lineto(220,131);
+
+
+
 repeat until keypressed;
 
 end.
 
-// 4923
+// 4905

@@ -23,7 +23,17 @@
 
        or
 
-       ( lda_a(i) and (lda_stack(i) = false) and			// lda P+1				; 0
+       ( lda_a(i) and							// lda TEXT_BUF				; 0
+         add(i+1) and (add_stack(i+1) = false) and			// add R				; 1
+	 tay(i+2) and							// tay					; 2
+	 (listing[i+3] = listing[i] + '+1') and				// lda TEXT_BUF+1			; 3
+	 adc(i+4) and							// adc R+1				; 4
+	 sta_bp_1(i+5) and						// sta :bp+1				; 5
+	 lda_bp_y(i+6) )						// lda (:bp),y				; 6
+
+       or
+
+       ( lda_val(i) and							// lda P+1				; 0	~:STACKORIGIN
          sta_stack(i+1) and 						// sta :STACKORIGIN+STACKWIDTH		; 1
 	 lda_a(i+2) and (listing[i] = listing[i+2] + '+1') and		// lda P				; 2
 	 asl_a(i+3) and							// asl @				; 3
@@ -39,7 +49,7 @@
 
        or
 
-       ( lda_a(i) and (lda_stack(i) = false) and			// lda P				; 0
+       ( lda_val(i) and							// lda P				; 0	~:STACKORIGIN
          sta_stack(i+1) and 						// sta :STACKORIGIN			; 1
 	 lda_a(i+2) and (listing[i+2] = listing[i] + '+1') and		// lda P+1				; 2
 	 asl_stack(i+3) and						// asl :STACKORIGIN			; 3
@@ -56,9 +66,39 @@
 	 (copy(listing[i+1], 6, 256) = copy(listing[i+7], 6, 256)) and
 	 (copy(listing[i+5], 6, 256) = copy(listing[i+10], 6, 256)) )
 
+	or
+
+       ( lda_val(i) and							// lda P				; 0	~:STACKORIGIN
+         sta_stack(i+1) and 						// sta :STACKORIGIN			; 1
+	 lda_a(i+2) and (listing[i+2] = listing[i] + '+1') and		// lda P+1				; 2
+	 asl_stack(i+3) and						// asl :STACKORIGIN			; 3
+	 rol_a(i+4) and							// rol @				; 4
+	 sta_stack(i+5) and						// sta :STACKORIGIN+STACKWIDTH		; 5
+	 lda_stack(i+6) and						// lda :STACKORIGIN			; 6
+	 add(i+7) and							// add RSON				; 7
+	 sta_tmp(i+8) and						// sta :TMP				; 8
+	 lda_stack(i+9) and						// lda :STACKORIGIN+STACKWIDTH		; 9
+	 adc(i+10) and							// adc RSON+1				; 10
+	 sta_tmp_1(i+11) and						// sta :TMP+1				; 11
+	 ldy_im_0(i+12) and						// ldy #$00				; 12
+	 (listing[i+13] = #9'mva (:TMP),y :bp2') and			// mva (:TMP),y :bp2			; 13
+	 iny(i+14) and							// iny					; 14
+	 (listing[i+15] = #9'mva (:TMP),y :bp2+1') and			// mva (:TMP),y :bp2+1			; 15
+         (copy(listing[i+10], 6, 256) = copy(listing[i+7], 6, 256) + '+1') and
+         (copy(listing[i+1], 6, 256) = copy(listing[i+3], 6, 256)) and
+	 (copy(listing[i+1], 6, 256) = copy(listing[i+6], 6, 256)) and
+	 (copy(listing[i+5], 6, 256) = copy(listing[i+9], 6, 256)) )
+
         then begin
 
 
+	if lda_bp_y(i+6) then begin
+
+	end else
+	if sta_tmp_1(i+11) and asl_stack(i+3) and rol_a(i+4) then begin
+	 arg0:='];'+GetString(i)+';'+GetString(i+2)+';'+GetString(i+7)+';'+GetString(i+10)+';';
+	 k:=16;
+	end else
 	if asl_stack(i+3) and rol_a(i+4) then begin
 	 arg0:='&;'+GetString(i)+';'+GetString(i+2)+';'+GetString(i+6)+';'+GetString(i+9)+';';
 	 k:=12;
@@ -76,8 +116,49 @@
 	end;
 
 
+	if lda_bp_y(i+6) then begin
+
+	 arg0:='+;'+GetString(i)+';'+GetString(i+1)+';'+GetString(i+3)+';'+GetString(i+4)+';';
+
+	 if arg0 = optyBP2 then begin
+
+	  listing[i]   := '';
+	  listing[i+1] := '';
+	  listing[i+2] := '';
+	  listing[i+3] := '';
+	  listing[i+4] := '';
+	  listing[i+5] := #9'ldy #$00';
+	  listing[i+6] := #9'lda (:bp2),y';
+
+	  k:=7;
+	 end else begin
+ 	  arg0 := optyBP2;
+
+	  k:=1;
+	 end;
+
+	end else
+
 	if arg0 = optyBP2 then begin
 
+	 if arg0[1] = ']' then begin
+	  listing[i]   := '';
+	  listing[i+1] := '';
+	  listing[i+2] := '';
+	  listing[i+3] := '';
+	  listing[i+4] := '';
+	  listing[i+5] := '';
+	  listing[i+6] := '';
+	  listing[i+7] := '';
+	  listing[i+8] := '';
+	  listing[i+9] := '';
+	  listing[i+10]:= '';
+	  listing[i+11]:= '';
+	  listing[i+12]:= '';
+	  listing[i+13]:= '';
+	  listing[i+14]:= '';
+	  listing[i+15]:= '';
+         end else
 	 if arg0[1] = '&' then begin
 	  listing[i]   := '';
 	  listing[i+1] := '';
@@ -126,7 +207,7 @@
       if (pos('? '+copy(listing[i], 6, 256)+' ', optyBP2) > 0) or (pos(';'+copy(listing[i], 6, 256)+';', optyBP2) > 0) then optyBP2:='';
 
      if sta_bp2(i) or sta_bp2_1(i) or jsr(i) or
-        (pos('l_', listing[i]) = 1) or (pos('b_', listing[i]) = 1) or (pos('c_', listing[i]) = 1) then optyBP2:='';
+        lab_l(i) or lab_b(i) or lab_c(i) then optyBP2:='';
 
      inc(i);
 

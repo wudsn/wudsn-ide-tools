@@ -1,8 +1,24 @@
+MAXSIZE = 4
+
+; -----------------------------------------------------------------------
+
+.enum	e@file
+	eof = 1, open, assign
+.ende
+
+.struct	s@file
+pfname	.word		; pointer to string with filename
+record	.word		; record size
+chanel	.byte		; channel *$10
+status	.byte		; status bit 0..7
+buffer	.word		; load/write buffer
+nrecord	.word		; number of records for load/write
+numread	.word		; pointer to variable, length of loaded data
+.ends
+
+; -----------------------------------------------------------------------
 
 	icl 'runtime\int.asm'		; @INT, @INT_SHORT
-
-	icl 'runtime\icmp.asm'		; cmpSHORTINT, cmpSMALLINT, cmpINT
-	icl 'runtime\lcmp.asm'		; cmpEAX_ECX
 
 	icl 'runtime\add.asm'		; addAL_CL, addAX_CX, addEAX_ECX
 	icl 'runtime\sub.asm'		; subAL_CL, subAX_CX, subEAX_ECX
@@ -10,18 +26,17 @@
 	icl 'runtime\shl.asm'		; shlEAX_CL.BYTE, shlEAX_CL.WORD, shlEAX_CL.CARD
 	icl 'runtime\shr.asm'		; shrAL_CL, shrAX_CL, shrEAX_CL
 
-	icl 'runtime\not.asm'		; notaBX, notBOOLEAN
-	icl 'runtime\neg.asm'		; negBYTE, negWORD, negCARD, negBYTE1, negWORD1, negCARD1
-					; negEDX, negSHORT
+	icl 'runtime\neg.asm'		; @negBYTE, @negWORD, @negCARD, @negBYTE1, @negWORD1, @negCARD1
+					; @negAX, @negCX, @negEAX, @negECX, @negEDX, @negSHORT
 
 	icl 'runtime\expand.asm'	; @xpandSHORT2SMALL, @expandSHORT2SMALL1
 					; @expandToCARD.SHORT, @expandToCARD.SMALL, @expandToCARD.BYTE, @expandToCARD.WORD
 					; @expandToCARD1.SHORT, @expandToCARD1.SMALL, @expandToCARD1.BYTE, @expandToCARD1.WORD
 
-	icl 'runtime\ini.asm'		; iniEAX_ECX_WORD, iniEAX_ECX_CARD
-	icl 'runtime\mov.asm'		; movBX_EAX, movZTMP_aBX
+	icl 'runtime\ini.asm'		; @iniEAX_ECX_WORD, @iniEAX_ECX_CARD
+	icl 'runtime\mov.asm'		; @movaBX_EAX, @movZTMP_aBX
 
-	icl 'runtime\hi.asm'		; hiBYTE, hiWORD, hiCARD
+	icl 'runtime\hi.asm'		; @hiBYTE, @hiWORD, @hiCARD
 
 ; -----------------------------------------------------------------------
 

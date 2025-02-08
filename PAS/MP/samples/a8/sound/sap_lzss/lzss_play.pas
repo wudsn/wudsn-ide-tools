@@ -2,9 +2,11 @@
 
 uses crt, saplzss;
 
+{$define romoff}
+
 const
 
-sapr_player = $6000;	// ..$9BFF
+sapr_player = $e000;	// ..$02FF player ($300), $0300..$0BFF buffers ($900)
 sapr_modul  = $6c00;
 
 var
@@ -18,10 +20,13 @@ var
 
 
 begin
-	while true do begin
-
 	msx.modul:=pointer(sapr_modul);
 	msx.player:=pointer(sapr_player);
+
+	msx.clear;	// clear buffers
+
+
+	while true do begin
 
 	msx.init(0);
 

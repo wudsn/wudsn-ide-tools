@@ -2,15 +2,12 @@
 ; REAL	fixed-point Q24.8, 32bit
 ; https://en.wikipedia.org/wiki/Q_(number_format)
 ;
-; changes: 2023-04-22
+; changes: 2024-10-01
 ;
 
 /*
 	@REAL_MUL
 	@REAL_DIV
-	
-	@negA
-	@negB
 */
 
 
@@ -26,17 +23,15 @@ B	= :ECX
 	pha
 
 	bit A+3
-	bpl @+
+	spl
+	jsr @negEAX	;jsr @negA
 
-	jsr @negA
-@
-	bit B+3
-	bpl @+
+	lda B+3
+	spl
+	jsr @negECX	;jsr @negB
 
-	jsr @negB
-@
-	lda A+3
-	ora B+3
+	ora A+3
+;	ora B+3
 	ora A+2
 	ora B+2
 	bne m32
@@ -150,57 +145,6 @@ ROTATE_R
 ;---------------------------------------------------------------------------
 
 
-.proc	@negA
-
-A	= :EAX
-
-	lda #$00
-	sub A
-	sta A
-
-	lda #$00
-	sbc A+1
-	sta A+1
-
-	lda #$00
-	sbc A+2
-	sta A+2
-
-	lda #$00
-	sbc A+3
-	sta A+3
-
-	rts
-.endp
-
-
-.proc	@negB
-
-B	= :ECX
-
-	lda #$00
-	sub B
-	sta B
-
-	lda #$00
-	sbc B+1
-	sta B+1
-
-	lda #$00
-	sbc B+2
-	sta B+2
-
-	lda #$00
-	sbc B+3
-	sta B+3
-
-	rts
-.endp
-
-
-;---------------------------------------------------------------------------
-
-
 .proc	@REAL_DIV
 
 RESULT	= :EAX
@@ -212,16 +156,14 @@ B	= :ECX
 	eor B+3
 	sta sign
 
-	bit A+3				; dividend sign
-	bpl @+
+	bit A+3		; dividend sign
+	spl
+	jsr @negEAX	;jsr @negA
 
-	jsr @negA
-@
 	lda B+3
-	bpl @+
+	spl
+	jsr @negECX	;jsr @negB
 
-	jsr @negB
-@	
 	mva :ecx ecx0
 	sta ecx0_
 	mva :ecx+1 ecx1
@@ -282,9 +224,8 @@ UDIV321
 	JMP UDIV321
 stop
 	lda sign: #0
-	bpl @+
-	
-	jmp @negA
-@
+	spl	
+	jmp @negEAX	;jmp @negA
+
 	rts
 .endp

@@ -5,7 +5,7 @@
   Rebuild;
 
    for i := 0 to l - 1 do
-    if ldy(i) and (ldy_stack(i) = false) {and (iny(i+1) = false) and (dey(i+1) = false)} then begin
+    if ldy_val(i) {and (iny(i+1) = false) and (dey(i+1) = false)} then begin
 
      arg0:=GetString(i);
 
@@ -69,15 +69,15 @@
      if tay(i) then begin
 
       if (i>1) and
-         ( (add_sub(i-1) and (add_sub_stack(i-1) = false) and (adc_sbc(i+2) = false) and lda_a(i-2) and (lda_stack(i-2) = false) and (iy(i-2) = false)) or
-           (asl_a(i-1) and lda_a(i-2) and (lda_stack(i-2) = false) and (iy(i-2) = false)) or
+         ( (add_sub_val(i-1) and (adc_sbc(i+2) = false) and lda_val(i-2) and (iy(i-2) = false)) or
+           (asl_a(i-1) and lda_val(i-2) and (iy(i-2) = false)) or
 
-           ((i > 2) and asl_a(i-1) and asl_a(i-2) and lda_a(i-3) and (lda_stack(i-3) = false) and (iy(i-3) = false)) or
-           ((i > 3) and asl_a(i-1) and asl_a(i-2) and asl_a(i-3) and lda_a(i-4) and (lda_stack(i-4) = false) and (iy(i-4) = false)) or
+           ((i > 2) and asl_a(i-1) and asl_a(i-2) and lda_val(i-3) and (iy(i-3) = false)) or
+           ((i > 3) and asl_a(i-1) and asl_a(i-2) and asl_a(i-3) and lda_val(i-4) and (iy(i-4) = false)) or
 
-           ((i > 2) and add(i-1) and asl_a(i-2) and lda_a(i-3) and (copy(listing[i-1], 6, 256) = copy(listing[i-3], 6, 256)) and (lda_stack(i-3) = false) and (iy(i-3) = false)) or
+           ((i > 2) and add(i-1) and asl_a(i-2) and lda_val(i-3) and (copy(listing[i-1], 6, 256) = copy(listing[i-3], 6, 256)) and (iy(i-3) = false)) or
 
-           ((i > 5) and add(i-1) and asl_a(i-2) and add(i-3) and asl_a(i-4) and asl_a(i-5) and lda_a(i-6) and (copy(listing[i-3], 6, 256) = copy(listing[i-6], 6, 256)) and (lda_stack(i-6) = false) and (iy(i-6) = false)) )
+           ((i > 5) and add(i-1) and asl_a(i-2) and add(i-3) and asl_a(i-4) and asl_a(i-5) and lda_val(i-6) and (copy(listing[i-3], 6, 256) = copy(listing[i-6], 6, 256)) and (iy(i-6) = false)) )
 
       then begin
 
@@ -217,5 +217,5 @@
 
      if LabelIsUsed(i) or iny(i) or dey(i) or tay(i) or ldy_stack(i) or mvy(i) or mwy(i) or jsr(i) or
         (pos(',y-', listing[i]) > 0) or (pos(',y+', listing[i]) > 0) or ((optyA <> '') and (optyA = optyY)) or
-        {(listing[i] = '@') or} (pos('l_', listing[i]) = 1) or (pos('b_', listing[i]) = 1) or (pos('c_', listing[i]) = 1) or
+        {(listing[i] = '@') or} lab_l(i) or lab_b(i) or lab_c(i) or
 	(pos(#9'.if', listing[i]) > 0) then begin arg0 := ''; optyY := '' end;

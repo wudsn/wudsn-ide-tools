@@ -50,7 +50,7 @@
        if (l = 3) and					// BYTE
           lda_a(0) and
           cmp_im_0(1) and
-	  (pos('jcc l_', listing[2]) > 0 ) then
+	  (pos(#9'jcc l_', listing[2]) > 0 ) then
 	begin
 	 listing[0] := #9'#for:dec ' + copy(listing[0], 6, 256);
 	 listing[1] := #9'#for';
@@ -63,7 +63,7 @@
           cmp(1) and (cmp_im(1) = false) and
 	  (listing[2] = #9'bcc *+7') and
 	  (listing[3] = #9'beq *+5') and
-	  (pos('jmp l_', listing[4]) > 0 ) then
+	  jmp(4) then
         begin
 	 listing[2] := #9'lda ' + copy(listing[1], 6, 256);
 	 listing[3] := #9'cmp ' + copy(listing[0], 6, 256);
@@ -79,7 +79,7 @@
           cmp_im(1) and
 	  (listing[2] = #9'bcc *+7') and
 	  (listing[3] = #9'beq *+5') and
-	  (pos('jmp l_', listing[4]) > 0 ) then
+	  jmp(4) then
         begin
         k := GetBYTE(1) + 1;
 
@@ -111,11 +111,11 @@
        if (l = 7) and
           lda_a(0) and
           cmp_im_0(1) and
-	  (listing[2] = #9'bne @+') and
+	  bne_a(2) and
           lda_a(3) and
           cmp_im_0(4) and
           lab_a(5) and
-	  (pos('jcc l_', listing[6]) > 0 ) then
+	  (pos(#9'jcc l_', listing[6]) > 0 ) then
 	begin
 	 listing[0] := '';
 	 listing[1] := '';
@@ -130,11 +130,11 @@
        if (l = 7) and					// SHORTINT - UP
           lda_a(0) and (lda_im(0) = false) and
           sub_im(1) and
-	  (listing[2] = #9'svc') and
+	  svc(2) and
           (listing[3] = #9'eor #$80') and
           (listing[4] = #9'bmi *+7') and
           (listing[5] = #9'beq *+5') and
-	  (pos('jmp l_', listing[6]) > 0 ) then
+	  jmp(6) then
 	begin
         k := GetBYTE(1) + 1;
 
@@ -152,10 +152,10 @@
        if (l = 6) and					// SHORTINT - DOWN
           lda_a(0) and (lda_im(0) = false) and
           sub_im(1) and
-	  (listing[2] = #9'svc') and
+	  svc(2) and
           (listing[3] = #9'eor #$80') and
           (listing[4] = #9'bpl *+5') and
-	  (pos('jmp l_', listing[5]) > 0 ) then
+	  jmp(5) then
 	begin
 	 listing[4] := #9'jmi ' + copy(listing[5], 6, 256);
 	 listing[5] := '';
@@ -165,13 +165,13 @@
        if (l = 9) and					// WORD #
           lda_a(0) and
           cmp_im(1) and
-	  (listing[2] = #9'bne @+') and
+	  bne_a(2) and
           lda_a(3) and
           cmp_im(4) and
           lab_a(5) and
 	  (listing[6] = #9'bcc *+7') and
 	  (listing[7] = #9'beq *+5') and
-	  (pos('jmp l_', listing[8]) > 0 ) then
+	  jmp(8) then
         begin
 
         k := GetBYTE(1) shl 8 + GetBYTE(4);
@@ -203,13 +203,13 @@
        if (l = 9) and					// WORD zamien miejscami
           lda_a(0) and
           cmp(1) and (cmp_im(1) = false) and
-	  (listing[2] = #9'bne @+') and
+	  bne_a(2) and
           lda_a(3) and
           cmp(4) and (cmp_im(4) = false) and
           lab_a(5) and
 	  (listing[6] = #9'bcc *+7') and
 	  (listing[7] = #9'beq *+5') and
-	  (pos('jmp l_', listing[8]) > 0 ) then
+	  jmp(8) then
         begin
 	 listing[7] := '@';
 	 listing[8] := #9'jcc ' + copy(listing[8], 6, 256);
@@ -230,19 +230,19 @@
        if (l = 15) and					// CARDINAL zamien miejscami
           lda_a(0) and
           cmp(1) and (cmp_im(1) = false) and
-	  (listing[2] = #9'bne @+') and
+	  bne_a(2) and
           lda_a(3) and
           cmp(4) and (cmp_im(4) = false) and
-	  (listing[5] = #9'bne @+') and
+	  bne_a(5) and
           lda_a(6) and
           cmp(7) and (cmp_im(7) = false) and
-	  (listing[8] = #9'bne @+') and
+	  bne_a(8) and
           lda_a(9) and
           cmp(10) and (cmp_im(10) = false) and
           lab_a(11) and
 	  (listing[12] = #9'bcc *+7') and
 	  (listing[13] = #9'beq *+5') and
-	  (pos('jmp l_', listing[14]) > 0 ) then
+	  jmp(14) then
 	begin
 	 listing[13] := '@';
 	 listing[14] := #9'jcc ' + copy(listing[14], 6, 256);
@@ -270,17 +270,17 @@
        if (l = 13) and
           lda_a(0) and
           cmp_im_0(1) and
-	  (listing[2] = #9'bne @+') and
+	  bne_a(2) and
           lda_a(3) and
           cmp_im_0(4) and
-	  (listing[5] = #9'bne @+') and
+	  bne_a(5) and
           lda_a(6) and
           cmp_im_0(7) and
-	  (listing[8] = #9'bne @+') and
+	  bne_a(8) and
           lda_a(9) and
           cmp_im_0(10) and
           lab_a(11) and
-	  (pos('jcc l_', listing[12]) > 0 ) then
+	  (pos(#9'jcc l_', listing[12]) > 0 ) then
 	begin
 	 listing[0] := '';
 	 listing[1] := '';
@@ -301,19 +301,19 @@
        if (l = 15) and
           lda_a(0) and
           (listing[1] = #9'cmp #$FF') and
-	  (listing[2] = #9'bne @+') and
+	  bne_a(2) and
           lda_a(3) and
           (listing[4] = #9'cmp #$FF') and
-	  (listing[5] = #9'bne @+') and
+	  bne_a(5) and
           lda_a(6) and
           (listing[7] = #9'cmp #$FF') and
-	  (listing[8] = #9'bne @+') and
+	  bne_a(8) and
           lda_a(9) and
           (listing[10] = #9'cmp #$FF') and
           lab_a(11) and
 	  (listing[12] = #9'bcc *+7') and
 	  (listing[13] = #9'beq *+5') and
-	  (pos('jmp l_', listing[14]) > 0 ) then
+	  jmp(14) then
 	begin
 	 listing[0] := '';
 	 listing[1] := '';
@@ -334,7 +334,7 @@
 
 
        if (l = 20) and				// SMALLINT - UP
-          (listing[0] = #9'.LOCAL') and
+          LOCAL(0) and
 	  lda_a(1) and (lda_im(1) = false) and
 	  sub_im(2) and
           (listing[3] = #9'bne L4') and
@@ -350,10 +350,10 @@
           (listing[13] = #9'eor #$FF') and
           (listing[14] = #9'ora #$01') and
           (listing[15] = 'L5') and
-          (listing[16] = #9'.ENDL') and
+          ENDL(16) and
           (listing[17] = #9'bmi *+7') and
           (listing[18] = #9'beq *+5') and
-	  (pos('jmp l_', listing[19]) > 0 ) then
+	  jmp(19) then
 	begin
          k := GetBYTE(2) shl 8 + GetBYTE(5) + 1;
 
@@ -384,7 +384,7 @@
 
 
        if (l = 19) and				// SMALLINT - DOWN
-          (listing[0] = #9'.LOCAL') and
+          LOCAL(0) and
 	  lda_a(1) and (lda_im(1) = false) and
 	  sub_im(2) and
           (listing[3] = #9'bne L4') and
@@ -400,9 +400,9 @@
           (listing[13] = #9'eor #$FF') and
           (listing[14] = #9'ora #$01') and
           (listing[15] = 'L5') and
-          (listing[16] = #9'.ENDL') and
+          ENDL(16) and
           (listing[17] = #9'bpl *+5') and
-	  (pos('jmp l_', listing[18]) > 0 ) then
+	  jmp(18) then
 	begin
          k := GetBYTE(2) shl 8 + GetBYTE(5);
 

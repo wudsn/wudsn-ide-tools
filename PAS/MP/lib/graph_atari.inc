@@ -117,7 +117,72 @@ end;
 end;
 
 
-{$i graph3.inc}
+procedure SetDisplayBuffer(var a: TDisplayBuffer);
+(*
+@description:
+Set video buffer which is displayed
+*)
+begin
+	sdlstl := a.dl;
+	dlistl := sdlstl;
+end;
+
+
+procedure ClrBuffer;
+var x, y: pointer;
+    l: word;
+begin
+
+ x:=Scanline(WIN_TOP);
+
+ y:=Scanline(WIN_BOTTOM + 1);
+ l:=word(y);
+
+ dec(l, word(x));
+
+ fillbyte(x, l, 0);
+
+end;
+
+
+function NewDisplayBuffer(var a: TDisplayBuffer; mode, bound: byte): TDisplayBuffer;
+(*
+@description:
+Initialize new graphical buffer
+*)
+begin
+
+ ramtop := bound;
+
+ InitGraph(mode);
+
+ a.dl := sdlstl;
+ a.bp := savmsc;
+
+ a.clr := @ClrBuffer;
+
+end;
+
+
+procedure SwitchDisplayBuffer(var a,b: TDisplayBuffer);
+(*
+@description:
+Switch graphical buffer between A <> B
+*)
+var tmp: TDisplayBuffer;
+begin
+
+ tmp:=b;
+
+ b:=a;
+ a:=tmp;
+
+ SetDisplayBuffer(a);
+ SetActiveBuffer(b);
+
+ b.clr;
+
+end;
 
 
 procedure SetBkColor(color: byte); assembler;
@@ -268,12 +333,24 @@ _1
 	cpw y main.system.ScreenHeight
 	bcc _2
 
-	sbw main.system.ScreenHeight #1 y
+	lda main.system.ScreenHeight
+	ldy main.system.ScreenHeight+1
+	sbc #1
+	scs
+	dey
+	sta y
+	sty y+1
 _2
 	cpw x main.system.ScreenWidth
 	bcc _3
 
-	sbw main.system.ScreenWidth #1 x
+	lda main.system.ScreenWidth
+	ldy main.system.ScreenWidth+1
+	sbc #1
+	scs
+	dey
+	sta x
+	sty x+1
 _3
 	txa:pha
 
@@ -309,4 +386,7 @@ _3
 end;
 
 end;
+
+
+{$i vbxe.inc}
 

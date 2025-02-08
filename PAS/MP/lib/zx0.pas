@@ -1,4 +1,4 @@
-unit ZX0;
+unit zx0;
 (*
 * @type: unit
 * @author: Einar Saukas, Krzysztof 'XXL' Dudek, Tomasz 'Tebe' Biela
@@ -34,11 +34,11 @@ procedure unZX0(fnam: PString; outputPointer: pointer); register; overload;
 @description:
 ZX0 I/O stream decompressor (Einar Saukas, Krzysztof 'XXL' Dudek)
 
-@param: inputPointer - source data address
-@param: outputPointer - destination data address
+@param: inputPointer - source data address, :EDX
+@param: outputPointer - destination data address, :ECX
 *)
 var f: file;
-    buf: array [0..255] of byte absolute $0400;
+    buf: array [0..255] of byte absolute __buffer;
 
 
 procedure READ_BUF;
@@ -254,8 +254,8 @@ procedure unZX0(inputPointer, outputPointer: pointer); assembler; register; over
 @description:
 ZX0 decompressor (Einar Saukas, Krzysztof 'XXL' Dudek)
 
-@param: inputPointer - source data address
-@param: outputPointer - destination data address
+@param: inputPointer - source data address, :EDX
+@param: outputPointer - destination data address, :ECX
 *)
 
 asm

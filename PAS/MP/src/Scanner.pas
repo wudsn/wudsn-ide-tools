@@ -10,6 +10,16 @@ interface
 
 	procedure TokenizeMacro(a: string; Line, Spaces: integer);
 
+	function get_digit(var i:integer; var a:string): string;
+
+	function get_constant(var i:integer; var a:string): string;
+
+	function get_label(var i:integer; var a:string; up: Boolean = true): string;
+
+	function get_string(var i:integer; var a:string; up: Boolean = true): string;
+
+	procedure omin_spacje (var i:integer; var a:string);
+
 // ----------------------------------------------------------------------------
 
 implementation
@@ -109,14 +119,44 @@ end;
 // ----------------------------------------------------------------------------
 
 
+function get_constant(var i:integer; var a:string): string;
+(*----------------------------------------------------------------------------*)
+(*  pobierz etykiete zaczynajaca sie znakami 'A'..'Z','_'		      *)
+(*----------------------------------------------------------------------------*)
+begin
+
+ Result := '';
+
+ if a <> '' then begin
+
+  omin_spacje(i,a);
+
+  if UpCase(a[i]) in AllowLabelFirstChars + ['.'] then
+   while UpCase(a[i]) in AllowLabelChars do begin
+
+    Result := Result + UpCase(a[i]);
+
+    inc(i);
+   end;
+
+ end;
+
+end;
+
+
+// ----------------------------------------------------------------------------
+// ----------------------------------------------------------------------------
+
+
 function get_label(var i:integer; var a:string; up: Boolean = true): string;
 (*----------------------------------------------------------------------------*)
 (*  pobierz etykiete zaczynajaca sie znakami 'A'..'Z','_'		      *)
 (*----------------------------------------------------------------------------*)
 begin
- Result:='';
 
- if a<>'' then begin
+ Result := '';
+
+ if a <> '' then begin
 
   omin_spacje(i,a);
 
@@ -124,9 +164,9 @@ begin
    while UpCase(a[i]) in AllowLabelChars + AllowDirectorySeparators do begin
 
     if up then
-     Result:=Result + UpCase(a[i])
+     Result := Result + UpCase(a[i])
     else
-     Result:=Result + a[i];
+     Result := Result + a[i];
 
     inc(i);
    end;
@@ -151,7 +191,7 @@ var len: integer;
 begin
  Result:='';
 
- omin_spacje(i,a);
+ omin_spacje(i, a);
 
  if a[i] = '%' then begin
 
@@ -164,19 +204,17 @@ begin
 
  end else begin
 
-  gchr:=a[i]; len:=length(a);
+  gchr:=a[i];
+  len:=length(a);
 
-  while i<=len do begin
+  while i <= len do begin
    inc(i);	 // omijamy pierwszy znak ' lub "
 
    znak:=a[i];
 
    if znak=gchr then begin inc(i); Break end;
-{    inc(i);
-    if a[i]=gchr then znak:=gchr;
-   end;}
 
-   Result:=Result+znak;
+   Result := Result + znak;
   end;
 
  end;
@@ -204,25 +242,6 @@ for i := 1 to MAXTOKENNAMES do
     Result := i;
     Break;
     end;
-end;
-
-
-// ----------------------------------------------------------------------------
-// ----------------------------------------------------------------------------
-
-
-procedure NormalizePath(var Name: string);
-begin
-
-  {$IFDEF UNIX}
-   if Pos('\', Name) > 0 then
-    Name := LowerCase(StringReplace(Name, '\', '/', [rfReplaceAll]));
-  {$ENDIF}
-
-  {$IFDEF LINUX}
-    Name := LowerCase(Name);
-  {$ENDIF}
-
 end;
 
 
@@ -260,20 +279,24 @@ begin
        (AnsiUpperCase(res.resType) = 'MPT') or
        (AnsiUpperCase(res.resType) = 'CMC') or
        (AnsiUpperCase(res.resType) = 'RMTPLAY') or
+       (AnsiUpperCase(res.resType) = 'RMTPLAY2') or
+       (AnsiUpperCase(res.resType) = 'RMTPLAYV') or
        (AnsiUpperCase(res.resType) = 'MPTPLAY') or
        (AnsiUpperCase(res.resType) = 'CMCPLAY') or
        (AnsiUpperCase(res.resType) = 'EXTMEM') or
        (AnsiUpperCase(res.resType) = 'XBMP') or
        (AnsiUpperCase(res.resType) = 'SAPR') or
-       (AnsiUpperCase(res.resType) = 'SAPRPLAY')
+       (AnsiUpperCase(res.resType) = 'SAPRPLAY') or
+       (AnsiUpperCase(res.resType) = 'PP') or
+       (AnsiUpperCase(res.resType) = 'LIBRARY')
       then
 
       else
-        Error(NumTok, 'Undefined resource type: Type = UNKNOWN, Name = '''+res.resName+'''');
+        Error(NumTok, 'Undefined resource type: Type = ''' + res.resType + ''', Name = ''' + res.resName + '''');
 
 
      if (res.resFile <> '') and not(FindFile(res.resFile)) then
-       Error(NumTok, 'Resource file not found: Type = '+res.resType+', Name = '''+res.resName+'''');
+       Error(NumTok, 'Resource file not found: Type = ' + res.resType + ', Name = ''' + res.resName + '''');
 
 
      for j := 1 to MAXPARAMS do begin
@@ -292,7 +315,7 @@ begin
 
      for j := High(resArray)-1 downto 0 do
       if resArray[j].resName = res.resName then
-       Error(NumTok, 'Duplicate resource: Type = '+res.resType+', Name = '''+res.resName+'''');
+       Error(NumTok, 'Duplicate resource: Type = ' + res.resType + ', Name = ''' + res.resName + '''');
 
      j:=High(resArray);
      resArray[j] := res;
@@ -370,16 +393,16 @@ var
   Num, Frac: TString;
   OldNumTok, UnitIndex, IncludeIndex, Line, Err, cnt, Line2, Spaces, TextPos, im, OldNumDefines: Integer;
   Tmp: Int64;
-  AsmFound, UsesFound, yes: Boolean;
-  ch, ch2: Char;
+  AsmFound, UsesFound, UnitFound, ExternalFound, yes: Boolean;
+  ch, ch2, ch_: Char;
   CurToken: Byte;
   StrParams: TArrayString;
 
 
-  procedure TokenizeUnit(a: integer); forward;
+  procedure TokenizeUnit(a: integer; testUnit: Boolean = false); forward;
 
 
-  procedure Tokenize(fnam: string);
+  procedure Tokenize(fnam: string; testUnit: Boolean = false);
   var InFile: file of char;
       _line: integer;
       _uidx: integer;
@@ -425,6 +448,7 @@ var
 
 	 s:=AnsiUpperCase(Tok[i].Name^);
 
+
 	 for j := 2 to NumUnits do		// kasujemy wczesniejsze odwolania
 	   if UnitName[j].Name = s then UnitName[j].Name := '';
 
@@ -434,11 +458,14 @@ var
 	 inc(NumUnits);
 	 UnitIndex := NumUnits;
 
+	 if UnitIndex > High(UnitName) then
+	  Error(NumTok, 'Out of resources, UnitIndex: ' + IntToStr(UnitIndex));
+
 	 Line:=1;
   	 UnitName[UnitIndex].Name := s;
 	 UnitName[UnitIndex].Path := nam;
 
-	 TokenizeUnit( UnitIndex );
+	 TokenizeUnit( UnitIndex, true );
 
 	 Line := _line;
 	 UnitIndex := _uidx;
@@ -551,6 +578,9 @@ var
 
 	  yes:=false;
 
+	  tmp:=0;
+	  NumRead:=0;
+
 	  AssignFile(bin, fn); FileMode:=0; Reset(bin, 1);
 
   	  Repeat
@@ -599,6 +629,8 @@ var
 	end;
 
   begin
+
+    Param:=Default(TDefinesParam);
 
     if UpCase(d[1]) in AllowLabelFirstChars then begin
 
@@ -661,6 +693,9 @@ var
 	  UnitIndex := IncludeIndex;
 	  inc(IncludeIndex);
 
+	  if IncludeIndex > High(UnitName) then
+	    Error(NumTok, 'Out of resources, IncludeIndex: '+IntToStr(IncludeIndex));
+
 	  Tokenize( nam );
 
 	  Line := _line;
@@ -671,6 +706,21 @@ var
 	end;
 
      end else
+
+      if (cmd = 'EVAL') then begin
+
+       if  d.LastIndexOf('}') < 0 then Error(NumTok, 'Syntax error');
+
+       s := copy(d, i, d.LastIndexOf('}') - i + 1);
+       s := TrimRight(s);
+
+       if s[length(s)] <> '"' then Error(NumTok, 'Missing ''"''');
+
+       AddToken(EVALTOK, UnitIndex, Line, 1, 0);
+
+       DefineFilename(NumTok, s);
+
+      end else
 
       if (cmd = 'BIN2CSV') then begin
 
@@ -800,12 +850,7 @@ var
 
        s := FindFile(s, 'link object');
 
-       v := High(linkObj);
-       linkObj[v] := s;
-
-       Tok[NumTok].Value := v;
-
-       SetLength(linkObj, v+2);
+       DefineFilename(NumTok, s);
 
        AddToken(SEMICOLONTOK, UnitIndex, Line, 1, 0);
 
@@ -821,6 +866,9 @@ var
 
 	if Err <> 0 then
 	 iError(NumTok, OrdinalExpExpected);
+
+	AddDefine('FASTMUL');
+        AddDefines := NumDefines;
 
 	GetCommonConstType(NumTok, BYTETOK, GetValueType(FastMul));
 
@@ -1119,7 +1167,7 @@ var
 
   begin
 
-   if target.id = 'a8' then begin
+   if target.id = ___a8 then begin
 
      for i := p to length(Text) do
       Text[i] := chr(ata2int(ord(Text[i])));
@@ -1135,10 +1183,9 @@ var
 
 
   procedure ReadNumber;
-  var i, k, ln: integer;
   begin
 
-    Num:='';
+//    Num:='';
 
     if ch='%' then begin		  // binary
 
@@ -1153,20 +1200,7 @@ var
        if length(Num)=0 then
 	 iError(NumTok, OrdinalExpExpected);
 
-       //remove leading zeros
-       i:=1;
-       while Num[i]='0' do inc(i);
-
-       tmp:=0;
-
-       ln:=length(Num);
-
-       //do the conversion
-       for k:=ln downto i do
-	if Num[k]='1' then
-	 tmp:=tmp+(1 shl (ln-k));
-
-       Num:=IntToStr(tmp);
+       Num := '%' + Num;
 
     end else
 
@@ -1183,9 +1217,8 @@ var
        if length(Num)=0 then
 	 iError(NumTok, OrdinalExpExpected);
 
-       val('$'+Num, tmp, err);
+       Num := '$' + Num;
 
-       Num:=IntToStr(tmp);
     end else
 
       while ch in ['0'..'9'] do		// Number suspected
@@ -1350,6 +1383,8 @@ var
 	  if CurToken = FLOAT16TOK then CurToken := HALFSINGLETOK;
 	  if CurToken = SHORTSTRINGTOK then CurToken := STRINGTOK;
 
+	  if CurToken = EXTERNALTOK then ExternalFound := TRUE;
+
 	  AddToken(0, UnitIndex, Line, length(Text) + Spaces, 0); Spaces:=0;
 
 	 end;
@@ -1362,13 +1397,17 @@ var
 
 	  tmp:=FilePos(InFile);
 
-	  repeat
+	  _line := line;
+
+	  repeat					// pomijaj puste znaki i sprawdz jaki znak zastaniesz
 	   Read(InFile, ch);
 	   if ch = LF then inc(line);
 	  until not(ch in AllowWhiteSpaces);
 
 
-	  if ch <> '{' then begin
+	  if ch <> '{' then begin			// nie znalazl znaku '{'
+
+	   line := _line;				// zaczynamy od nowa czytać po 'ASM'
 
 	   Tok[NumTok].Value := 1;
 
@@ -1376,6 +1415,10 @@ var
 
 	   Read(InFile, ch);
 
+	   AsmBlock[AsmBlockIndex] := '';
+	   Text:='';
+
+{
 	   if ch in [CR,LF] then begin			// skip EOL after 'ASM'
 
 	    if ch = LF then inc(line);
@@ -1389,7 +1432,7 @@ var
 	    AsmBlock[AsmBlockIndex] := ch;
 	    Text:=ch;
 	   end;
-
+}
 
 	   while true do begin
 	    Read(InFile, ch);
@@ -1402,7 +1445,6 @@ var
 	      SetLength(AsmBlock[AsmBlockIndex], length(AsmBlock[AsmBlockIndex])-4);
 
 //	      inc(line, AsmBlock[AsmBlockIndex].CountChar(LF));
-
 	      Break;
 	    end;
 
@@ -1447,6 +1489,11 @@ var
 	     Tok[NumTok].Kind := CurToken;
 
 	     if CurToken = USESTOK then UsesFound := true;
+
+	     if CurToken = UNITTOK then UnitFound := true;
+
+	     if testUnit and (UnitFound = false) then
+	      Error(NumTok, 'Syntax error, "UNIT" expected but "' + Spelling[CurToken] + '" found');
 
 	   end
 	   else begin				// Identifier found
@@ -1601,7 +1648,12 @@ var
 	    AddToken(CHARLITERALTOK, UnitIndex, Line, 1 + Spaces, Ord(Text[1])); Spaces:=0;
 	  end else begin
 	    AddToken(STRINGLITERALTOK, UnitIndex, Line, length(Text) + Spaces, 0); Spaces:=0;
-	    DefineStaticString(NumTok, Text);
+
+	    if ExternalFound then
+	      DefineFilename(NumTok, Text)
+	    else
+	      DefineStaticString(NumTok, Text);
+
 	  end;
 
 	 Text := '';
@@ -1611,6 +1663,8 @@ var
 
       if ch in ['=', ',', ';', '(', ')', '*', '/', '+', '-', '^', '@', '[', ']'] then begin
 	AddToken(GetStandardToken(ch), UnitIndex, Line, 1 + Spaces, 0); Spaces:=0;
+
+	ExternalFound := false;
 
 	if UsesFound and (ch = ';') then
 	  if UsesOn then ReadUses;
@@ -1623,8 +1677,13 @@ var
 
       if ch in [':', '>', '<', '.'] then					// Double-character token suspected
 	begin
+	ch_:=ch;
+
 	Line2:=Line;
 	SafeReadChar(ch2);
+
+	ch:=ch_;
+
 	if (ch2 = '=') or
 	   ((ch = '<') and (ch2 = '>')) or
 	   ((ch = '.') and (ch2 = '.')) then begin				// Double-character token found
@@ -1689,7 +1748,7 @@ var
   end;
 
 
-procedure TokenizeUnit(a: integer);
+procedure TokenizeUnit(a: integer; testUnit: Boolean = false);
 // Read input file and get tokens
 begin
 
@@ -1702,15 +1761,18 @@ begin
 
 //  writeln('>',UnitIndex,',',UnitName[UnitIndex].Name);
 
-  Tokenize( UnitName[UnitIndex].Path );
+  UnitFound := false;
+
+  Tokenize( UnitName[UnitIndex].Path, testUnit );
 
   if UnitIndex > 1 then begin
+
     CheckTok(NumTok, DOTTOK);
     CheckTok(NumTok - 1, ENDTOK);
 
     dec(NumTok, 2);
 
-    AddToken(UNITENDTOK, UnitIndex, Line, 0, 0);
+    AddToken(UNITENDTOK, UnitIndex, Tok[NumTok+1].Line - 1, 0, 0);
   end else
    AddToken(EOFTOK, UnitIndex, Line, 0, 0);
 
@@ -1763,6 +1825,7 @@ Spelling[TEXTFILETOK	] := 'TEXTFILE';
 Spelling[SETTOK		] := 'SET';
 Spelling[PACKEDTOK	] := 'PACKED';
 Spelling[VOLATILETOK	] := 'VOLATILE';
+Spelling[STRIPEDTOK	] := 'STRIPED';
 Spelling[LABELTOK	] := 'LABEL';
 Spelling[GOTOTOK	] := 'GOTO';
 Spelling[INTOK		] := 'IN';
@@ -1871,6 +1934,8 @@ Spelling[TEXTTOK	] := 'TEXT';
 
  AsmFound  := false;
  UsesFound := false;
+ UnitFound := false;
+ ExternalFound := false;
 
  IncludeIndex := MAXUNITS;
 
@@ -1894,7 +1959,6 @@ var
   Text: string;
   Num, Frac: TString;
   Err, Line2, TextPos, im: Integer;
-  Tmp: Int64;
   yes: Boolean;
   ch, ch2: Char;
   CurToken: Byte;
@@ -1955,7 +2019,7 @@ var
 
   begin
 
-   if target.id = 'a8' then begin
+   if target.id = ___a8 then begin
 
      for i := p to length(Text) do
       Text[i] := chr(ata2int(ord(Text[i])));
@@ -1971,10 +2035,9 @@ var
 
 
   procedure ReadNumber;
-  var x, k, ln: integer;
   begin
 
-    Num:='';
+//    Num:='';
 
     if ch='%' then begin		  // binary
 
@@ -1989,20 +2052,7 @@ var
        if length(Num)=0 then
 	 iError(NumTok, OrdinalExpExpected);
 
-       //remove leading zeros
-       x:=1;
-       while Num[x]='0' do inc(x);
-
-       tmp:=0;
-
-       ln:=length(Num);
-
-       //do the conversion
-       for k:=ln downto x do
-	if Num[k]='1' then
-	 tmp:=tmp+(1 shl (ln-k));
-
-       Num:=IntToStr(tmp);
+       Num := '%' + Num;
 
     end else
 
@@ -2019,9 +2069,7 @@ var
        if length(Num)=0 then
 	 iError(NumTok, OrdinalExpExpected);
 
-       val('$'+Num, tmp, err);
-
-       Num:=IntToStr(tmp);
+       Num := '$' + Num;
 
     end else
 

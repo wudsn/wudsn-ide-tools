@@ -2,20 +2,24 @@
 	opt l-
 
 /*
-	CMC
-	CMCPLAY
-	DOSFILE
+	CMC		RAM / ROM
+	CMCPLAY		RAM / ROM
+	DOSFILE		RAM / ROM
 	EXTMEM
-	MPT
-	MPTPLAY
-	RCASM
-	RCDATA
-	RELOC
-	RMT
-	RMTPLAY
+	LIBRARY		PORTB -> RAM
+	MPT		RAM / ROM
+	MPTPLAY		RAM / ROM
+	PP		RAM / ROM
+	RCASM		RAM / ROM
+	RCDATA		RAM / ROM
+	RELOC		RAM
+	RMT		RAM / ROM
+	RMTPLAY		RAM
+	RMTPLAY2	RAM / ROM
+	RMTPLAYV	RAM / ROM	VinsCool Patch16-3.2
 	XBMP
-	SAPR
-	SAPRPLAY
+	SAPR		RAM / ROM
+	SAPRPLAY	RAM / ROM
 */
 
 	org CODEORIGIN
@@ -152,7 +156,8 @@ ext_b	= $4000		;cokolwiek z zakresu $4000-$7FFF
 	lda portb
 	pha
 
-	lda:rne vcount
+	bit:rmi VCOUNT
+	bit:rpl VCOUNT
 
 ;	lda #$ff
 ;	sta portb
@@ -315,7 +320,7 @@ RESORIGIN	= *
 
 len = .sizeof(_%%2)
 
-mcpy	ift main.%%lab+len >= $bc20
+mcpy	ift (main.%%lab < $bc20)&&(main.%%lab+len >= $bc20)
 	mva #0 sdmctl
 	sta dmactl
 	eif
@@ -332,10 +337,15 @@ data
 	.link 'atari\players\cmc_player_reloc.obx'
 
 .endl
-
-	.print '$R CMCPLAY ',main.%%lab,'..',main.%%lab+$0755
-
 	ini mcpy
+
+	ift main.%%lab+len >= $c000
+	.ifndef :MAIN.@DEFINES.NOROMFONT
+	.def :MAIN.@DEFINES.NOROMFONT
+	.endif
+	eif
+
+	.print '$R CMCPLAY ',main.%%lab,'..',main.%%lab+len-1	
 .endm
 
 
@@ -349,7 +359,7 @@ data
 
 len = .sizeof(_%%2)
 
-mcpy	ift main.%%lab+len >= $bc20
+mcpy	ift (main.%%lab < $bc20)&&(main.%%lab+len >= $bc20)
 	mva #0 sdmctl
 	sta dmactl
 	eif
@@ -366,9 +376,15 @@ data
 	.link 'atari\players\mpt_player_reloc.obx'
 
 .endl
-	.print '$R MPTPLAY ',main.%%lab,'..',main.%%lab+$049e
-
 	ini mcpy
+
+	ift main.%%lab+len >= $c000
+	.ifndef :MAIN.@DEFINES.NOROMFONT
+	.def :MAIN.@DEFINES.NOROMFONT
+	.endif
+	eif
+
+	.print '$R MPTPLAY ',main.%%lab,'..',main.%%lab+len-1
 .endm
 
 
@@ -382,7 +398,7 @@ data
 
 len	= .sizeof(_%%2)
 
-	ert <main.%%lab <> 0,'SAP-R LZSS PLAYER routine MUST be compiled from the begin of the memory page'
+	ert <main.%%lab <> 0,'SAP-R LZSS PLAYER must start from the beginning of the memory page'	                                        
 
 mcpy	ift (main.%%lab<$bc20) && (main.%%lab+len >= $bc20)
 	mva #0 sdmctl
@@ -401,15 +417,112 @@ data
 	.link 'atari\players\playlzs16_reloc.obx'
 
 .endl
-	.print '$R SAPRPLAY ',main.%%lab,'..',main.%%lab+$c00-1
-
 	ini mcpy
+
+	ift main.%%lab+len >= $c000
+	.ifndef :MAIN.@DEFINES.NOROMFONT
+	.def :MAIN.@DEFINES.NOROMFONT
+	.endif
+	eif
+
+	.print '$R SAPRPLAY ',main.%%lab,'..',main.%%lab+$c00-1
+.endm
+
+
+/* ----------------------------------------------------------------------- */
+/* RMTPLAYV
+/* ----------------------------------------------------------------------- */
+
+.macro	RMTPLAYV (nam, lab, mode, zp)
+
+	org RESORIGIN
+
+STEREOMODE	= %%mode
+PLAYER		= main.%%lab
+
+len	= .sizeof(_%%2)
+
+	ert <PLAYER <> 0,'RMT PLAYER must start from the beginning of the memory page'
+
+mcpy	jsr sys.off
+
+	memcpy #data #PLAYER #.sizeof(_%%lab)
+
+	jmp sys.on
+
+	ift %%zp=0
+	.ZPVAR = $e0
+	els
+	.ZPVAR = %%zp
+	eif	
+data
+
+.local	_%%lab, PLAYER
+	icl 'atari\players\rmt_playerv_reloc.feat'
+	
+	icl 'atari\players\rmt_playerv_reloc.asm'
+.endl
+	ini mcpy
+
+	ift main.%%lab+len >= $c000
+	.ifndef :MAIN.@DEFINES.NOROMFONT
+	.def :MAIN.@DEFINES.NOROMFONT
+	.endif
+	eif
+
+	.echo '$R RMTPLAY ',_%%lab.p_tis,'..',.zpvar-1,', ',PLAYER,'..',_%%lab+.sizeof(_%%lab)-1 //," %%nam"
+.endm
+
+
+/* ----------------------------------------------------------------------- */
+/* RMTPLAY2
+/* ----------------------------------------------------------------------- */
+
+.macro	RMTPLAY2 (nam, lab, mode, zp)
+
+	org RESORIGIN
+
+STEREOMODE	= %%mode
+PLAYER		= main.%%lab
+
+len	= .sizeof(_%%2)
+
+	ert <PLAYER <> 0,'RMT PLAYER must start from the beginning of the memory page'
+
+mcpy	jsr sys.off
+
+	memcpy #data #PLAYER #.sizeof(_%%lab)
+
+	jmp sys.on
+
+	ift %%zp=0
+	.ZPVAR = $e0
+	els
+	.ZPVAR = %%zp
+	eif	
+data
+
+.local	_%%lab, PLAYER
+	icl %%1
+	
+	icl 'atari\players\rmt_player_reloc.asm'
+.endl
+	ini mcpy
+
+	ift main.%%lab+len >= $c000
+	.ifndef :MAIN.@DEFINES.NOROMFONT
+	.def :MAIN.@DEFINES.NOROMFONT
+	.endif
+	eif
+
+	.echo '$R RMTPLAY ',_%%lab.p_tis,'..',.zpvar-1,', ',PLAYER,'..',_%%lab+.sizeof(_%%lab)-1," %%nam"
 .endm
 
 
 /* ----------------------------------------------------------------------- */
 /* RMTPLAY
 /* ----------------------------------------------------------------------- */
+
 
 .macro	RMTPLAY (nam, lab, mode, zp)
 
@@ -422,15 +535,15 @@ PLAYER		= main.%%lab
 	org %%zp
 	eif	
 
-	ert <PLAYER <> 0,'RMT player routine MUST be compiled from the begin of the memory page'
+	ert <PLAYER <> 0,'RMT PLAYER must start from the beginning of the memory page'
 
 	icl 'atari\players\rmt_player.asm'
 
 	icl %%1
 
-	ert *>=$c000
+	ert *>=$c000,'player address >= $c000, use RMTPLAY2'
 
-	.echo '$R RMTPLAY ',p_tis,'..',zp_end,', ',track_variables,'..',RMTPLAYEREND," %%nam"
+	.echo '$R RMTPLAY ',p_tis,'..',zp_end-1,', ',track_variables,'..',RMTPLAYEREND-1," %%nam"
 	
 	ert (track_variables > CODEORIGIN) && (track_variables < PROGRAMSTACK), 'Memory overlap'
 
@@ -465,9 +578,9 @@ data
 	icl %%1
 
 .endl
-	.print '$R RCASM   ',main.%%lab,'..',main.%%lab+len-1," %%1"
-
 	ini mcpy
+
+	.print '$R RCASM   ',main.%%lab,'..',main.%%lab+len-1," %%1"
 .endm
 
 
@@ -493,6 +606,10 @@ mcpy	jsr sys.off
 
 data	ins %%1,%%ofs
 
+	.ifndef :MAIN.@DEFINES.NOROMFONT
+	.def :MAIN.@DEFINES.NOROMFONT
+	eif
+
 	.print '$R RCDATA  ',main.%%lab,'..',main.%%lab+len-1," %%1"
 
 	ini mcpy
@@ -505,6 +622,7 @@ data	ins %%1,%%ofs
 
 	.print '$R RCDATA  ',main.%%lab,'..',*-1," %%1"
  eif
+ 
 .endm
 
 
@@ -518,6 +636,7 @@ data	ins %%1,%%ofs
 ?len = .filesize(%%1)
 
  ift .wget[2]+?len-6 >= $c000
+ 
 	org RESORIGIN
 
 _stop	jmp stop
@@ -584,7 +703,9 @@ len	.word
 data	ins %%1
 data_end
 
-	.print '$R DOSFILE ',.wget[2],'..$xxxx'," %%1"
+	.ifndef :MAIN.@DEFINES.NOROMFONT
+	.def :MAIN.@DEFINES.NOROMFONT
+	eif
 
 	ini mcpy
  els
@@ -592,8 +713,8 @@ data_end
 	ins %%1
 	opt h+
 
-	.print '$R DOSFILE ',.wget[2],'..',*-1," %%1"
  eif
+	.print '$R DOSFILE ',.wget[2],'..',.wget[4]," %%1"
 .endm
 
 
@@ -613,6 +734,7 @@ len = .filesize(%%1)
 
 	.print '$R RELOC   ',main.%%lab,'..',*-1," %%1"
  eif
+ 
 .endm
 
 
@@ -721,7 +843,9 @@ mcpy	jsr sys.off
 
 data	rmt_relocator %%1,main.%%lab
 
-	.print '$R RMT     ',main.%%lab,'..',main.%%lab+len-6," %%1"
+	.ifndef :MAIN.@DEFINES.NOROMFONT
+	.def :MAIN.@DEFINES.NOROMFONT
+	eif
 
 	ini mcpy
  els
@@ -738,9 +862,9 @@ data	rmt_relocator %%1,main.%%lab
 
 	rmt_relocator %%1,main.%%lab
 _end
-	.print '$R RMT     ',main.%%lab,'..',main.%%lab+len-6," %%1"
 
  eif
+ 	.print '$R RMT     ',main.%%lab,'..',main.%%lab+len-6," %%1"
 .endm
 
 /* ----------------------------------------------------------------------- */
@@ -857,12 +981,72 @@ mcpy	jsr sys.off
 
 data	mpt_relocator %%1,main.%%lab
 
+	.ifndef :MAIN.@DEFINES.NOROMFONT
+	.def :MAIN.@DEFINES.NOROMFONT
+	eif
+
 	ini mcpy
  els
 	org main.%%lab
 	mpt_relocator %%1,main.%%lab	
  eif
 	.print '$R MPT     ',main.%%lab,'..',main.%%lab+len-6," %%1"
+.endm
+
+
+/* ----------------------------------------------------------------------- */
+/* PP (Power Packer)
+/* ----------------------------------------------------------------------- */
+
+.macro	PP (nam, lab)
+
+len = .filesize(%%1)
+
+	ert main.%%lab+len > $FFFF,'Memory overrun ',main.%%lab+len
+
+ ift main.%%lab+len >= $c000
+	org RESORIGIN
+
+mcpy	jsr sys.off
+
+	memcpy #data #main.%%lab #len
+
+	jmp sys.on
+
+data
+	.get %%1
+	
+unp = .get[len-2]+.get[len-3]*256
+
+	.put[0] = <[unp-1]
+	.put[1] = >[unp-1]
+
+	.put[2] = <[len-4]
+	.put[3] = >[len-4]
+
+	.sav [0] len
+
+	.ifndef :MAIN.@DEFINES.NOROMFONT
+	.def :MAIN.@DEFINES.NOROMFONT
+	eif
+
+	ini mcpy
+ els
+	org main.%%lab
+
+	.get %%1
+
+unp = .get[len-2]+.get[len-3]*256
+
+	.put[0] = <[unp-1]
+	.put[1] = >[unp-1]
+
+	.put[2] = <[len-4]
+	.put[3] = >[len-4]
+
+	.sav [0] len
+ eif
+	.print '$R PP    ',main.%%lab,'..',main.%%lab+len+2," %%1"
 .endm
 
 
@@ -891,6 +1075,10 @@ mcpy	jsr sys.off
 data	dta a(len)
 	ins %%1
 
+	.ifndef :MAIN.@DEFINES.NOROMFONT
+	.def :MAIN.@DEFINES.NOROMFONT
+	eif
+
 	ini mcpy
  els
 	org main.%%lab
@@ -903,7 +1091,6 @@ data	dta a(len)
 .def :MAIN.@RESOURCE.%%lab.end = *
 	
  eif
- 
 	.print '$R SAPR    ',main.%%lab,'..',main.%%lab+len+2," %%1"
 .endm
 
@@ -975,7 +1162,7 @@ len = .filesize(%%1)
 	ert main.%%lab+len-6>$FFFF,'Memory overrun ',main.%%lab+len-6
 
  ift main.%%lab+len-6 >= $c000
-	org RESORIGIN
+ 	org RESORIGIN
 
 mcpy	jsr sys.off
 
@@ -985,7 +1172,12 @@ mcpy	jsr sys.off
 
 data	cmc_relocator %%1,main.%%lab
 
+	.ifndef :MAIN.@DEFINES.NOROMFONT
+	.def :MAIN.@DEFINES.NOROMFONT
+	eif
+
 	ini mcpy
+
  els
 	org main.%%lab
 	cmc_relocator %%1,main.%%lab	
@@ -998,7 +1190,7 @@ data	cmc_relocator %%1,main.%%lab
 /* XBMP
 /* ----------------------------------------------------------------------- */
 
-.macro	XBMP (nam, lab, idx)
+.macro	XBMP (nam, lab, idx, pal)
 
 he	= .sizeof(s@bmp)
 
@@ -1027,12 +1219,20 @@ lbmp
 	bcc ok
 
 	@print #notVBXE
+	@print #_eol
+	@print #anyKEY
+	
+keypres	lda $d20f
+	and #4
+	bne keypres
 
 	pla
 	pla
 	rts
 
-notVBXE	dta c'VBXE not detected',$9b
+notVBXE	dta c'VBXE not detected'
+_eol	dta $9b
+anyKEY	dta c'Press any key to continue',$9b
 
 	eif
 
@@ -1040,7 +1240,7 @@ notVBXE	dta c'VBXE not detected',$9b
 
 ok	fxs FX_MEMC #%1000+$b0
 
-	fxs FX_PSEL, #1
+	fxs FX_PSEL, #%%pal
 	fxs FX_CSEL, #%%idx
 
 	ldx #%%idx
@@ -1117,8 +1317,7 @@ ln	= .filesize(%%1)-he-1024
 	rts
 	ini RESORIGIN
 
-	.print '$R XBMP    ',main.%%lab,'..',main.%%lab+ln-1," %%1"
-
+	.print '$R XBMP    ',main.%%lab,'..',main.%%lab+ln-1," %%1",' width: ',?bw,' height: ',?bh,' palsel: ',%%pal,' colsel: ',%%idx
 .endm
 
 
@@ -1139,6 +1338,8 @@ len = .filesize(%%1)
 	?adr = main.%%lab
 
 	org RESORIGIN
+
+	ert (*>$4000) && (*<$8000),'RESORIGIN memory overlap $4000..$7FFF'
 
 	mwa #[?adr&$3fff]+$4000 dst
 	rts
@@ -1221,6 +1422,73 @@ data
 
 	ini move
 	eif
+
+	ini quit
+
+.endm
+
+
+/* ----------------------------------------------------------------------- */
+/* LIBRARY
+/* ----------------------------------------------------------------------- */
+
+.macro	LIBRARY (nam, lab)
+
+	.get %%1,0,6
+
+?len = .filesize(%%1)
+
+	ert .wget[2] < $4000,'library must fit in memory space $4000..$7FFF'
+	ert .wget[2]+?len-6 >= $8000,'library must fit in memory space $4000..$7FFF'
+
+
+	ift ?EXTDETECT=0
+	ini DetectMem
+	eif
+
+	.def ?EXTDETECT=1
+
+	ert (main.%%lab > 63), 'memory bank number must be in the range [0..63]'
+
+	org RESORIGIN
+
+	ert (*>$4000) && (*<$8000),'RESORIGIN memory overlap $4000..$7FFF'
+
+quit	mva #$ff portb
+	rts
+
+setbnk	ldx #main.%%lab
+
+	cpx DetectMem.bank
+	bcs nomem
+
+	lda @mem_banks,x
+	sta portb
+	rts
+
+noMem	.local
+
+	@print #outMem
+
+	pla
+	pla
+	rts
+
+outMem	dta c'Out of memory',$9b
+
+	.endl
+
+	ini setbnk
+
+/* ----------------------------------------------------------------------- */
+/* DOSFILE
+/* ----------------------------------------------------------------------- */
+
+ 	opt h-
+	ins %%1
+	opt h+
+
+	.print '$R LIBRARY ',.wget[2],'..',.wget[4],':',main.%%lab," %%1"
 
 	ini quit
 

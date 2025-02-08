@@ -87,7 +87,10 @@ interface
 	function Max(x, y: integer): integer; overload;
 	function power(base : real; const exponent : shortint) : real; overload;
 	function power(base : single; const exponent : shortint) : single; overload;
+	function power(base : float16; const exponent : shortint) : float16; overload;
 	function power(base : integer; const exponent : shortint) : integer; overload;
+	function power(x, y : real) : real; overload;
+	function power(x, y : float) : float; overload;
 	function arctan2(y,x : real) : real;
 	function Tan(x: Real): Real;
 	function Ceil(a: real): smallint;
@@ -472,7 +475,7 @@ function power(base : real; const exponent : shortint) : real; overload;
 
 *)
 var
-     i : integer;
+     i : shortint;
 begin
      if (base = 0.0) and (exponent = 0) then
        result:=1.0
@@ -502,9 +505,39 @@ function power(base : single; const exponent : shortint) : single; overload;
 
 *)
 var
-     i : integer;
+     i : shortint;
 begin
      if (base = single(0)) and (exponent = 0) then
+       result:=1.0
+     else
+       begin
+         i:=abs(exponent);
+         Result:=1.0;
+         while i>0 do
+           begin
+              while (i and 1) = 0 do
+                begin
+                   i:=i shr 1;
+                   base:=sqr(base);
+                end;
+              i:=i-1;
+              Result:=Result*base;
+           end;
+         if exponent < 0 then
+           Result:=1.0/Result;
+       end;
+end;
+
+
+function power(base : float16; const exponent : shortint) : float16; overload;
+(*
+@description: Return real power.
+
+*)
+var
+     i : shortint;
+begin
+     if (base = float16(0)) and (exponent = 0) then
        result:=1.0
      else
        begin
@@ -532,7 +565,7 @@ function power(base : integer; const exponent : shortint) : integer; overload;
 
 *)
 var
-     i : integer;
+     i : shortint;
 begin
      if (base = 0) and (exponent = 0) then
        result:=1
@@ -556,6 +589,46 @@ begin
 end;
 
 
+function power(x, y : real) : real; overload;
+(*
+@description: Return real power.
+*)
+begin
+
+  If y = 0 Then
+    power := 1.0
+  Else if x = 0 Then
+    Power := 0.0
+  Else If x > 0 Then
+    Power := exp( y * ln(x))
+  Else if Trunc(y) mod 2 = 0 Then
+    Power := exp( y * ln(abs(x)))
+  Else
+    Power := -exp( y * ln(abs(x)));
+    
+end;
+
+
+function power(x, y : float) : float; overload;
+(*
+@description: Return real power.
+*)
+begin
+
+  If y = 0 Then
+    power := 1.0
+  Else if x = 0 Then
+    Power := 0.0
+  Else If x > 0 Then
+    Power := exp( y * ln(x))
+  Else if Trunc(y) mod 2 = 0 Then
+    Power := exp( y * ln(abs(x)))
+  Else
+    Power := -exp( y * ln(abs(x)));
+    
+end;
+
+
 function arctan2(y,x : real) : real;
 (*
 @description:
@@ -574,10 +647,10 @@ begin
       end
     else
       Result:=ArcTan(y/x);
-      
+
     if x < 0.0 then
       Result:=Result+pi;
-      
+
     if Result>pi then
       Result:=Result-M_PI_2;
 end;

@@ -1,20 +1,18 @@
 # Mad-Pascal
 
-[Doc PL](http://mads.atari8.info/doc/pl/index.html)
-
-[Doc ENG](http://mads.atari8.info/doc/en/index.html)
+[English Documentation](http://mads.atari8.info/doc/en/index.html) / [Polska Dokumentacja](http://mads.atari8.info/doc/pl/index.html)
 
 ## Introduction
 
-**Mad-Pascal**  (MP) is a 32-bit **Turbo Pascal** compiler for **Atari XE/XL**. By design, it is compatible with the **Free Pascal Compilator** (FPC) (the `-MDelphi` switch should be active), which means the possibility of obtaining executable code for **XE/XL**, **PC** and every other platform for which **FPC** exists. 
+[source]: # Section is copied from original https://mads.atari8.info/doc/en/introduction/
 
-**MP** is not a port of **FPC**; it has been written based on of **SUB-Pascal** (2009), **XD-Pascal** (2010), the author of which is [Vasiliy Tereshkov](mailto:vtereshkov@mail.ru).
+**Mad-Pascal** (MP) is a 32-bit **Turbo Pascal** compiler for **Atari 8-Bit** and other **MOS 6502 CPU**-based computers. By design, it is compatible with the **Free Pascal Compiler** (FPC) (the `-MDelphi` switch should be active). This means the possibility of obtaining executable code for **Atari 8-bit**, **Windows**, and every other platform for which **FPC** exists. **Mad-Pascal** is not a port of **FPC**. It has been written based on **SUB-Pascal** (2009) and **XD-Pascal** (2010), the author of which is [Vasiliy Tereshkov](mailto:vtereshkov@mail.ru).
 
-A program that works on Atari might have problems on **PC** if, for example, the pointers have not been initialized with the address of a variable and the program attempts to write to the address `$0000` (memory protection fault). 
+**MP** uses 64KB of primary memory. The class `TMemoryStream` provides access to extended memory. A program that works on **Atari 8-Bit** might have problems on **Windows** and other platforms if, for example, the pointers have not been initialized with the address of a variable. Writing via an uninitialized pointer results in an attempt to write to the address `0x0` and causes a memory protection fault.
 
-The strengths of **MP** include fast and convenient possibility of inclusion of inline assembly. A program using inline **ASM** does not work on platforms other than **6502 CPU**. **MP** uses 64KB of primary memory; `TMemoryStream` provides usage of extended memory.
+The strengths of **MP** include the fast and convenient possibility of including inline assembly. A program using inline **ASM** only works on platforms with **MOS 6502 CPU**.
 
-Variable allocation is static; there is no dynamic memory management. Parameters are passed to functions by value, variable or constant.
+Variable allocation is static. There is no dynamic memory management. Parameters are passed to functions by value, variable, or constant.
 
 The available features are:
 
@@ -22,16 +20,16 @@ The available features are:
 * Compound statements
 * `Label` `Goto` statements
 * Arithmetic and boolean operators
-* Procedures and functions with up to 8 parameters. Returned value of a function is assigned to a predefined `RESULT` variable
+* Procedures and functions with up to 8 parameters. The returned value of a function is assigned to a predefined `RESULT` variable
 * Static local variables
-* Primitive data types, all types except the `ShortReal`/`Real` type are compatible. Pointers are dereferenced as pointers to `Word`:
+* Primitive data types, all types except the `ShortReal` and `Real` types are compatible. Pointers are dereferenced as pointers to `Word`:
     * `Cardinal` `Word` `Byte` `Boolean`
     * `Integer` `SmallInt` `ShortInt`
     * `Char` `String` `PChar`
     * `Pointer` `File` `Text`
     * `ShortReal` `Real` [fixed-point](https://en.wikipedia.org/wiki/Fixed-point_arithmetic)
     * [`Float16`](https://en.wikipedia.org/wiki/Half-precision_floating-point_format)
-    * [`Single`](https://en.wikipedia.org/wiki/Single-precision_floating-point_format)
+    * [`Single`](https://en.wikipedia.org/wiki/Single-precision_floating-point_format) / Float
 * One-dimensional and Two-dimensional arrays (with zero lower bound) of any primitive type. Arrays are treated as pointers to their origins (like in C) and can be passed to subroutines as parameters
 * Predefined type `String` `[N]` which is equivalent to `array [0..N] of Char`
 * `Type` aliases
@@ -45,11 +43,11 @@ The available features are:
     fpc -MDelphi -vh -O3 mp.pas
 
 ## Usage
-[WUDSN + Mad Pascal](https://forums.atariage.com/topic/348660-wudsn-mad-pascal-quick-hack-increasing-usability/)
+[WUDSN and Mad Pascal](https://forums.atariage.com/topic/348660-wudsn-mad-pascal-quick-hack-increasing-usability/)
 
 [Mad Pascal i Geany](http://bocianu.atari.pl/blog/madgeany)
 
-### [Atari XE/XL](https://github.com/tebe6502/Mad-Pascal/tree/master/samples/a8)
+### [Atari 8-Bit](https://github.com/tebe6502/Mad-Pascal/tree/master/samples/a8)
     mp.exe filename.pas -ipath:<MadPascalPath>\lib
     mads.exe filename.a65 -x -i:<MadPascalPath>\base
 
@@ -58,7 +56,7 @@ BAT
     <MadPascalPath>\MP.exe %1 -ipath:<MadPascalPath>\lib -ipath:<MadPascalPath>\blibs
 
     if exist %~dp1%~n1.a65 (
-	    mads.exe "%~dp1%~n1.a65" -xli:<MadPascalPath>\base
+	    mads.exe "%~dp1%~n1.a65" -x -i:<MadPascalPath>\base
 	    if exist "%~dp1%~n1.obx" altirra "%~dp1%~n1.obx"
     )
 ```
@@ -70,6 +68,12 @@ BAT
 ### [Commodore Plus/4](https://github.com/tebe6502/Mad-Pascal/tree/master/samples/c4plus)
     mp.exe -t c4p filename.pas -ipath:<MadPascalPath>\lib
     mads.exe filename.a65 -x -i:<MadPascalPath>\base
+
+### [Neo6502](https://github.com/tebe6502/Mad-Pascal/tree/master/samples/neo6502)
+    mp.exe -t neo filename.pas -ipath:<MadPascalPath>\lib
+    mads.exe filename.a65 -x -i:<MadPascalPath>\base
+
+[Mad-Pascal for Neo6502](https://github.com/paulscottrobson/neo6502-firmware/wiki/Mad%E2%80%90Pascal-for-Neo6502)
     
 ### [RAW](https://github.com/tebe6502/Mad-Pascal/tree/master/samples/raw)
     mp.exe -t raw filename.pas -ipath:<MadPascalPath>\lib
@@ -79,7 +83,7 @@ BAT
 
 ### [MadStrap](http://bocianu.atari.pl/blog/madstrap)
 
-Simple Atari Mad-Pascal common project bootstrap.
+Simple Atari Mad-Pascal standard project bootstrap.
 
 Source code at [GitLab](https://gitlab.com/bocianu/madstrap)
 
@@ -87,17 +91,17 @@ Source code at [GitLab](https://gitlab.com/bocianu/madstrap)
 
 Set of custom libraries for MadPascal.
 
-Lastest documentation always at [GitLab]( https://bocianu.gitlab.io/blibs/)
+The latest documentation is always on [GitLab]( https://bocianu.gitlab.io/blibs/)
 
 ### [pasdoc](https://bocianu.atari.pl/blog/pasdoc)
 
-Custom tool for generating documentation from pascal comments in units.
+Custom tool for generating documentation from Pascal comments in units.
 
 Source code at [GitLab](https://gitlab.com/bocianu/pasdoc)
 
 ### [Effectus](https://github.com/Gury8/effectus) - Action! compiler
 
-In new version the source code is generated by using Mad Pascal cross-compiler, which is further compiled to binary code with Mad Assembler.
+The new version generates the source code using the Mad Pascal cross-compiler, which is further compiled into binary code with Mad Assembler.
 
 ### [Game tutorial](https://github.com/zbyti/a8-mp-simple-game-tutorial)
 
@@ -109,7 +113,7 @@ Display List program editor for 8-bit Atari ANTIC chipset
 
 ### [CutAs](https://gitlab.com/bocianu/cutas)
 
-Simple binary data manipulation tool written in javascript (export to Action!, Assembler, C, Pascal)
+Simple binary data manipulation tool written in JavaScript (export to Action!, Assembler, C, Pascal)
 
 ### [Bocianu's Atari Toolkit HUB](https://bocianu.gitlab.io/bathub/)
 
@@ -117,7 +121,7 @@ CutAs, FiDL, SprED, Sprite XL
 
 ### [A8 Mad-Pascal Window Library](https://github.com/Ripjetski6502/A8MadPascalLibrary)
 
-This is a text mode windowing library complete with window controls and modern gadgets (widgets). The gadgets allow you to build input forms that use buttons, radio buttons, input strings (with scrolled lengths and type restrictions), check boxes, progress bars, etc. This allows you to build applications with "modern"-ish interfaces.
+This text-mode windowing library has window controls and modern gadgets (widgets). The gadgets allow you to build input forms that use buttons, radio buttons, input strings (with scrolled lengths and type restrictions), check boxes, progress bars, etc. This allows you to build applications with "modern" interfaces.
 
 ## Projects in Mad-Pascal
 
@@ -126,10 +130,14 @@ This is a text mode windowing library complete with window controls and modern g
 * [zilch](https://gitlab.com/bocianu/zilch)
 * [justpong](https://gitlab.com/bocianu/justpong)
 * [hoppe](https://gitlab.com/bocianu/hoppe)
+* [Betty's Issues](https://www.mikej.de/game21.php)
 * [PacMad](https://gitlab.com/bocianu/PacMad)
+* [PacMad neo6502](https://gitlab.com/bocianu/neo-pacmad)
 * [k12trailer](https://gitlab.com/bocianu/k12trailer)
 * [gr10](https://gitlab.com/bocianu/gr10)
-* [oldmansion](https://gitlab.com/bocianu/oldmansion)
+* [Old Mansion](https://gitlab.com/bocianu/oldmansion)
+* [Old Mansion X16](https://github.com/MADRAFi/OldMansion)
+* [Old Mansion C64](https://gitlab.com/t-m/old_mansion_c64)
 * [artur](https://gitlab.com/bocianu/artur)
 * [jcq](https://gitlab.com/bocianu/jcq)
 * [Fujinet udp shoutbox](https://gitlab.com/bocianu/fujinet-udp-shoutbox)
@@ -159,6 +167,20 @@ This is a text mode windowing library complete with window controls and modern g
 * [ProHiBan](https://github.com/zbyti/ProHiBan)
 * [The Hangmad](https://gitlab.com/bocianu/thehangmad)
 * [Block Attack](https://github.com/tebe6502/Block-Attack)
+* [Dungeon Adventurer](https://gitlab.com/delysio/dungeon-adventurer/)
+* [Tetris neo6502](https://gitlab.com/bocianu/neo-tetris)
+* [µSoukoban](https://github.com/zbyti/pikoban)
+* [Time Wizard](https://gitlab.com/amarok8bit/time-wizard)
+* [run-fox-run](https://gitlab.com/bocianu/run-fox-run)
+* [Robots Rumble](https://github.com/tebe6502/robotsrumble)
+* [neo-sandbox](https://gitlab.com/bocianu/neo-sandbox)
+* [neo-swimo](https://gitlab.com/bocianu/neo-swimo)
+* [neo-solsuite](https://gitlab.com/bocianu/neo-solsuite)
+* [neo-mplib](https://gitlab.com/bocianu/neo-mplibs)
+* [Mafia](https://github.com/drunkeneye/MAFIA.A8)
+* [PokeyMAX](https://github.com/MADRAFi/PokeyMAX)
+* [PokeyMAX update tool](https://github.com/MADRAFi/PMAX_Update)
+* [rogul](https://gitlab.com/bocianu/rogul)
 
 ## Benchmarks
 
@@ -211,6 +233,8 @@ This is a text mode windowing library complete with window controls and modern g
 * [Turbo Pascal "Sokoban"](https://youtu.be/bsQsEM3TYTA)
 * [Tron +4. Mad Pascal i C+4](https://youtu.be/a4Y2TYj1ymg)
 * [Mad Pascal Commodore Plus/4 plasma effect with TEDzakker demo music](https://youtu.be/Yg10zHR--14)
+* [Dungeon Adventurer](https://youtu.be/7lLPm5MywPc)
+* [Time Wizard](https://youtu.be/E12bu5whjpQ)
 
 ## Pascal compilers for the Atari XE/XL computer 
 
@@ -218,4 +242,3 @@ This is a text mode windowing library complete with window controls and modern g
 * [Kyan Pascal](https://atariwiki.org/wiki/Wiki.jsp?page=Kyan%20Pascal)
 * [Draper Pascal](https://atariwiki.org/wiki/Wiki.jsp?page=Draper%20Pascal)
 * [CLSN Pascal](https://atariwiki.org/wiki/attach/Pascal/CLSN_Pascal-Manual.pdf)
-

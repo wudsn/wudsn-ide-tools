@@ -13,7 +13,7 @@
 
 
 .proc	@printEOL
-	ldy #eol
+	ldy #EOL
 	jmp @print
 .endp
 
@@ -35,8 +35,8 @@
 	cpy #0
 	beq empty
 
-	sta ztmp
-	sty ztmp+1
+	sta pchar
+	sty pchar+1
 
 	stx @sp
 
@@ -44,12 +44,12 @@
 	sta loop+1
 
 loop	ldy #0
-	lda (ztmp),y
+	lda pchar: $ffff,y
 	beq stop
 
 	inc loop+1
 	sne
-	inc ztmp+1
+	inc pchar+1
 
 	m@call	@putchar
 

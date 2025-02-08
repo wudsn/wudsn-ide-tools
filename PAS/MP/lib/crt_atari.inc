@@ -77,19 +77,26 @@ procedure TextBackground(a: byte); assembler;
 @param: a - color value 0..255
 *)
 asm
-;	mva a colpf2s
-
 	ldy #0
 
 	lda a
+
+	.if .def(@vbxe_detect)
+	sta colpf2s
+	eif
+
 	seq
 
 	ldy #$80
 
 	ora colpf1s
 	sta fildat
-
+	
+	.if .def(@vbxe_detect)
+	
+	els
 	sty MAIN.CRT.TextAttr
+	eif
 end;
 
 
@@ -182,10 +189,10 @@ asm
 	dey
 
 @	tya
-test	cmp #24
+test	cmp  MAIN.SYSTEM.SCREENHEIGHT
 	bcc @+
 
-	sbc #24
+	sbc MAIN.SYSTEM.SCREENHEIGHT
 	jmp test
 @
 	sta rowcrs

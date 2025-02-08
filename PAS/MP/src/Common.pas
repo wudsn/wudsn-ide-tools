@@ -8,7 +8,7 @@ interface
 
 const
 
-  title = '1.7.0';
+  title = '1.7.2';
 
   TAB = ^I;		// Char for a TAB
   CR  = ^M;		// Char for a CR
@@ -150,6 +150,7 @@ const
   GOTOTOK		= 113;
   INTOK			= 114;
   VOLATILETOK		= 115;
+  STRIPEDTOK		= 116;
 
 
   SETTOK		= 127;	// Size = 32 SET OF
@@ -174,7 +175,7 @@ const
   PCHARTOK		= 145;	// Size = 2 POINTER TO ARRAY OF CHAR
   ENUMTOK		= 146;	// Size = 1 BYTE
   PROCVARTOK		= 147;	// Size = 2
-  TEXTFILETOK		= 148;	// Size = 2/12 FILE
+  TEXTFILETOK		= 148;	// Size = 2/12 TEXTFILE
   FORWARDTYPE		= 149;	// Size = 2
 
   SHORTSTRINGTOK	= 150;	// zamieniamy na STRINGTOK
@@ -188,12 +189,13 @@ const
   DATAORIGINOFFSET	= 160;
   CODEORIGINOFFSET	= 161;
 
-  IDENTTOK		= 180;
-  INTNUMBERTOK		= 181;
-  FRACNUMBERTOK		= 182;
-  CHARLITERALTOK	= 183;
-  STRINGLITERALTOK	= 184;
+  IDENTTOK		= 170;
+  INTNUMBERTOK		= 171;
+  FRACNUMBERTOK		= 172;
+  CHARLITERALTOK	= 173;
+  STRINGLITERALTOK	= 174;
 
+  EVALTOK		= 184;
   LOOPUNROLLTOK		= 185;
   NOLOOPUNROLLTOK	= 186;
   LINKTOK		= 187;
@@ -217,11 +219,11 @@ const
   IntegerTypes		= UnsignedOrdinalTypes + SignedOrdinalTypes;
   OrdinalTypes		= IntegerTypes + [CHARTOK, BOOLEANTOK, ENUMTOK];
 
-  Pointers		= [POINTERTOK, PROCVARTOK, STRINGPOINTERTOK];
+  Pointers		= [POINTERTOK, PROCVARTOK, STRINGPOINTERTOK, PCHARTOK];
 
   AllTypes		= OrdinalTypes + RealTypes + Pointers;
 
-  StringTypes		= [STRINGLITERALTOK, STRINGTOK, PCHARTOK];
+  StringTypes		= [STRINGPOINTERTOK, STRINGLITERALTOK, PCHARTOK];
 
   // Identifier kind codes
 
@@ -243,13 +245,14 @@ const
   MAXFIELDS		= 256;
   MAXTYPES		= 1024;
 //  MAXTOKENS		= 32768;
+  MAXPOSSTACK		= 512;
   MAXIDENTS		= 16384;
   MAXBLOCKS		= 16384;	// maksymalna liczba blokow
   MAXPARAMS		= 8;		// maksymalna liczba parametrow dla PROC, FUNC
   MAXVARS		= 256;		// maksymalna liczba parametrow dla VAR
-  MAXUNITS		= 512;
-  MAXDEFINES		= 256;		// maksymalna liczba $DEFINE
+  MAXUNITS		= 2048;
   MAXALLOWEDUNITS	= 256;
+  MAXDEFINES		= 256;		// maksymalna liczba $DEFINE
 
   CODEORIGIN		= $100;
   DATAORIGIN		= $8000;
@@ -259,18 +262,19 @@ const
 
   // Indirection levels
 
-  ASVALUE		 = 0;
-  ASPOINTER		 = 1;
-  ASPOINTERTOPOINTER	 = 2;
-  ASPOINTERTOARRAYORIGIN = 3;
-  ASPOINTERTOARRAYORIGIN2= 4;
-  ASPOINTERTORECORD	 = 5;
-  ASPOINTERTOARRAYRECORD = 6;
-  ASSTRINGPOINTERTOARRAYORIGIN = 7;
-  ASPOINTERTODEREFERENCE = 8;
-  ASPOINTERTORECORDARRAYORIGIN = 9;
-  ASARRAYORIGINOFPOINTERTORECORDARRAYORIGIN = 10;
-  ASPOINTERTOARRAYRECORDTOSTRING = 11;
+  ASVALUE			= 0;
+  ASPOINTER			= 1;
+  ASPOINTERTOPOINTER		= 2;
+  ASPOINTERTOARRAYORIGIN	= 3;	// + GenerateIndexShift
+  ASPOINTERTOARRAYORIGIN2	= 4;	// - GenerateIndexShift
+  ASPOINTERTORECORD		= 5;
+  ASPOINTERTOARRAYRECORD	= 6;
+  ASSTRINGPOINTERTOARRAYORIGIN	= 7;
+  ASSTRINGPOINTER1TOARRAYORIGIN	= 8;
+  ASPOINTERTODEREFERENCE	= 9;
+  ASPOINTERTORECORDARRAYORIGIN	= 10;
+  ASARRAYORIGINOFPOINTERTORECORDARRAYORIGIN = 11;
+  ASPOINTERTOARRAYRECORDTOSTRING= 12;
 
   ASCHAR		= 6;	// GenerateWriteString
   ASBOOLEAN		= 7;
@@ -297,7 +301,30 @@ const
 
   // Data sizes
 
-  DataSize: array [BYTETOK..FORWARDTYPE] of Byte = (1,2,4,1,2,4,1,1,2,2,2,2,2,2,4,4,2,2,1,2,2,2);
+  DataSize: array [BYTETOK..FORWARDTYPE] of Byte = (
+  	1,	// Size = 1 BYTE
+  	2,	// Size = 2 WORD
+  	4,	// Size = 4 CARDINAL
+	1,	// Size = 1 SHORTINT
+	2,	// Size = 2 SMALLINT
+	4,	// Size = 4 INTEGER
+	1,	// Size = 1 CHAR
+	1,	// Size = 1 BOOLEAN
+	2,	// Size = 2 POINTER
+	2,	// Size = 2 POINTER to STRING
+	2,	// Size = 2 FILE
+	2,	// Size = 2 RECORD
+	2,	// Size = 2 OBJECT
+	2,	// Size = 2 SHORTREAL
+	4,	// Size = 4 REAL
+	4,	// Size = 4 SINGLE / FLOAT
+	2,	// Size = 2 HALFSINGLE / FLOAT16
+	2,	// Size = 2 PCHAR
+	1,	// Size = 1 BYTE
+	2,	// Size = 2 PROCVAR
+	2,	// Size = 2 TEXTFILE
+	2	// Size = 2 FORWARD
+	);
 
   fBlockRead_ParamType : array [1..3] of byte = (UNTYPETOK, WORDTOK, POINTERTOK);
 
@@ -306,46 +333,38 @@ const
 
 
 type
+
   ModifierCode = (mKeep = $100, mOverload= $80, mInterrupt = $40, mRegister = $20, mAssembler = $10, mForward = $08, mPascal = $04, mStdCall = $02, mInline = $01);
 
   irCode = (iDLI, iVBLD, iVBLI, iTIM1, iTIM2, iTIM4);
 
   ioCode = (ioOpenRead = 4, ioReadRecord = 5, ioRead = 7, ioOpenWrite = 8, ioAppend = 9, ioWriteRecord = 9, ioWrite = $0b, ioOpenReadWrite = $0c, ioFileMode = $f0, ioClose = $ff);
 
-  ErrorCode =
-  (
-  UnknownIdentifier, OParExpected, IdentifierExpected, IncompatibleTypeOf, UserDefined,
-  IdNumExpExpected, IncompatibleTypes, IncompatibleEnum, OrdinalExpectedFOR, CantAdrConstantExp,
-  VariableExpected, WrongNumParameters, OrdinalExpExpected, RangeCheckError, RangeCheckError_,
-  VariableNotInit, ShortStringLength, StringTruncated, TypeMismatch, CantReadWrite,
-  SubrangeBounds, TooManyParameters, CantDetermine, UpperBoundOfRange, HighLimit,
-  IllegalTypeConversion, IncompatibleTypesArray, IllegalExpression, AlwaysTrue, AlwaysFalse,
-  UnreachableCode, IllegalQualifier, LoHi
-  );
 
   code65 =
   (
 
-  __je, __jne, __jg, __jge, __jl, __jle,
+  __je, __jne,
+//  __jg, __jge, __jl, __jle,
   __putCHAR, __putEOL,
   __addBX, __subBX, __movaBX_Value,
   __imulECX,
-  __notaBX, //__negaBX, __notBOOLEAN,
+//  __notaBX, __negaBX, __notBOOLEAN,
   __addAL_CL, __addAX_CX, __addEAX_ECX,
   __shlAL_CL, __shlAX_CL, __shlEAX_CL,
   __subAL_CL, __subAX_CX, __subEAX_ECX,
-//  __cmpINT, __cmpEAX_ECX, __cmpAX_CX, __cmpSMALLINT, __cmpSHORTINT,
   __cmpSTRING, __cmpSTRING2CHAR, __cmpCHAR2STRING,
-  __shrAL_CL, __shrAX_CL, __shrEAX_CL,
-  __andEAX_ECX, __andAX_CX, //__andAL_CL,
-  __orEAX_ECX, __orAX_CX, //__orAL_CL,
-  __xorEAX_ECX, __xorAX_CX //__xorAL_CL
+  __shrAL_CL, __shrAX_CL, __shrEAX_CL
+
+//  __cmpINT, __cmpEAX_ECX, __cmpAX_CX, __cmpSMALLINT, __cmpSHORTINT,
+//  __andEAX_ECX, __andAX_CX, __andAL_CL,
+//  __orEAX_ECX, __orAX_CX, __orAL_CL,
+//  __xorEAX_ECX, __xorAX_CX __xorAL_CL
 
   );
 
   TString = string [MAXSTRLENGTH];
   TName   = string [MAXNAMELENGTH];
-
 
   TDefinesParam = array [1..MAXPARAMS] of TString;
 
@@ -388,8 +407,8 @@ type
   end;
 
   TToken = record
-    UnitIndex: Integer;
-    Line, Column: Integer;
+    UnitIndex, Column: Smallint;
+    Line: Integer;
     case Kind: Byte of
       IDENTTOK:
 	(Name: ^TString);
@@ -407,6 +426,8 @@ type
     Value: Int64;			// Value for a constant, address for a variable, procedure or function
     Block: Integer;			// Index of a block in which the identifier is defined
     UnitIndex : Integer;
+    Alias : TString;			// EXTERNAL alias 'libraries'
+    Libraries : Integer;		// EXTERNAL alias 'libraries'
     DataType: Byte;
     IdType: Byte;
     PassMethod: Byte;
@@ -433,7 +454,9 @@ type
 	 Param: TParamList;
 	 ProcAsBlock: Integer;
 	 ObjectIndex: Integer;
+
 	 IsUnresolvedForward,
+	 updateResolvedForward,
 	 isOverload,
 	 isRegister,
 	 isInterrupt,
@@ -445,6 +468,7 @@ type
 	 isExternal,
 	 isKeep,
 	 isVolatile,
+	 isStriped,
 	 IsNotDead: Boolean;);
 
       VARIABLE, USERTYPE:
@@ -498,26 +522,28 @@ type
 
   TArrayString = array of string;
 
+
 {$i targets/var.inc}
 
 
 var
 
   PROGRAM_NAME: string = 'Program';
+  LIBRARY_NAME: string;
 
   AsmBlock: array [0..4095] of string;
 
-  Data, DataSegment, StaticStringData: array [0..$FFFF] of Word;
+  Data, DataSegment, StaticStringData: array [0..$FFFF] of word;
 
   Types: array [1..MAXTYPES] of TType;
   Tok: array of TToken;
   Ident: array [1..MAXIDENTS] of TIdentifier;
   Spelling: array [1..MAXTOKENNAMES] of TString;
-  UnitName: array [1..MAXUNITS + MAXUNITS] of TUnit;
+  UnitName: array [1..MAXUNITS + MAXUNITS] of TUnit;	// {$include ...} -> UnitName[MAXUNITS..]
   Defines: array [1..MAXDEFINES] of TDefines;
   IFTmpPosStack: array of integer;
-  BreakPosStack: array [0..1023] of TPosStack;
-  CodePosStack: array [0..1023] of Word;
+  BreakPosStack: array [0..MAXPOSSTACK] of TPosStack;
+  CodePosStack: array [0..MAXPOSSTACK] of Word;
   BlockStack: array [0..MAXBLOCKS - 1] of Integer;
   CallGraph: array [1..MAXBLOCKS] of TCallGraphNode;	// For dead code elimination
 
@@ -529,35 +555,31 @@ var
   NumDefines: integer = 1;	// NumDefines = AddDefines
 
   i, NumIdent, NumTypes, NumPredefIdent, NumStaticStrChars, NumUnits, NumBlocks, run_func, NumProc,
-  BlockStackTop, CodeSize, CodePosStackTop, BreakPosStackTop, VarDataSize, Pass, ShrShlCnt, debug_cnt,
+  BlockStackTop, CodeSize, CodePosStackTop, BreakPosStackTop, VarDataSize, Pass, ShrShlCnt,
   NumStaticStrCharsTmp, AsmBlockIndex, IfCnt, CaseCnt, IfdefLevel: Integer;
 
   iOut: integer = -1;
 
   start_time: QWord;
 
-  CODEORIGIN_BASE: integer = $2000;
+  CODEORIGIN_BASE: integer = -1;
 
-   DATA_Atari: integer = -1;
-  ZPAGE_Atari: integer = -1;
-  STACK_Atari: integer = -1;
+   DATA_BASE: integer = -1;
+  ZPAGE_BASE: integer = -1;
+  STACK_BASE: integer = -1;
 
   UnitNameIndex: Integer = 1;
 
   FastMul: Integer = -1;
 
-  CPUMode: Integer = 6502;
-
   OutFile: TextFile;
 
-  asmLabels: array of integer;
-
-  TemporaryBuf: array [0..511] of string;
+  //AsmLabels: array of integer;
 
   resArray: array of TResource;
 
   MainPath, FilePath, optyA, optyY, optyBP2,
-  optyFOR0, optyFOR1, optyFOR2, optyFOR3, outTmp, outputFile: string;
+  optyFOR0, optyFOR1, optyFOR2, optyFOR3, outTmp, outputFile: TString;
 
   msgWarning, msgNote, msgUser, UnitPath, OptimizeBuf, LinkObj: TArrayString;
 
@@ -572,7 +594,7 @@ var
 	      end;
 
 
-  PROGRAMTOK_USE, INTERFACETOK_USE,
+  PROGRAMTOK_USE, INTERFACETOK_USE, LIBRARYTOK_USE, LIBRARY_USE, RCLIBRARY,
   OutputDisabled, isConst, isError, isInterrupt, IOCheck, Macros: Boolean;
 
   DiagMode: Boolean = false;
@@ -604,6 +626,8 @@ var
 	procedure CheckTok(i: integer; ExpectedTok: Byte);
 
 	procedure DefineStaticString(StrTokenIndex: Integer; StrValue: String);
+
+	procedure DefineFilename(StrTokenIndex: Integer; StrValue: String);
 
 	function ErrTokenFound(ErrTokenIndex: Integer): string;
 
@@ -648,16 +672,18 @@ uses SysUtils, Messages;
 // ----------------------------------------------------------------------------
 
 
-procedure NormalizePath(var Name: string);
+function NormalizePath(var Name: string): string;
 begin
+
+   Result := Name;
 
   {$IFDEF UNIX}
    if Pos('\', Name) > 0 then
-    Name := LowerCase(StringReplace(Name, '\', '/', [rfReplaceAll]));
+    Result := LowerCase(StringReplace(Name, '\', '/', [rfReplaceAll]));
   {$ENDIF}
 
   {$IFDEF LINUX}
-    Name := LowerCase(Name);
+    Result := LowerCase(Name);
   {$ENDIF}
 
 end;
@@ -671,7 +697,7 @@ function FindFile(Name: string; ftyp: TString): string; overload;
 var i: integer;
 begin
 
-  NormalizePath(Name);
+  Name := NormalizePath(Name);
 
   i:=0;
 
@@ -710,7 +736,7 @@ var i: integer;
     fnm: string;
 begin
 
-  NormalizePath(Name);
+  Name := NormalizePath(Name);
 
   i:=0;
 
@@ -966,7 +992,7 @@ end;
 procedure CheckArrayIndex(i: Integer; IdentIndex: Integer; ArrayIndex: Int64; ArrayIndexType: Byte);
 begin
 
-if Ident[IdentIndex].NumAllocElements > 0 then
+if (Ident[IdentIndex].NumAllocElements > 0) and (Ident[IdentIndex].AllocElementType <> RECORDTOK) then
  if (ArrayIndex < 0) or (ArrayIndex > Ident[IdentIndex].NumAllocElements-1 + ord(Ident[IdentIndex].DataType = STRINGPOINTERTOK)) then
   if Ident[IdentIndex].NumAllocElements <> 1 then warning(i, RangeCheckError, IdentIndex, ArrayIndex, ArrayIndexType);
 
@@ -1055,7 +1081,7 @@ CONSTRUCTORTOK: Result := 'CONSTRUCTOR';
     DATAORIGINOFFSET,
     CODEORIGINOFFSET: Result := 'POINTER';
 
-    PROCVARTOK: Result := '"<Procedure Variable>"';
+    PROCVARTOK: Result := '<Procedure Variable>';
 
  STRINGPOINTERTOK: Result := 'STRING';
 
@@ -1269,8 +1295,6 @@ begin
 
  if LeftType = UNTYPETOK then Result := RightType;
 
-// if LeftType in Pointers then Result :in Pointers;
-
  if Result = 0 then
    iError(ErrTokenIndex, IncompatibleTypes, 0, RightType, LeftType);
 
@@ -1281,45 +1305,52 @@ end;	//GetCommonType
 // ----------------------------------------------------------------------------
 
 
-procedure DefineStaticString(StrTokenIndex: Integer; StrValue: String);
-var
-  i, j, k, len: Integer;
-  yes: Boolean;
+procedure DefineFilename(StrTokenIndex: Integer; StrValue: String);
+var i: integer;
 begin
 
-Fillchar(Data, sizeof(Data), 0);
+  for i := 0 to High(linkObj) - 1 do
+   if linkObj[i] = StrValue then begin Tok[StrTokenIndex].Value := i; exit end;
 
-len:=Length(StrValue);
+  i := High(linkObj);
+  linkObj[i] := StrValue;
+
+  SetLength(linkObj, i+2);
+
+  Tok[StrTokenIndex].Value := i;
+
+end;
+
+
+// ----------------------------------------------------------------------------
+// ----------------------------------------------------------------------------
+
+procedure DefineStaticString(StrTokenIndex: Integer; StrValue: String);
+var
+  i, len: Integer;
+begin
+
+len := Length(StrValue);
 
 if len > 255 then
- Data[0]:=255
+ Data[0] := 255
 else
- Data[0]:=len;
+ Data[0] := len;
+
+if (NumStaticStrChars + len > $FFFF) then begin writeln('DefineStaticString: ', len); halt end;
 
 for i:=1 to len do Data[i] := ord(StrValue[i]);
 
-i:=0;
-j:=0;
-yes:=false;
+for i:=0 to NumStaticStrChars-len-1 do
+ if CompareWord(Data[0], StaticStringData[i], Len + 1) = 0 then begin
 
-while (i < NumStaticStrChars) and (yes=false) do begin
+  Tok[StrTokenIndex].StrLength := len;
+  Tok[StrTokenIndex].StrAddress := CODEORIGIN + i;
 
- j:=0;
- k:=i;
- while (Data[j] = StaticStringData[k+j]) and (j < len+2) and (k+j < NumStaticStrChars) do inc(j);
-
- if j = len+2 then begin yes:=true; Break end;
-
- inc(i);
-end;
+  exit;
+ end;
 
 Tok[StrTokenIndex].StrLength := len;
-
-if yes then begin
- Tok[StrTokenIndex].StrAddress := CODEORIGIN + i;
- exit;
-end;
-
 Tok[StrTokenIndex].StrAddress := CODEORIGIN + NumStaticStrChars;
 
 StaticStringData[NumStaticStrChars] := Data[0];//length(StrValue);
@@ -1331,8 +1362,8 @@ for i := 1 to len do
   Inc(NumStaticStrChars);
   end;
 
-StaticStringData[NumStaticStrChars] := 0;
-Inc(NumStaticStrChars);
+//StaticStringData[NumStaticStrChars] := 0;
+//Inc(NumStaticStrChars);
 
 end;	//DefineStaticString
 

@@ -13,9 +13,9 @@ begin
 
     if sta_stack(i) and										// sta :STACKORIGIN	; 0
        ldy_1(i+1) and										// ldy #1		; 1
-       lda_a(i+2) and (lda_stack(i+2) = false) and						// lda W		; 2
+       lda_val(i+2) and										// lda W		; 2
        cmp_stack(i+3) and									// cmp :STACKORIGIN	; 3
-       ((listing[i+4] = #9'beq @+') or (listing[i+4] = #9'bne @+')) and				// beq|bne @+		; 4
+       (beq_a(i+4) or bne_a(i+4)) and								// beq|bne @+		; 4
        dey(i+5) and										// dey			; 5
        lab_a(i+6) and										//@			; 6
        (tya(i+7) or sty(i+7)) then								// tya|sty		; 7
@@ -35,7 +35,7 @@ begin
        ldy_1(i+1) and										// ldy #1		; 1
        lda_stack(i+2) and									// lda :STACKORIGIN	; 2
        and_ora_eor(i+3) and									// ora:and:eor		; 3
-       ((listing[i+4] = #9'beq @+') or (listing[i+4] = #9'bne @+')) and				// beq|bne @+		; 4
+       (beq_a(i+4) or bne_a(i+4)) and								// beq|bne @+		; 4
        dey(i+5) and										// dey			; 5
        lab_a(i+6) and										//@			; 6
        (tya(i+7) or sty(i+7)) then								// tya|sty		; 7
@@ -48,13 +48,13 @@ begin
 
 
     if ldy_1(i) and										// ldy #1		; 0
-       lda_a(i+1) and (lda_stack(i+1) = false) and						// lda W+1		; 1
+       lda_val(i+1) and										// lda W+1		; 1
        cmp_im_0(i+2) and									// cmp #$00		; 2
-       (listing[i+3] = #9'bne @+') and								// bne @+		; 3
+       bne_a(i+3) and										// bne @+		; 3
        lda_a(i+4) and										// lda W		; 4
        cmp_im_0(i+5) and									// cmp #$00		; 5
        lab_a(i+6) and										//@			; 6
-       ((listing[i+7] = #9'beq @+') or (listing[i+7] = #9'bne @+')) and				// beq|bne @+		; 7
+       (beq_a(i+7) or bne_a(i+7)) and								// beq|bne @+		; 7
        dey(i+8) and										// dey			; 8
        lab_a(i+9) and										//@			; 9
        (tya(i+10) or sty(i+10)) and								// tya|sty		; 10
@@ -207,13 +207,13 @@ begin
 // 				     SHORTINT
 // -----------------------------------------------------------------------------
 
-    if (listing[i+8] = #9'.ENDL') and								// .ENDL		; 8
+    if ENDL(i+8) and										// .ENDL		; 8
        (beq(i+9) or bne(i+9)) and								// beq|bne		; 9
        dey(i+10) and										// dey			; 10
        lab_a(i+11) and										//@			; 11
        (sty(i+12) or tya(i+12)) and								// sty|tya		; 12
 
-       (listing[i] = #9'.LOCAL') and								// .LOCAL		; 0	SHORTINT <>	BNE
+       LOCAL(i) and										// .LOCAL		; 0	SHORTINT <>	BNE
        lda_a(i+1) and										// lda E		; 1	SHORTINT = 	BEQ
        sub(i+2) and										// sub			; 2
        (listing[i+3] = #9'beq L5') and								// beq L5		; 3
@@ -248,13 +248,13 @@ begin
 // 				     SMALLINT
 // -----------------------------------------------------------------------------
 
-    if (listing[i+15] = #9'.ENDL') and								// .ENDL		; 15
+    if ENDL(i+15) and										// .ENDL		; 15
        (beq(i+16) or bne(i+16)) and								// beq|bne		; 16
        dey(i+17) and										// dey			; 17
        lab_a(i+18) and										//@			; 18
        (sty(i+19) or tya(i+19)) and								// sty|tya		; 19
 
-       (listing[i] = #9'.LOCAL') and								// .LOCAL		; 0	SMALLINT <>	BNE
+       LOCAL(i) and										// .LOCAL		; 0	SMALLINT <>	BNE
        lda_a(i+1) and										// lda E+1		; 1	SMALLINT =	BEQ
        sub(i+2) and {(sub_stack(i+2) = false) and}						// sub 			; 2
        (listing[i+3] = #9'bne L4') and								// bne L4		; 3
@@ -306,13 +306,13 @@ begin
 // 				     INTEGER
 // -----------------------------------------------------------------------------
 
-    if (listing[i+22] = #9'.ENDL') and								// .ENDL		; 22
+    if ENDL(i+22) and										// .ENDL		; 22
        (beq(i+23) or bne(i+23)) and								// beq|bne		; 23
        dey(i+24) and										// dey			; 24
        lab_a(i+25) and										//@			; 25
        (sty(i+26) or tya(i+26)) and								// sty|tya		; 26
 
-       (listing[i] = #9'.LOCAL') and								// .LOCAL		; 0	INTEGER <>	BNE
+       LOCAL(i) and										// .LOCAL		; 0	INTEGER <>	BNE
        lda_a(i+1) and										// lda E+3		; 1	INTEGER =	BEQ
        sub(i+2) and {(sub_stack(i+2) = false) and}						// sub			; 2
        (listing[i+3] = #9'bne L4') and								// bne L4		; 3

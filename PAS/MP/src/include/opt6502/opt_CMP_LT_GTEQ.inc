@@ -109,7 +109,7 @@ begin
 
 
     if (SKIP(i-1) = false) and
-       lda_a(i) and (lda_stack(i) = false) and							// lda W+1		; 0	opt_081 | WORD < 0 ; >= 0
+       lda_val(i) and										// lda W+1		; 0	opt_081 | WORD < 0 ; >= 0
        cmp_im_0(i+1) and									// cmp #$00		; 1
        bne(i+2) and										// bne @+		; 2
        lda_a(i+3) and										// lda W		; 3
@@ -198,13 +198,13 @@ begin
 // 				     SHORTINT
 // -----------------------------------------------------------------------------
 
-    if (listing[i+8] = #9'.ENDL') and								// .ENDL		; 8
+    if ENDL(i+8) and										// .ENDL		; 8
        (bpl(i+9) or bmi(i+9)) and								// bpl|bmi		; 9
        dey(i+10) and										// dey			; 10
        lab_a(i+11) and										//@			; 11
        (sty(i+12) or tya(i+12)) and								// sty|tya		; 12
 
-       (listing[i] = #9'.LOCAL') and								// .LOCAL		; 0	SHORTINT >= $XX		BPL
+       LOCAL(i) and										// .LOCAL		; 0	SHORTINT >= $XX		BPL
        lda_a(i+1) and										// lda E		; 1	SHORTINT < $XX		BMI
        sub_im(i+2) and										// sub #		; 2
        (listing[i+3] = #9'beq L5') and								// beq L5		; 3
@@ -253,13 +253,13 @@ begin
       end;
 
 
-    if (listing[i+8] = #9'.ENDL') and								// .ENDL		; 8
+    if ENDL(i+8) and										// .ENDL		; 8
        (bpl(i+9) or bmi(i+9)) and								// bpl|bmi		; 9
        dey(i+10) and										// dey			; 10
        lab_a(i+11) and										//@			; 11
        (sty(i+12) or tya(i+12)) and								// sty|tya		; 12
 
-       (listing[i] = #9'.LOCAL') and								// .LOCAL		; 0	SHORTINT >= SHORTINT	BPL
+       LOCAL(i) and										// .LOCAL		; 0	SHORTINT >= SHORTINT	BPL
        lda_a(i+1) and										// lda E		; 1	SHORTINT < SHORTINT	BMI
        sub(i+2) and (sub_im(i+2) = false) and							// sub 			; 2
        (listing[i+3] = #9'beq L5') and								// beq L5		; 3
@@ -288,8 +288,8 @@ begin
 // -----------------------------------------------------------------------------
 
     if ldy_1(i) and 										// ldy #1		; 0	BOOL := SHORTINT < 0
-       lda_a(i+1) and (lda_stack(i+1) = false) and						// lda			; 1	BOOL := SMALLINT < 0
-       (listing[i+2] = #9'bmi @+') and								// bmi @+		; 2	BOOL := INTEGER < 0
+       lda_val(i+1) and										// lda			; 1	BOOL := SMALLINT < 0
+       bmi_a(i+2) and										// bmi @+		; 2	BOOL := INTEGER < 0
        dey(i+3) and										// dey			; 3
        lab_a(i+4) and										//@			; 4
        tya(i+5) and										// tya			; 5
@@ -308,13 +308,13 @@ begin
      end;
 
 
-    if (listing[i+15] = #9'.ENDL') and								// .ENDL		; 15
+    if ENDL(i+15) and										// .ENDL		; 15
        bmi(i+16) and										// bmi			; 16
        dey(i+17) and										// dey			; 17
        lab_a(i+18) and										//@			; 18
        (sty(i+19) or tya(i+19)) and								// sty|tya		; 19
 
-       (listing[i] = #9'.LOCAL') and								// .LOCAL		; 0	SMALLINT < #		BMI
+       LOCAL(i) and										// .LOCAL		; 0	SMALLINT < #		BMI
        lda_a(i+1) and										// lda E+1		; 1
        sub_im(i+2) and										// sub #		; 2
        (listing[i+3] = #9'bne L4') and								// bne L4		; 3
@@ -372,13 +372,13 @@ begin
       end;
 
 
-    if (listing[i+15] = #9'.ENDL') and								// .ENDL		; 15
-       bpl(i+16) and										// bmi			; 16
+    if ENDL(i+15) and										// .ENDL		; 15
+       bpl(i+16) and										// bpl			; 16
        dey(i+17) and										// dey			; 17
        lab_a(i+18) and										//@			; 18
        (sty(i+19) or tya(i+19)) and								// sty|tya		; 19
 
-       (listing[i] = #9'.LOCAL') and								// .LOCAL		; 0	SMALLINT >= #		BPL
+       LOCAL(i) and										// .LOCAL		; 0	SMALLINT >= #		BPL
        lda_a(i+1) and										// lda E+1		; 1
        sub_im(i+2) and										// sub #		; 2
        (listing[i+3] = #9'bne L4') and								// bne L4		; 3
@@ -427,13 +427,13 @@ begin
       end;
 
 
-    if (listing[i+15] = #9'.ENDL') and								// .ENDL		; 15
+    if ENDL(i+15) and										// .ENDL		; 15
        (bpl(i+16) or bmi(i+16)) and								// bpl|bmi		; 16
        dey(i+17) and										// dey			; 17
        lab_a(i+18) and										//@			; 18
        (sty(i+19) or tya(i+19)) and								// sty|tya		; 19
 
-       (listing[i] = #9'.LOCAL') and								// .LOCAL		; 0	SMALLINT < SMALLINT	BMI
+       LOCAL(i) and										// .LOCAL		; 0	SMALLINT < SMALLINT	BMI
        lda_a(i+1) and										// lda E+1		; 1	SMALLINT >= SMALLINT	BPL
        sub(i+2) and										// sub 			; 2
        (listing[i+3] = #9'bne L4') and								// bne L4		; 3
@@ -475,13 +475,13 @@ begin
 // 				     INTEGER
 // -----------------------------------------------------------------------------
 
-    if (listing[i+22] = #9'.ENDL') and								// .ENDL		; 22
+    if ENDL(i+22) and										// .ENDL		; 22
        (bpl(i+23) or bmi(i+23)) and								// bmi|bpl		; 23
        dey(i+24) and										// dey			; 24
        lab_a(i+25) and										//@			; 25
        (sty(i+26) or tya(i+26)) and								// sty|tya		; 26
 
-       (listing[i] = #9'.LOCAL') and								// .LOCAL		; 0	INTEGER < XXYYXXYY	BMI
+       LOCAL(i) and										// .LOCAL		; 0	INTEGER < XXYYXXYY	BMI
        lda_a(i+1) and										// lda E+3		; 1	INTEGER >= XXYYXXYY	BPL
        sub_im(i+2) and										// sub #		; 2
        (listing[i+3] = #9'bne L4') and								// bne L4		; 3
@@ -598,14 +598,14 @@ begin
       end;
 
 
-    if (listing[i+22] = #9'.ENDL') and								// .ENDL		; 22
+    if ENDL(i+22) and										// .ENDL		; 22
        (bpl(i+23) or bmi(i+23)) and								// bmi|bpl		; 23
        dey(i+24) and										// dey			; 24
        lab_a(i+25) and										//@			; 25
        tya(i+26) and										// tya			; 26
        (jeq(i+27) or jne(i+27)) and								// jeq|jne		; 27
 
-       (listing[i] = #9'.LOCAL') and								// .LOCAL		; 0	INTEGER < 		BMI
+       LOCAL(i) and										// .LOCAL		; 0	INTEGER < 		BMI
        lda_a(i+1) and										// lda E+3		; 1	INTEGER >= 		BPL
        sub(i+2) and {(sub_im(i+2) = false) and}							// sub			; 2
        (listing[i+3] = #9'bne L4') and								// bne L4		; 3

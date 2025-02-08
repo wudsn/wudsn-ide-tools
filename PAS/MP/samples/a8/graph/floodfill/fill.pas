@@ -1,4 +1,4 @@
-// 113 ticks	horizontal
+// 112 ticks	horizontal
 // 239 ticks	diamond
 
 program main;

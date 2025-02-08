@@ -1,3 +1,225 @@
+06.02.2025
+- INC/DEC striped array, absolute array optimization
+
+28.01.2025
+- poprawione moduły RMT, SAPLZSS
+- poprawiony plik base/atari/RESOURCE.ASM
+- dodany zasób RMTPLAY2, umożliwia ładowanie playera RMT pod ROM
+
+23.01.2025
+- optymalizacje, opt_TEMP_TAIL_IF, opt_TEMP_TAIL_CASE
+
+19.01.2025
+- optimizations
+
+15.01.2025
+- recursion in object fixed
+
+14.01.2025
+- optimizations
+
+11.01.2025
+- bugfixes
+
+08.01.2025
+- external alias fix
+
+07.01.2025
+- array ABSOLUTE bugfixes
+- optimizations
+
+04.01.2025
+- zasób XBMP wymaga teraz podania numeru palety (wcześniej domyślnie była wybierana paleta #1)
+
+03.01.2025
+- poprawiony odczyt pliku HEA dla etykiet EXTERNAL
+- base/atari/@vbxe_cmap.asm
+- VBXE: SetColorMapEntry
+
+01.01.2025
+- poprawiona alokocja pamieci dla tablic bez podanego rozmiaru (open array)
+
+28.12.2024
+- dla tablic [0..0] nie jest wymuszany wstępnie 'ABSOLUTE $0000', taka tablica nie jest alokowana w pamięci, zostaje zapisany tylko wskaźnik do takiej tablicy
+- optymalizacja szybkości dostepu do duzych tablic ABSOLUTE z liczbą elementów przekraczajaca 255 elementow
+
+16.12.2024
+- C flag optimization
+
+11.12.2024
+- SYSTEM.PAS: SQRT(single), SQRT(float16) szybsza i większa precyzja obliczeń
+
+01.12.2024
+- opt_TEMP_BOOLEAN_OR.inc
+
+28.10.2024
+- unit: dodana możliwość użycia bloku begin-end alternatywnie do initialization-end
+
+03.10.2024
+- Optimize.pas (rebuild) bugfixes
+
+02.10.2024
+- Optimize.pas (Rebuild) optymalizacja -> Continue
+
+30.09.2024
+- Optimize.pas (ElfHash), szybsze porównania stringów
+
+12.09.2024
+- CompileSimplesExpression -> (VarType in SignedOrdinalTypes + [BOOLEANTOK, REALTOK, HALFSINGLETOK, SINGLETOK])
+
+27.08.2024
+- Optimize.pas (Rebuild) bugfixes
+- 'for in' bugfixes
+
+22.08.2024
+- bugfixes
+
+19.08.2024
+- nowy unit FP, float-point OS
+
+14.08.2024
+- optymalizacja Optimize.pas -> Rebuild (50% szybsza kompilacja dla math/rijndael-test.pas)
+
+21.07.2024
+- OptimizeTemporaryBuf, 'mwa: -> mva' bugfix
+
+18.07.2024
+- poprawione kompilacja deklaracji rekordów 'CompileRecordDeclaration'
+
+07.07.2024
+- opt_ADD.inc, dodatkowe optymalizacje 'add|sub # + add|sub #'
+
+30.06.2024
+- poprawione LENGTH dla tablic ze wskaźnikiem do rekordu
+- poprawione CASE, możliwe użycie funkcji zwracajacej typ ENUM
+
+09.06.2024
+- dodana obsługa {$eval } dla inicjalizacji tablic o zadeklarowanym rozmiarze, np.:
+
+ array [0..15] of byte = ( {$eval 16,":1"} );
+
+08.06.2024
+- opt_TEMP_CMP_0, dodany test dla '#asm:'
+
+02.06.2024
+- SYSTEM, poprawione SQRT
+
+21.05.2024
+- bugifx CompileActualParameters, dodana zmienna old_i 'old_i:=i' zamiast 'j:=i', j było nadpisywane
+- Push ASPOINTERTOPOINTER, dopisany warunek 'and (Ident[IdentIndex].PassMethod <> VARPASSING)', rekordy w obiektach są prawidłowo adresowane
+
+19.05.2024
+- nowe przyklady kompresja/dekompresja LZW2, UNLZW, UPKR
+
+05.05.2024
+- dodana możliwość definiowania tablic 'open array' dla rekordów
+- dodana obsługa liczb HEX, BIN dla {$eval }
+- poprawiony sposob przekazywania tablic/recordow do proc/func
+- szybsze 'mulINTEGER' dla NEO
+
+26.04.2024
+- poprawiony odczyt adresu dla 'array of type = [ ]'
+- inicjalizacja 'open array' przez string nie dubluje go w pamięci
+
+14.04.2024
+- array of byte = [], tworzy tablice array [0..0]
+- nowa dyrektywa {$eval par1[,par2] , "expression"}
+- MATH: Power(real, real): real; Power(float16, float16): float16
+
+06.04.2024
+- przepisana obsługa typu SINGLE, bez udziału stosu programowego
+
+04.04.2024
+- nowy moduł PP (Power Packer decompressor)
+- nowy zasób PP (Power Packer file), modyfikuje plik *.PP aby dekompresor mógł zadziałać
+
+01.04.2024
+- nowy przełącznik -cpu [6502, 65c02, 65816]
+
+31.03.2024
+- poprawki PCHAR, PSTRING
+
+29.03.2024
+- umożliwione przekazywanie znaku (CHARLITERLATOK) jako STRING do procedur/funkcji
+
+19.03.2024
+- {$f page} powoduje dodanie {$define fastmul}
+- opt_TEMP_WHILE poprawione
+
+12.03.2024
+- poprawione LENGTH dla length(array_with_records[ ].string), length(char), length('literal')
+- unit FASTMATH: FASTDIV, FASTDIVS
+- rezerwacja pamięci dla IOCB@COPY tylko gdy etykieta @CmdLine jest zdefiniowana
+
+09.03.2024
+- [striped] dla tablic typu WORD, POINTER, CARDINAL, SMALLINT, INTEGER
+
+05.03.2024
+- poprawione @moveSTRING (base\strmove.asm)
+- poprawione GetIdent (Pasrser.pas), nie faworyzuje modułu SYSTEM
+
+04.03.2024
+- naprawiona alokacja tablic z rekordami absolute
+- naprawione przekazywanie CHAR gdy parametrem jest STRING
+
+03.03.2024
+- możliwość używania procedur/funkcji overload z LIBRARY
+
+28.02.2024
+- Bugfixes
+- @buf dostępne z poziomu MP (__BUFFER)
+
+24.02.2024
+- optymalizacje fastmul, base\common\byte.asm, base\common\word.asm
+
+20.02.2024
+- function without assignment at end block, optimization fixed
+- TestName, ExtractName fixed
+
+19.02.2024
+- Bugfixes
+- uses
+- extractname
+
+16.02.2024
+- dodana możliwość ustawienia adresu kompilacji z poziomu programu, np.:
+
+  program name : address;
+  library name : address;
+
+15.02.2024
+- issue #134 fixed (https://github.com/tebe6502/Mad-Pascal/issues/134)
+- partialy added LIBRARY, EXTERNAL
+
+09.02.2024
+- issue #125 fixed again (Optimize.pas -> OptimizeProgram)
+
+08.02.2024
+- Bugfixes
+
+04.02.2024
+- bocianu dodał nowy target 'neo6502' (-t neo)
+
+30.01.2024
+- issue #127 fixed (https://github.com/tebe6502/Mad-Pascal/issues/127)
+
+27.01.2024
+- poprawione typy proceduralne w tablicach
+
+24.01.2024
+- issue #103 fixed (https://github.com/tebe6502/Mad-Pascal/issues/103)
+- IFTMP_xxxx (opt_TEMP_IFTMP.inc) bugfixes
+
+23.01.2024
+- poprawione procedure/function forward
+
+20.01.2024
+- issue #125 fixed (https://github.com/tebe6502/Mad-Pascal/issues/125)
+- issue #126 fixed (https://github.com/tebe6502/Mad-Pascal/issues/126)
+
+13.01.2024
+- unit Common, procedure DefineStaticString, usunięty ostatni nadmiarowy bajt ciągu znakowego
+
 31.12.2023
 - Bugfixes
 - FASTGRAPH: HLine
@@ -27,7 +249,7 @@
 
    proc;
 
-  end; 
+  end;
 
 
 22.11.2023

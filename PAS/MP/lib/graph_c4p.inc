@@ -30,7 +30,6 @@ begin
 ;Used registers: X, Y.
 ;Real address: $E505.
 
-
     lda <320
     ldx >320
     ldy #200
@@ -40,7 +39,7 @@ begin
 
  end;
 
- VideoRam := $6000;
+ VideoRam := pointer($6000);
 
  fillchar(pointer($5000), 1024, 3);
 

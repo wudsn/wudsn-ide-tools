@@ -30,7 +30,7 @@
 		sbc :STACKORIGIN-1+STACKWIDTH,x
 		sta :eax+3
 @
-	jmp movaBX_EAX
+	jmp @movaBX_EAX
 .endp
 
 
@@ -42,51 +42,42 @@
 A	= :EAX
 B	= :ECX
 
-	ldy #0
+	lda A+1
+	eor B+1
+	php
 
 	lda A+1				; dividend sign
 	bpl @+
-	
-	lda #$00
-	sub A
-	sta A
 
-	lda #$00
-	sbc A+1
-	sta A+1
+	jsr @negAX
 
-	iny
+;	lda #$00
+;	sub A
+;	sta A
+;
+;	lda #$00
+;	sbc A+1
+;	sta A+1
 @
 	lda B+1				; divisor sign
 	bpl @+
 
-	lda #$00
-	sub B
-	sta B
+	jsr @negCX
 
-	lda #$00
-	sbc B+1
-	sta B+1
-
-	iny
+;	lda #$00
+;	sub B
+;	sta B
+;
+;	lda #$00
+;	sbc B+1
+;	sta B+1
 @
-	tya
-	and #1
-	pha
-
 	jsr @WORD.DIV
 
-	pla
-	beq @+
+	plp
+	spl
+	jmp @negAX
 
-	lda #$00
-	sub :eax
-	sta :eax
-
-	lda #$00
-	sbc :eax+1
-	sta :eax+1
-@
 	rts
 .endp
 
@@ -101,39 +92,37 @@ B	= :ECX
 
 RESULT	= :ZTMP
 
-	ldy #0
-
 	lda A+1				; dividend sign
+	php
 	bpl @+
-	
-	lda #$00
-	sub A
-	sta A
 
-	lda #$00
-	sbc A+1
-	sta A+1
+	jsr @negAX
 
-	iny
+;	lda #$00
+;	sub A
+;	sta A
+;
+;	lda #$00
+;	sbc A+1
+;	sta A+1
 @
 	lda B+1				; divisor sign
 	bpl @+
 
-	lda #$00
-	sub B
-	sta B
+	jsr @negCX
 
-	lda #$00
-	sbc B+1
-	sta B+1
+;	lda #$00
+;	sub B
+;	sta B
+;
+;	lda #$00
+;	sbc B+1
+;	sta B+1
 @
-	tya
-	pha
-
 	jsr @WORD.DIV
 
-	pla
-	beq @+
+	plp
+	bpl @+
 
 	lda #$00
 	sub RESULT

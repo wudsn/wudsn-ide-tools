@@ -75,7 +75,7 @@ var TempIndex: integer;
    Result := false;
 
    if Ident[IdentIndex].Section then
-    for i := 1 to MAXALLOWEDUNITS do
+    for i := MAXALLOWEDUNITS downto 1 do
       if UnitName[Index].Allow[i] = UnitName[Ident[IdentIndex].UnitIndex].Name then exit(true);
 
   end;
@@ -88,7 +88,7 @@ var TempIndex: integer;
     Result := 0;
 
     for BlockStackIndex := BlockStackTop downto 0 do       // search all nesting levels from the current one to the most outer one
-    for IdentIndex := NumIdent downto 1 do
+    for IdentIndex := 1 to NumIdent do
       if (X = Ident[IdentIndex].Name) and (BlockStack[BlockStackIndex] = Ident[IdentIndex].Block) then
 	if (Ident[IdentIndex].UnitIndex = UnitIndex) {or Ident[IdentIndex].Section} or (Ident[IdentIndex].UnitIndex = 1) or (UnitName[Ident[IdentIndex].UnitIndex].Name = 'SYSTEM') or UnitAllowedAccess(IdentIndex, UnitIndex) then begin
 	  Result := IdentIndex;
@@ -96,7 +96,7 @@ var TempIndex: integer;
 
 	  if pos('.', X) > 0 then GetIdent(copy(X, 1, pos('.', X)-1));
 
-	  if (Ident[IdentIndex].UnitIndex = UnitIndex) or (Ident[IdentIndex].UnitIndex = 1) or (UnitName[Ident[IdentIndex].UnitIndex].Name = 'SYSTEM') then exit;
+	  if (Ident[IdentIndex].UnitIndex = UnitIndex) or (Ident[IdentIndex].UnitIndex = 1){ or (UnitName[Ident[IdentIndex].UnitIndex].Name = 'SYSTEM')} then exit;
 	end
 
   end;
@@ -109,7 +109,7 @@ var TempIndex: integer;
     Result := 0;
 
     for BlockStackIndex := BlockStackTop downto 0 do       // search all nesting levels from the current one to the most outer one
-    for IdentIndex := NumIdent downto 1 do
+    for IdentIndex := 1 to NumIdent do
       if (X = Ident[IdentIndex].Name) and (BlockStack[BlockStackIndex] = Ident[IdentIndex].Block) then
 	if (Ident[IdentIndex].UnitIndex = UnitIndex) or UnitAllowedAccess(IdentIndex, UnitIndex) then begin
 	  Result := IdentIndex;
@@ -413,6 +413,8 @@ procedure SaveToDataSegment(ConstDataSize: integer; ConstVal: Int64; ConstValTyp
 var ftmp: TFloat;
 begin
 
+	if (ConstDataSize < 0) or (ConstDataSize > $FFFF) then begin writeln('SaveToDataSegment: ', ConstDataSize); halt end;
+
 ftmp[0]:=0;
 ftmp[1]:=0;
 
@@ -421,7 +423,7 @@ ftmp[1]:=0;
 	  SHORTINTTOK, BYTETOK, CHARTOK, BOOLEANTOK:
 		       DataSegment[ConstDataSize] := byte(ConstVal);
 
-	  SMALLINTTOK, WORDTOK, SHORTREALTOK, POINTERTOK, STRINGPOINTERTOK:
+	  SMALLINTTOK, WORDTOK, SHORTREALTOK, POINTERTOK, STRINGPOINTERTOK, PCHARTOK:
 		       begin
 			DataSegment[ConstDataSize]   := byte(ConstVal);
 			DataSegment[ConstDataSize+1] := byte(ConstVal shr 8);
@@ -559,6 +561,7 @@ begin
  ftmp[1]:=0;
 
  fl:=0;
+ j:=0;
 
 // WRITELN(tok[i].line, ',', tok[i].kind);
 
@@ -568,7 +571,7 @@ case Tok[i].Kind of
     begin
      CheckTok(i + 1, OPARTOK);
 
-     if Tok[i + 2].Kind in AllTypes + [STRINGTOK] then begin
+     if Tok[i + 2].Kind in AllTypes {+ [STRINGTOK]} then begin
 
       ConstValType := Tok[i + 2].Kind;
 
@@ -576,7 +579,7 @@ case Tok[i].Kind of
 
      end else begin
 
-      i:=CompileConstExpression(i + 2, ConstVal, ConstValType);
+      i := CompileConstExpression(i + 2, ConstVal, ConstValType);
 
       if isError then Exit;
 
@@ -600,7 +603,7 @@ case Tok[i].Kind of
     begin
      CheckTok(i + 1, OPARTOK);
 
-     if Tok[i + 2].Kind in AllTypes + [STRINGTOK] then begin
+     if Tok[i + 2].Kind in AllTypes {+ [STRINGTOK]} then begin
 
       ConstValType := Tok[i + 2].Kind;
 
@@ -608,7 +611,7 @@ case Tok[i].Kind of
 
      end else begin
 
-      i:=CompileConstExpression(i + 2, ConstVal, ConstValType);
+      i := CompileConstExpression(i + 2, ConstVal, ConstValType);
 
       if isError then Exit;
 
@@ -659,7 +662,13 @@ case Tok[i].Kind of
 	   exit;
 
 	   end else begin
-	    ConstVal:=Ident[IdentIndex].NumAllocElements;
+
+//	writeln(Ident[IdentIndex].name,',',Ident[IdentIndex].DataType,',',Ident[IdentIndex].NumAllocElements,'/',Ident[IdentIndex].NumAllocElements_,',',Ident[IdentIndex].AllocElementType );
+
+	    if (Ident[IdentIndex].DataType = POINTERTOK) and (Ident[IdentIndex].AllocElementType in [RECORDTOK, OBJECTTOK]) then
+	      ConstVal:=Ident[IdentIndex].NumAllocElements_
+	    else
+	      ConstVal:=Ident[IdentIndex].NumAllocElements;
 
 	    ConstValType := GetValueType(ConstVal);
 	   end;
@@ -696,7 +705,7 @@ case Tok[i].Kind of
       if Tok[i + 2].Kind <> IDENTTOK then
         iError(i + 2, IdentifierExpected);
 
-      j:=CompileConstExpression(i + 2, ConstVal, ConstValType);
+      j := CompileConstExpression(i + 2, ConstVal, ConstValType);
 
       if isError then Exit;
 
@@ -1068,8 +1077,15 @@ case Tok[i].Kind of
 			isError := true;
 			exit(0);
 
-		     end else
+		     end else begin
 	   	      ConstVal := Ident[IdentIndex].Value;
+
+		      if ConstVal < 0 then begin
+			isError := true;
+			exit(0);
+		      end;
+
+		     end;
 
 
 		    end else begin
@@ -1159,55 +1175,53 @@ case Tok[i].Kind of
 
   INTNUMBERTOK:
     begin
-    ConstVal := Tok[i].Value;
-    ConstValType := GetValueType(ConstVal);
-    Result := i;
+     ConstVal := Tok[i].Value;
+     ConstValType := GetValueType(ConstVal);
+
+     Result := i;
     end;
 
 
   FRACNUMBERTOK:
     begin
-    ftmp[0] := round( Tok[i].FracValue * TWOPOWERFRACBITS );
-    ftmp[1] := integer( Tok[i].FracValue );
+     ftmp[0] := round( Tok[i].FracValue * TWOPOWERFRACBITS );
+     ftmp[1] := integer( Tok[i].FracValue );
 
-    move(ftmp, ConstVal, sizeof(ftmp));
+     move(ftmp, ConstVal, sizeof(ftmp));
 
-    ConstValType := REALTOK;
-    Result := i;
+     ConstValType := REALTOK;
+
+     Result := i;
     end;
 
 
   STRINGLITERALTOK:
     begin
-    ConstVal := Tok[i].StrAddress - CODEORIGIN + CODEORIGIN_BASE;
-
-{    if Tok[i].StrLength > 255 then begin
-     ConstValType := POINTERTOK;
-     inc(ConstVal);
-    end else}
+     ConstVal := Tok[i].StrAddress - CODEORIGIN + CODEORIGIN_BASE;
      ConstValType := STRINGPOINTERTOK;
 
-    Result := i;
+     Result := i;
     end;
 
 
   CHARLITERALTOK:
     begin
-    ConstVal := Tok[i].Value;
-    ConstValType := CHARTOK;
-    Result := i;
+     ConstVal := Tok[i].Value;
+     ConstValType := CHARTOK;
+
+     Result := i;
     end;
 
 
   OPARTOK:       // a whole expression in parentheses suspected
     begin
-    j := CompileConstExpression(i + 1, ConstVal, ConstValType);
+     j := CompileConstExpression(i + 1, ConstVal, ConstValType);
 
-    if isError then Exit;
+     if isError then Exit;
 
-    CheckTok(j + 1, CPARTOK);
+     CheckTok(j + 1, CPARTOK);
 
-    Result := j + 1;
+     Result := j + 1;
     end;
 
 
@@ -1227,62 +1241,8 @@ case Tok[i].Kind of
 
     end;
 
-{
-  SHORTREALTOK:					// SHORTREAL	fixed-point	Q8.8
-    begin
 
-    CheckTok(i + 1, OPARTOK);
-
-    j := CompileConstExpression(i + 2, ConstVal, ConstValType);
-
-    if isError then exit;
-
-    if ConstValType = SINGLETOK then begin
-     isError := false;
-     isConst := false;
-
-     iError(i, IncompatibleTypes, 0, ConstValType, SHORTREALTOK);
-
-    end else
-    if not(ConstValType in RealTypes) then
-      ConstVal := ConstVal * TWOPOWERFRACBITS;
-
-    CheckTok(j + 1, CPARTOK);
-
-    ConstValType := SHORTREALTOK;
-
-    Result := j + 1;
-    end;
-
-
-  REALTOK:					// REAL		fixed-point	Q24.8
-    begin
-
-    CheckTok(i + 1, OPARTOK);
-
-    j := CompileConstExpression(i + 2, ConstVal, ConstValType);
-
-    if isError then exit;
-
-    if ConstValType = SINGLETOK then begin
-     isError := false;
-     isConst := false;
-
-     iError(i, IncompatibleTypes, 0, ConstValType, REALTOK);
-
-    end else
-    if not(ConstValType in RealTypes) then
-      ConstVal := ConstVal * TWOPOWERFRACBITS;
-
-    CheckTok(j + 1, CPARTOK);
-
-    ConstValType := REALTOK;
-
-    Result := j + 1;
-    end;
-}
-
-  SHORTREALTOK, REALTOK, SINGLETOK, HALFSINGLETOK:			// Q8.8 ; Q16.16 ; SINGLE 32bit ; FLOAT16
+  SHORTREALTOK, REALTOK, SINGLETOK, HALFSINGLETOK:			// Q8.8 ; Q24.8 ; SINGLE 32bit ; FLOAT16
     begin
 
     CheckTok(i + 1, OPARTOK);
@@ -1302,12 +1262,17 @@ case Tok[i].Kind of
     end;
 
 
-  INTEGERTOK, CARDINALTOK, SMALLINTTOK, WORDTOK, CHARTOK,  PCHARTOK, SHORTINTTOK, BYTETOK, BOOLEANTOK, POINTERTOK, STRINGPOINTERTOK:	// type conversion operations
+  INTEGERTOK, CARDINALTOK, SMALLINTTOK, WORDTOK, CHARTOK, PCHARTOK, SHORTINTTOK, BYTETOK, BOOLEANTOK, POINTERTOK, STRINGPOINTERTOK:	// type conversion operations
     begin
 
     CheckTok(i + 1, OPARTOK);
 
-    j := CompileConstExpression(i + 2, ConstVal, ConstValType);
+
+    if (Tok[i + 2].Kind = IDENTTOK) and (Ident[GetIdent(Tok[i + 2].Name^)].Kind = FUNCTIONTOK) then
+     isError := TRUE
+    else
+     j := CompileConstExpression(i + 2, ConstVal, ConstValType);
+
 
     if isError then exit;
 
@@ -1719,6 +1684,9 @@ else
    NumAllocElements_ := NumAllocElements shr 16;		// , yy]
    NumAllocElements  := NumAllocElements and $FFFF;		// [xx,
 
+
+//   if name = 'CH_EOL' then writeln( Ident[NumIdent].Block ,',', Ident[NumIdent].unitindex, ',',  Ident[NumIdent].Section,',', Ident[NumIdent].idType);
+
   if Name <> 'RESULT' then
    if (NumIdent > NumPredefIdent + 1) and (UnitNameIndex = 1) and (Pass = CODEGENERATIONPASS) then
      if not ( (Ident[NumIdent].Pass in [CALLDETERMPASS , CODEGENERATIONPASS]) or (Ident[NumIdent].IsNotDead) ) then
@@ -1762,13 +1730,15 @@ else
        else
        if (DataType in [FILETOK, TEXTFILETOK]) and (NumAllocElements > 0) then
 	VarDataSize := VarDataSize + 12
-       else
-	VarDataSize := VarDataSize + integer(Elements(NumIdent) * DataSize[AllocElementType]);
+       else begin
 
+        if (Ident[NumIdent].idType = ARRAYTOK) and (Ident[NumIdent].isAbsolute = false) and (Elements(NumIdent) = 1) then	// [0..0] ; [0..0, 0..0]
 
-//       if (DataType = POINTERTOK) and (AllocElementType in [RECORDTOK, OBJECTTOK]) and (NumAllocElements_ > 0) then
-//	dec(VarDataSize, DataSize[DataType])
-//       else
+	else
+ 	  VarDataSize := VarDataSize + integer(Elements(NumIdent) * DataSize[AllocElementType]);
+
+       end;
+
 
        if NumAllocElements > 0 then dec(VarDataSize, DataSize[DataType]);
 
@@ -1823,7 +1793,8 @@ var  VarOfSameType: TVariableList;
 
 begin
 
-      FillChar(VarOfSameType, sizeof(VarOfSameType), 0);
+      //FillChar(VarOfSameType, sizeof(VarOfSameType), 0);
+      VarOfSameType:=Default(TVariableList);
 
       inc(NumProc);
 
@@ -1976,7 +1947,8 @@ var  VarOfSameType: TVariableList;
      NumAllocElements: cardinal;
 begin
 
-    FillChar(VarOfSameType, sizeof(VarOfSameType), 0);
+    //FillChar(VarOfSameType, sizeof(VarOfSameType), 0);
+    VarOfSameType:=Default(TVariableList);
 
     if ForwardIdentIndex = 0 then begin
 
@@ -2202,6 +2174,31 @@ begin
 			   Ident[NumIdent].isExternal := true;
 			   isForward := true;
 			   inc(i);
+
+			   Ident[NumIdent].Alias := '';
+			   Ident[NumIdent].Libraries := 0;
+
+			   if Tok[i + 1].Kind = IDENTTOK then begin
+
+			    Ident[NumIdent].Alias := Tok[i + 1].Name^;
+
+			    if Tok[i + 2].Kind = STRINGLITERALTOK then begin
+			      Ident[NumIdent].Libraries := i + 2;
+
+			      inc(i);
+			    end;
+
+			    inc(i);
+
+			   end else
+			   if Tok[i + 1].Kind = STRINGLITERALTOK then begin
+
+			     Ident[NumIdent].Alias := Ident[NumIdent].Name;
+			     Ident[NumIdent].Libraries := i + 1;
+
+			     inc(i);
+			   end;
+
 			   CheckTok(i + 1, SEMICOLONTOK);
 			 end;
 
@@ -2226,6 +2223,9 @@ begin
 
   if Ident[NumIdent].isInline and (Ident[NumIdent].isInterrupt) then
    Error(i, 'Procedure directive "INTERRUPT" cannot be used with "INLINE"');
+
+  if Ident[NumIdent].isInline and (Ident[NumIdent].isExternal) then
+   Error(i, 'Procedure directive "EXTERNAL" cannot be used with "INLINE"');
 
 //  if Ident[NumIdent].isInterrupt and (Ident[NumIdent].isAsm = false) then
 //    Note(i, 'Use assembler block instead pascal');
@@ -2376,7 +2376,7 @@ if Tok[i].Kind = DEREFERENCETOK then begin				// ^type
   if (IdentIndex > 0) and (Ident[IdentIndex].DataType in [RECORDTOK, OBJECTTOK] + Pointers) then begin
     NumAllocElements := Ident[IdentIndex].NumAllocElements;
 
-//    writeln(Ident[IdentIndex].Name,',',Ident[IdentIndex].DataType,',',Ident[IdentIndex].AllocElementType,',',Ident[IdentIndex].NumAllocElements,',',Ident[IdentIndex].NumAllocElements_ shl 16 );
+//	writeln(Ident[IdentIndex].Name,',',Ident[IdentIndex].DataType,',',Ident[IdentIndex].AllocElementType,',',Ident[IdentIndex].NumAllocElements,',',Ident[IdentIndex].NumAllocElements_ shl 16 );
 
 {
     if Ident[IdentIndex].DataType in Pointers then begin
@@ -2412,7 +2412,7 @@ if Tok[i].Kind = DEREFERENCETOK then begin				// ^type
 
  end else begin
 
-  if not (Tok[i + 1].Kind in OrdinalTypes + RealTypes) then
+  if not (Tok[i + 1].Kind in OrdinalTypes + RealTypes + [POINTERTOK]) then
    iError(i + 1, IdentifierExpected);
 
   NumAllocElements := 0;
@@ -2815,36 +2815,25 @@ end else// if OBJECTTOK
 end else// if RECORDTOK
 
 // -----------------------------------------------------------------------------
-//			OrdinalTypes + RealTypes + Pointers
-// -----------------------------------------------------------------------------
-
-if Tok[i].Kind in AllTypes then
-  begin
-  DataType := Tok[i].Kind;
-  NumAllocElements := 0;
-  AllocElementType := 0;
-  Result := i;
-  end
-
-// -----------------------------------------------------------------------------
 //				PCHAR
 // -----------------------------------------------------------------------------
 
-else if Tok[i].Kind = PCHARTOK then					// PChar
+if Tok[i].Kind = PCHARTOK then						// PChar
   begin
+
   DataType := POINTERTOK;
   AllocElementType := CHARTOK;
 
   NumAllocElements := 0;
 
   Result:=i;
- end	// Pchar
+ end else // Pchar
 
 // -----------------------------------------------------------------------------
 //				STRING
 // -----------------------------------------------------------------------------
 
-else if Tok[i].Kind = STRINGTOK then					// String
+ if Tok[i].Kind = STRINGTOK then					// String
   begin
   DataType := STRINGPOINTERTOK;
   AllocElementType := CHARTOK;
@@ -2873,8 +2862,34 @@ else if Tok[i].Kind = STRINGTOK then					// String
   if UpperBound>255 then
    iError(i, SubrangeBounds);
 
-  end	// if STRINGTOK
+  end// if STRINGTOK
 else
+
+
+
+
+// -----------------------------------------------------------------------------
+// this place is for new types
+// -----------------------------------------------------------------------------
+
+
+
+
+
+
+
+// -----------------------------------------------------------------------------
+//			OrdinalTypes + RealTypes + Pointers
+// -----------------------------------------------------------------------------
+
+if Tok[i].Kind in AllTypes then
+  begin
+  DataType := Tok[i].Kind;
+  NumAllocElements := 0;
+  AllocElementType := 0;
+
+  Result := i;
+ end else
 
 // -----------------------------------------------------------------------------
 //					ARRAY
@@ -2967,8 +2982,8 @@ else
   end;
 
 
-  if (NumAllocElements shr 16) * (NumAllocElements and $0000FFFF) * DataSize[NestedDataType] > 40960-1 then
-    Error(i, 'Array [0..' + IntToStr(NumAllocElements and $0000FFFF-1)+', 0..' + IntToStr(NumAllocElements shr 16-1)+'] size exceeds available RAM');
+  if (NumAllocElements shr 16) * (NumAllocElements and $FFFF) * DataSize[NestedDataType] > 40960-1 then
+    Error(i, 'Array [0..' + IntToStr(NumAllocElements and $FFFF-1)+', 0..' + IntToStr(NumAllocElements shr 16-1)+'] size exceeds available RAM');
 
 
 // sick3

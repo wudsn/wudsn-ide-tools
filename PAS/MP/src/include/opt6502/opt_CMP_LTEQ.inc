@@ -23,7 +23,7 @@ begin
        lda_a(i+9) and										// lda K		; 9
        cmp_im(i+10) and										// cmp #		; 10
        lab_a(i+11) and										//@			; 11
-       (listing[i+12] = #9'bcc @+') and								// bcc @+		; 12
+       bcc_a(i+12) and										// bcc @+		; 12
        jne(i+13) and										// jne l_		; 13
        lab_a(i+14) then 									//@			; 14
      begin
@@ -134,7 +134,7 @@ begin
        lda_a(i+3) and										// lda K		; 3
        cmp_im(i+4) and										// cmp #		; 4
        lab_a(i+5) and										//@			; 5
-       (listing[i+6] = #9'bcc @+') and								// bcc @+		; 6
+       bcc_a(i+6) and										// bcc @+		; 6
        jne(i+7) and										// jne l_		; 7
        lab_a(i+8) then 										//@			; 8
      begin
@@ -196,8 +196,8 @@ begin
        lda(i+3) and										// lda K		; 3
        cmp(i+4) and (cmp_im(i+4) = false) and							// cmp W		; 4
        lab_a(i+5) and										//@			; 5
-       (listing[i+6] = #9'bcc @+') and								// bcc @+		; 6
-       (listing[i+7] = #9'beq @+') and								// beq @+		; 7
+       bcc_a(i+6) and										// bcc @+		; 6
+       beq_a(i+7) and										// beq @+		; 7
        dey(i+8) and										// dey			; 8
        lab_a(i+9) then 										//@			; 9
       begin
@@ -243,8 +243,8 @@ begin
        lda(i+3) and										// lda K		; 3
        cmp_im(i+4) and										// cmp #		; 4
        lab_a(i+5) and										//@			; 5
-       (listing[i+6] = #9'bcc @+') and								// bcc @+		; 6
-       (listing[i+7] = #9'beq @+') and								// beq @+		; 7
+       bcc_a(i+6) and										// bcc @+		; 6
+       beq_a(i+7) and										// beq @+		; 7
        dey(i+8) and										// dey			; 8
        lab_a(i+9) and 										//@			; 9
        tya(i+10) and										// tya			; 10
@@ -282,7 +282,7 @@ begin
     if (SKIP(i-1) = false) and
        lda_a(i) and										// lda K		; 0	BYTE <=
        cmp_im(i+1) and										// cmp #		; 1
-       (listing[i+2] = #9'bcc @+') and								// bcc @+		; 2
+       bcc_a(i+2) and										// bcc @+		; 2
        jne(i+3) and										// jne l_		; 3
        lab_a(i+4) then										//@			; 4
      begin
@@ -339,7 +339,7 @@ begin
        beq(i+3) and										// beq @+		; 3
        dey(i+4) and										// dey			; 4
        lab_a(i+5) and										//@			; 5
-       tya(i+6) then										// tya			; 6
+       (sty(i+6) or tya(i+6)) then								// sty|tya		; 6
       begin
        listing[i+2] := #9'cmp ' + copy(listing[i], 6, 256);
        listing[i+1] := #9'lda ' + copy(listing[i+1], 6, 256);
@@ -355,14 +355,14 @@ begin
 // 				     SHORTINT
 // -----------------------------------------------------------------------------
 
-    if (listing[i+8] = #9'.ENDL') and								// .ENDL		; 8
+    if ENDL(i+8) and										// .ENDL		; 8
        bmi(i+9) and										// bmi @+		; 9
        beq(i+10) and										// beq @+		; 10
        dey(i+11) and										// dey			; 11
        lab_a(i+12) and										//@			; 12
        (sty(i+13) or tya(i+13)) and								// sty|tya		; 13
 
-       (listing[i] = #9'.LOCAL') and								// .LOCAL		; 0	SHORTINT <= $XX
+       LOCAL(i) and										// .LOCAL		; 0	SHORTINT <= $XX
        lda_a(i+1) and										// lda E		; 1
        sub_im(i+2) and										// sub #		; 2
        (listing[i+3] = #9'beq L5') and								// beq L5		; 3
@@ -411,14 +411,14 @@ begin
       end;
 
 
-    if (listing[i+8] = #9'.ENDL') and								// .ENDL		; 8
+    if ENDL(i+8) and										// .ENDL		; 8
        bmi(i+9) and										// bmi @+		; 9
        beq(i+10) and										// beq @+		; 10
        dey(i+11) and										// dey			; 11
        lab_a(i+12) and										//@			; 12
        (sty(i+13) or tya(i+13)) and								// sty|tya		; 13
 
-       (listing[i] = #9'.LOCAL') and								// .LOCAL		; 0	SHORTINT_0 <= SHORTINT_1  ->  SHORTINT_1 >= SHORTINT_0
+       LOCAL(i) and										// .LOCAL		; 0	SHORTINT_0 <= SHORTINT_1  ->  SHORTINT_1 >= SHORTINT_0
        lda_a(i+1) and										// lda A		; 1
        sub(i+2) and (sub_im(i+2) = false) and							// sub B		; 2
        (listing[i+3] = #9'beq L5') and								// beq L5		; 3
@@ -443,14 +443,14 @@ begin
 // 				     SMALLINT
 // -----------------------------------------------------------------------------
 
-    if (listing[i+15] = #9'.ENDL') and								// .ENDL		; 15
-       (listing[i+16] = #9'bmi @+') and								// bmi @+		; 16
-       (listing[i+17] = #9'beq @+') and								// beq @+		; 17
+    if ENDL(i+15) and										// .ENDL		; 15
+       bmi_a(i+16) and										// bmi @+		; 16
+       beq_a(i+17) and										// beq @+		; 17
        dey(i+18) and										// dey			; 18
        lab_a(i+19) and										//@			; 19
        (sty(i+20) or tya(i+20)) and								// sty|tya		; 20
 
-       (listing[i] = #9'.LOCAL') and								// .LOCAL		; 0	SMALLINT <= #
+       LOCAL(i) and										// .LOCAL		; 0	SMALLINT <= #
        lda_a(i+1) and										// lda E+1		; 1
        sub_im(i+2) and										// sub #		; 2
        (listing[i+3] = #9'bne L4') and								// bne L4		; 3
@@ -516,14 +516,14 @@ begin
       end;
 
 
-    if (listing[i+15] = #9'.ENDL') and								// .ENDL		; 15
-       (listing[i+16] = #9'bmi @+') and								// bmi @+		; 16
-       (listing[i+17] = #9'beq @+') and								// beq @+		; 17
+    if ENDL(i+15) and										// .ENDL		; 15
+       bmi_a(i+16) and										// bmi @+		; 16
+       beq_a(i+17) and										// beq @+		; 17
        dey(i+18) and										// dey			; 18
        lab_a(i+19) and										//@			; 19
        (sty(i+20) or tya(i+20)) and								// sty|tya		; 20
 
-       (listing[i] = #9'.LOCAL') and								// .LOCAL		; 0	SMALLINT_0 <= SMALLINT_1 -> SMALLINT_1 >= SMALLINT_0
+       LOCAL(i) and										// .LOCAL		; 0	SMALLINT_0 <= SMALLINT_1 -> SMALLINT_1 >= SMALLINT_0
        lda(i+1) and										// lda E+1		; 1
        sub(i+2) and 										// sub 			; 2
        (listing[i+3] = #9'bne L4') and								// bne L4		; 3
@@ -567,14 +567,14 @@ begin
 // 				     INTEGER
 // -----------------------------------------------------------------------------
 
-    if (listing[i+22] = #9'.ENDL') and								// .ENDL		; 22
-       (listing[i+23] = #9'bmi @+') and								// bmi @+		; 23
-       (listing[i+24] = #9'beq @+') and								// beq @+		; 24
+    if ENDL(i+22) and										// .ENDL		; 22
+       bmi_a(i+23) and										// bmi @+		; 23
+       beq_a(i+24) and										// beq @+		; 24
        dey(i+25) and										// dey			; 25
        lab_a(i+26) and										//@			; 26
        (sty(i+27) or tya(i+27)) and								// sty|tya		; 27
 
-       (listing[i] = #9'.LOCAL') and								// .LOCAL		; 0	INTEGER <= #
+       LOCAL(i) and										// .LOCAL		; 0	INTEGER <= #
        lda_a(i+1) and										// lda E+3		; 1
        sub_im(i+2) and										// sub #		; 2
        (listing[i+3] = #9'bne L4') and								// bne L4		; 3
@@ -656,15 +656,15 @@ begin
       end;
 
 
-    if (listing[i+22] = #9'.ENDL') and								// .ENDL		; 22
-       (listing[i+23] = #9'bmi @+') and								// bmi @+		; 23
-       (listing[i+24] = #9'beq @+') and								// beq @+		; 24
+    if ENDL(i+22) and										// .ENDL		; 22
+       bmi_a(i+23) and										// bmi @+		; 23
+       beq_a(i+24) and										// beq @+		; 24
        dey(i+25) and										// dey			; 25
        lab_a(i+26) and										//@			; 26
        tya(i+27) and										// tya			; 27
        (jeq(i+28) or jne(i+28)) and								// jeq|jne		; 28
 
-       (listing[i] = #9'.LOCAL') and								// .LOCAL		; 0	INTEGER <=
+       LOCAL(i) and										// .LOCAL		; 0	INTEGER <=
        lda_a(i+1) and										// lda E+3		; 1
        sub(i+2) and {(sub_im(i+2) = false) and}							// sub			; 2
        (listing[i+3] = #9'bne L4') and								// bne L4		; 3

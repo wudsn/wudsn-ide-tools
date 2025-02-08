@@ -194,119 +194,20 @@ type	PWordArray = ^word;
 
 	*)
 
+type	PPointer = ^pointer;
+	(*
+	@description:
+
+	*)
+
 const
-
-{$ifdef atari}
-	__PORTB_BANKS = $0101;		// memory banks array
-{$endif}
-
 	M_PI_2	= pi*2;
 	D_PI_2	= pi/2;
 	D_PI_180= pi/180;
 
-{$ifdef atari}
-	mGTIA	= 0;
-	mVBXE	= $80;
-//	WINDOW	= $10;			// text window
-//	NARROW	= $20;			// narrow screen
 
-	VBXE_XDLADR = $0000;		// XDLIST
-	VBXE_BCBTMP = $00E0;		// BLITTER TEMP
-	VBXE_BCBADR = $0100;		// BLITTER LIST ADDRESS
-	VBXE_MAPADR = $1000;		// COLOR MAP ADDRESS
-	VBXE_CHBASE = $1000;		// CHARSET BASE ADDRESS
-	VBXE_OVRADR = $5000;		// OVERLAY ADDRESS
-	VBXE_WINDOW = $B000;		// 4K WINDOW $B000..$BFFF
+{$i '../src/targets/systemh.inc'}
 
-	iDLI = 0;			// set new DLI vector
-	iVBL = 1;			// set new VBLD vector
-	iVBLD = 1;
-	iVBLI = 2;			// set new VBLI vector
-	iTIM1 = 3;			// set new IRQ TIMER1 vector
-	iTIM2 = 4;			// set new IRQ TIMER2 vector
-	iTIM4 = 5;			// set new IRQ TIMER4 vector
-
-{$endif}
-
-(* Character codes *)
-{$ifdef atari}
-	CH_DELCHR	= chr($FE);	// delete char under the cursor
-	CH_ENTER	= chr($9B);
-	CH_ESC		= chr($1B);
-	CH_CURS_UP	= chr(28);
-	CH_CURS_DOWN	= chr(29);
-	CH_CURS_LEFT	= chr(30);
-	CH_CURS_RIGHT	= chr(31);
-
-	CH_TAB		= chr($7F);	// tabulator
-	CH_EOL		= chr($9B);	// end-of-line marker
-	CH_CLR		= chr($7D);	// clear screen
-	CH_BELL		= chr($FD);	// bell
-	CH_DEL		= chr($7E);	// back space (delete char to the left)
-	CH_DELLINE	= chr($9C);	// delete line
-	CH_INSLINE	= chr($9D);	// insert line
-{$endif}
-
-(* color defines *)
-{$ifdef atari}
-	PAL_PMCOLOR0	= 0;		// palette index Palette[..] , HPalette[..]
-	PAL_PMCOLOR1	= 1;
-	PAL_PMCOLOR2	= 2;
-	PAL_PMCOLOR3	= 3;
-
-	PAL_COLOR0	= 4;
-	PAL_COLOR1	= 5;
-	PAL_COLOR2	= 6;
-	PAL_COLOR3	= 7;
-	PAL_COLBAK	= 8;
-
-	COLOR_BLACK		= $00;
-	COLOR_WHITE		= $0e;
-	COLOR_RED		= $32;
-	COLOR_CYAN		= $96;
-	COLOR_VIOLET		= $68;
-	COLOR_GREEN		= $c4;
-	COLOR_BLUE		= $74;
-	COLOR_YELLOW		= $ee;
-	COLOR_ORANGE		= $28;
-	COLOR_BROWN		= $e4;
-	COLOR_LIGHTRED		= $3c;
-	COLOR_GRAY1		= $04;
-	COLOR_GRAY2		= $06;
-	COLOR_GRAY3		= $0a;
-	COLOR_LIGHTGREEN	= $cc;
-	COLOR_LIGHTBLUE 	= $7c;
-{$endif}
-
-(* file mode *)
-{$ifndef raw}
-	fmOpenRead	= $04;
-	fmOpenWrite	= $08;
-	fmOpenAppend	= $09;
-	fmOpenReadWrite	= $0c;
-{$endif}
-
-{$ifndef raw}
-var	ScreenWidth: smallint = 40;	(* @var current screen width *)
-	ScreenHeight: smallint = 24;	(* @var current screen height *)
-
-	DateSeparator: Char = '-';
-
-{$ifdef atari}
-	[volatile] Rnd: byte absolute $d20a;
-
-	Palette: array [0..8] of byte absolute 704;
-	HPalette: array [0..8] of byte absolute $d012;
-{$endif}
-
-	FileMode: byte = fmOpenReadWrite;
-
-	GraphMode: byte;		(* @var current screen mode *)
-
-	IOResult: byte;			(* @var result of last file IO operation *)
-
-	EoLn: Boolean;			(* @var end of line status *)
-{$endif}
 
 	function Abs(x: Real): Real; register; assembler; overload;
 	function Abs(x: Single): Single; register; assembler; overload;
@@ -405,6 +306,7 @@ var	ScreenWidth: smallint = 40;	(* @var current screen width *)
 	function StringOfChar(c: Char; l: byte): ^string; assembler;
 	function Sqr(x: Real): Real; overload;
 	function Sqr(x: Single): Single; overload;
+	function Sqr(x: float16): float16; overload;
 	function Sqr(x: integer): integer; overload;
 	function Sqrt(x: ShortReal): ShortReal; overload;
 	function Sqrt(x: Real): Real; overload;
@@ -423,8 +325,9 @@ var	ScreenWidth: smallint = 40;	(* @var current screen width *)
 implementation
 
 var
-	RndSeed: smallint;
+	mem: array [0..0] of byte absolute $0000;
 
+	RndSeed: smallint;
 
 procedure RunError(a: byte);
 (*
@@ -520,7 +423,7 @@ The result of the function has the same type as its argument, which can be any n
 asm
 	lda :edx+3
 	spl
-	jsr negEDX
+	jsr @negEDX
 
 	mva :edx Result
 	mva :edx+1 Result+1
@@ -635,7 +538,7 @@ The result of the function has the same type as its argument, which can be any n
 asm
 	lda :edx+3
 	spl
-	jsr negEDX
+	jsr @negEDX
 
 	sta Result+3
 
@@ -677,6 +580,22 @@ begin
 end;
 
 
+function Sqr(x: float16): float16; overload;
+(*
+@description:
+Sqr returns the square of its argument X
+
+@param: x - float16
+
+@returns: float16
+*)
+begin
+
+ Result := x*x;
+
+end;
+
+
 function Sqr(x: integer): integer; overload;
 (*
 @description:
@@ -705,9 +624,8 @@ Sqrt returns the square root of its argument X, which must be positive
 var sp: ^shortreal;
     c: word;
 begin
-	Result:=0.0;
 
-	if x < 0.0 then exit;
+	if x <= 0.0 then exit(shortreal(0.0));
 
 	sp:=@c;
 
@@ -717,33 +635,24 @@ begin
 
 	Result := sp^;
 
-	Result:=(Result+x/Result);// * 0.5;
+	Result:=(Result + x/Result);// * 0.5;
 
 	asm
-	 lda Result+1
-	 asl @
-
-	 ror Result+1
+	 lsr Result+1
 	 ror Result
 	end;
 
-	Result:=(Result+x/Result) ;//* 0.5;
+	Result:=(Result + x/Result) ;//* 0.5;
 
 	asm
-	 lda Result+1
-	 asl @
-
-	 ror Result+1
+	 lsr Result+1
 	 ror Result
 	end;
 
-	Result:=(Result+x/Result) ;//* 0.5;
+	Result:=(Result + x/Result) ;//* 0.5;
 
 	asm
-	 lda Result+1
-	 asl @
-
-	 ror Result+1
+	 lsr Result+1
 	 ror Result
 	end;
 
@@ -761,51 +670,50 @@ Sqrt returns the square root of its argument X, which must be positive
 *)
 var sp: ^real;
     c: cardinal;
-begin
-	Result:=0.0;
 
-	if x < 0.0 then exit;
+begin
+
+	if x <= 0.0 then exit(0.0);
 
 	sp:=@c;
 
-	c:=cardinal(x);
+	//c:=cardinal(x);
 
-	c:=(c shr 8) + $100;
+	c := cardinal(x) shr 8 + $100;
 
 	Result := sp^;
 
-	Result:=(Result+x/Result); //* 0.5;
+	Result:=(Result + x/Result); //* 0.5;
 
 	asm
-	 lda Result+3
-	 asl @
-
-	 ror Result+3
+	 lsr Result+3
 	 ror Result+2
 	 ror Result+1
 	 ror Result
 	end;
 
-	Result:=(Result+x/Result); //* 0.5;
-
+	Result:=(Result + x/Result); //* 0.5;
 
 	asm
-	 lda Result+3
-	 asl @
-
-	 ror Result+3
+	 lsr Result+3
 	 ror Result+2
 	 ror Result+1
 	 ror Result
 	end;
 
-	Result:=(Result+x/Result); //* 0.5;
+	Result:=(Result + x/Result); //* 0.5;
 
 	asm
-	 lda Result+3
-	 asl @
+	 lsr Result+3
+	 ror Result+2
+	 ror Result+1
+	 ror Result
+	end;
 
-	 ror Result+3
+	Result:=(Result + x/Result); //* 0.5;
+
+	asm
+	 lsr Result+3
 	 ror Result+2
 	 ror Result+1
 	 ror Result
@@ -819,6 +727,8 @@ function Sqrt(x: Single): Single; overload;
 @description
 Sqrt returns the square root of its argument X, which must be positive
 
+https://suraj.sh/fast-square-root-approximation
+
 @param: x - Single
 
 @returns: Single
@@ -826,21 +736,21 @@ Sqrt returns the square root of its argument X, which must be positive
 var sp: ^single;
     c: cardinal;
 begin
-	Result:=0;
-
-	if integer(x) < 0 then exit;
+	if integer(x) <= 0 then exit(single(0.0));
 
 	sp:=@c;
 
-	c:=cardinal(x);
+	//c:=cardinal(x) shr 1;
 
-	if c > $3f800000 then c := (c - $3f800000) shr 1 + $3f800000;	// 1 = f32($3f800000)
+	// Solved equation for square roots
+	//c := (c + $3f800000) shr 1;
+	c := (cardinal(x) shr 1) + $1fc00000;
 
 	Result := sp^;
 
-	Result:=(Result+x/Result) * 0.5;
-	Result:=(Result+x/Result) * 0.5;
-//	Result:=(Result+x/Result) * 0.5;
+	// Newton-Rapson iteration
+	Result:=(Result + x/Result) * 0.5;
+//	Result:=(Result + x/Result) * 0.5;	// x < 1 -> higher precision
 end;
 
 
@@ -849,6 +759,8 @@ function Sqrt(x: float16): float16; overload;
 @description
 Sqrt returns the square root of its argument X, which must be positive
 
+https://suraj.sh/fast-square-root-approximation
+
 @param: x - float16
 
 @returns: float16
@@ -856,21 +768,20 @@ Sqrt returns the square root of its argument X, which must be positive
 var sp: ^float16;
     c: word;
 begin
-	Result:=0;
-
-	if smallint(x) < 0 then exit;
+	if smallint(x) <= 0 then exit(float16(0.0));
 
 	sp:=@c;
 
-	c:=word(x);
+	//c:=word(x) shr 1;
 
-	if c > $3c00 then c := (c - $3c00) shr 1 + $3c00;
+	// Solved equation for square roots
+	//c := (c + $3c00) shr 1;
+	c := (word(x) shr 1) + $1e00;
 
 	Result := sp^;
 
-	Result:=(Result+x/Result) * 0.5;
-//	Result:=(Result+x/Result) * 0.5;
-//	Result:=(Result+x/Result) * 0.5;
+	// Newton-Rapson iteration
+	Result:=(Result + x/Result) * 0.5;
 end;
 
 
@@ -886,9 +797,8 @@ Sqrt returns the square root of its argument X, which must be positive
 var sp: ^single;
     c: cardinal;
 begin
-	Result:=0;
 
-	if x < 0 then exit;
+	if x <= 0 then exit(single(0.0));
 
 	sp:=@c;
 
@@ -898,9 +808,9 @@ begin
 
 	Result := sp^;
 
-	Result:=(Result+x/Result) * 0.5;
-	Result:=(Result+x/Result) * 0.5;
-//	Result:=(Result+x/Result) * 0.5;
+	Result:=(Result + x/Result) * 0.5;
+	Result:=(Result + x/Result) * 0.5;
+	Result:=(Result + x/Result) * 0.5;
 end;
 
 
@@ -1333,7 +1243,7 @@ Check for end of file
 @return: FALSE in all other cases
 *)
 var i: cardinal;
-    bf: array [0..255] of byte;
+    bf: array [0..255] of byte absolute __buffer;
 begin
 	i:=FilePos(f);
 
@@ -2036,7 +1946,7 @@ Calculate sine of angle
 @returns: Single
 *)
 begin
-    Result := fsincos(x, false);
+	Result := fsincos(x, false);
 end;
 
 
@@ -2050,7 +1960,7 @@ Calculate cosine of angle
 @returns: Single
 *)
 begin
-    Result := fsincos(x, true);
+	Result := fsincos(x, true);
 end;
 
 
@@ -2344,13 +2254,15 @@ begin
     s2len := Length(s2);
 
     result := 0;
+    
+    if s1len > s2len then exit;
 
-    for i := 1 to s2len - s1len do // 1 to 14
+    for i := 1 to s2len - s1len + 1 do
     begin
 
-        for j := 0 to s1len - 1 do // 0 to 17
+        for j := 0 to s1len - 1 do
         begin
-            if s2[i+j] <> s1[j+1] then // 1 <> 1
+            if s2[i+j] <> s1[j+1] then
             begin
                 break;
             end;
@@ -2459,7 +2371,7 @@ asm
 	bcs stop
 
 	sta Index
-	add Count
+	adc Count
 	sta ln
 	lda #$00
 	adc #$00
@@ -2473,8 +2385,8 @@ ln	equ *-1
 	bcc ok
 
 	lda (:bp2),y
-	sub Index
-	add #1
+	sbc Index
+	adc #$00
 	sta Count
 
 ok	lda Count
@@ -2543,6 +2455,19 @@ asm
 	sta (P),y
 
 	adw :psptr size
+
+	cpw :psptr #$c000
+	bcc @exit
+
+	@print #$45
+	@print #$52
+	@print #$52
+	@print #$20
+	lda #147		; Insufficient RAM
+	jsr @printBYTE._a
+	@printEOL
+	lda #$02
+	jmp @halt
 end;
 
 
@@ -2560,6 +2485,19 @@ asm
 	sta Result+1
 
 	adw :psptr size
+
+	cpw :psptr #$c000
+	bcc @exit
+
+	@print #$45
+	@print #$52
+	@print #$52
+	@print #$20
+	lda #147		; Insufficient RAM
+	jsr @printBYTE._a
+	@printEOL
+	lda #$02
+	jmp @halt
 end;
 
 
@@ -2770,5 +2708,25 @@ function SarLongint(Const AValue : Longint;const Shift : Byte): Longint;
 begin
   Result:=longint(dword(dword(dword(AValue) shr (Shift and 31)) or (dword(longint(dword(0-dword(dword(AValue) shr 31)) and dword(longint(0-(ord((Shift and 31)<>0){ and 1}))))) shl (32-(Shift and 31)))));
 end;
+
+
+initialization
+
+
+{$ifdef atari}
+
+asm
+	.ifdef @CmdLine
+
+	ldx #$0F
+	mva:rpl $340,x IOCB@COPY,x-
+	rts
+
+IOCB@COPY	:16 brk
+	eif
+
+end;
+
+{$endif}
 
 end.

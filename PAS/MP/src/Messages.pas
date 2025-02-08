@@ -6,6 +6,19 @@ interface
 
 uses Common;
 
+
+type
+  ErrorCode =
+  (
+  UnknownIdentifier, OParExpected, IdentifierExpected, IncompatibleTypeOf, UserDefined,
+  IdNumExpExpected, IncompatibleTypes, IncompatibleEnum, OrdinalExpectedFOR, CantAdrConstantExp,
+  VariableExpected, WrongNumParameters, OrdinalExpExpected, RangeCheckError, RangeCheckError_,
+  VariableNotInit, ShortStringLength, StringTruncated, TypeMismatch, CantReadWrite,
+  SubrangeBounds, TooManyParameters, CantDetermine, UpperBoundOfRange, HighLimit,
+  IllegalTypeConversion, IncompatibleTypesArray, IllegalExpression, AlwaysTrue, AlwaysFalse,
+  UnreachableCode, IllegalQualifier, LoHi, StripedAllowed
+  );
+
 // ----------------------------------------------------------------------------
 
 	procedure Error(ErrTokenIndex: Integer; Msg: string);
@@ -63,7 +76,11 @@ begin
 
 	UserDefined: Result := 'User defined: ' + msgUser[Tok[ErrTokenIndex].Value];
 
-  UnknownIdentifier: Result := 'Identifier not found ''' + Tok[ErrTokenIndex].Name^ + '''';
+  UnknownIdentifier: if IdentIndex > 0 then
+			Result := 'Identifier not found ''' + Ident[IdentIndex].Alias + ''''
+		     else
+  			Result := 'Identifier not found ''' + Tok[ErrTokenIndex].Name^ + '''';
+
  IncompatibleTypeOf: Result := 'Incompatible type of ' + Ident[IdentIndex].Name;
    IncompatibleEnum: if DstType < 0 then
    			Result := 'Incompatible types: got "'+GetEnumName(SrcType)+'" expected "'+InfoAboutToken(abs(DstType))+ '"'
@@ -73,7 +90,7 @@ begin
 		     else
    	   		Result := 'Incompatible types: got "'+GetEnumName(SrcType)+'" expected "'+GetEnumName(DstType)+ '"';
 
- WrongNumParameters: Result := 'Wrong number of parameters specified for call to ' + Ident[IdentIndex].Name;
+ WrongNumParameters: Result := 'Wrong number of parameters specified for call to "' + Ident[IdentIndex].Name+'"';
 
  CantAdrConstantExp: Result := 'Can''t take the address of constant expressions';
 
@@ -188,6 +205,8 @@ begin
   UpperBoundOfRange: Result := 'Upper bound of range is less than lower bound';
 	  HighLimit: Result := 'High range limit > '+IntToStr(High(word));
 
+
+     StripedAllowed: Result := 'Striped array is allowed for maximum [0..255] size';
  end;
 
 end;
@@ -277,7 +296,7 @@ begin
 
  if Pass = CODEGENERATIONPASS then begin
 
-  Msg:=ErrorMessage(WarnTokenIndex, err, IdentIndex, SrcType, DstType);
+  Msg := ErrorMessage(WarnTokenIndex, err, IdentIndex, SrcType, DstType);
 
   a := UnitName[Tok[WarnTokenIndex].UnitIndex].Path + ' (' + IntToStr(Tok[WarnTokenIndex].Line) + ')' + ' Warning: ' + Msg;
 
@@ -340,7 +359,10 @@ begin
 
     a := a +' ''' + Ident[IdentIndex].Name + '''' + ' not used';
 
-    newMsg(msgNote, a);
+    if pos('@FN', Ident[IdentIndex].Name) = 1 then
+
+    else
+     newMsg(msgNote, a);
 
    end;
 
