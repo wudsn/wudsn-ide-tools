@@ -43,9 +43,13 @@ mp.exe %INPUT_FILE%.pas -ipath:%MP_FOLDER%\lib -ipath:%MP_FOLDER%\blibs -t %OUTP
 if ERRORLEVEL 1 (
   echo ERROR: Mad-Pascal error. See error messages above.
   goto :end
-) 
+)
 
-mads.exe %INPUT_FILE%.a65 -x -i:%MP_FOLDER%\base -l -t -o:%OUTPUT_FILE%
+if NOT "%MADS_OPTIONS%"=="" goto :use_mads_options
+set MADS_OPTIONS=-x -l -t
+:use_mads_options
+
+mads.exe %INPUT_FILE%.a65 -i:%MP_FOLDER%\base %MADS_OPTIONS% -o:%OUTPUT_FILE%
 if ERRORLEVEL 1 (
   echo ERROR: Mad-Assembler error. See error messages above.
   goto :end
