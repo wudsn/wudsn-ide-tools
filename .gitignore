@@ -14,3 +14,4 @@ PAS/*.old/
 PAS/MP/link.res
 PAS/MP/linkfiles.res
 PAS/MP/ppaslink.sh
+*.mdmp
