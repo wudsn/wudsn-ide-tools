@@ -1,13 +1,18 @@
 unit hcm2;
-
 (*
 * @type: unit
 * @author: Sandor Teli, Tomasz Biela <tebe6502@gmail.com>
 * @name: Hard Color Map
+*
 * @version: 1.0
+*
 * @description:
 *
+* <https://bitbucket.org/sandor-hard/reharden/src/master/HCM.md>
+* <https://bitbucket.org/sandor-hard/hcm-converter/src/master/>
+*
 *)
+
 interface
 uses atari;
 
@@ -58,6 +63,9 @@ const
 
 
 procedure PutColor(a: byte); assembler;
+(*
+@description:
+*)
 asm
 	and #3
 	tay
@@ -91,6 +99,9 @@ end;
 
 
 function GetColor: byte; assembler;
+(*
+@description:
+*)
 asm
 	lda #0
 	sta Result
@@ -119,6 +130,9 @@ end;
 
 
 procedure Position(x,y: byte); assembler;
+(*
+@description:
+*)
 asm
 	lda x
 	and #$1f
@@ -240,6 +254,9 @@ end;
 
 
 procedure MapH(a: byte); assembler;
+(*
+@description:
+*)
 asm
 	and #7
 	beq stop
@@ -252,6 +269,9 @@ end;
 
 
 procedure MapX(a: byte); assembler;
+(*
+@description:
+*)
 asm
 	and #$1f
 	cmp #28
@@ -281,6 +301,9 @@ end;
 
 
 procedure MapY(a: byte); assembler;
+(*
+@description:
+*)
 asm
 	add #yofset
 	sta PutColor.py+1
@@ -288,6 +311,9 @@ end;
 
 
 procedure HCMDli; interrupt; assembler;
+(*
+@description:
+*)
 asm
 	sta regA+1
 	stx regX+1
@@ -419,12 +445,18 @@ end;
 
 
 procedure vbl; assembler; interrupt;
+(*
+@description:
+*)
 asm
 	jmp xitvbv
 end;
 
 
 procedure BuildDisplayList(mode: byte);
+(*
+@description:
+*)
 var vram: word;
     i: byte;
     dList : PByteArray;
@@ -467,6 +499,9 @@ end;
 
 
 procedure HCMInit(mode: byte);
+(*
+@description:
+*)
 begin
 
 asm
@@ -606,6 +641,9 @@ end;
 
 
 procedure ClearHCM;
+(*
+@description:
+*)
 begin
  fillchar(pointer(HCMBase), $800 + lines*32, $00);
 end;

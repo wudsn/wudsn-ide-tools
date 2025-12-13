@@ -1,6 +1,19 @@
+unit vimage;
+(*
+@type: unit
+@name: A unit to load a variety of image formats for VBXE
+@author: Steven Henk Don <https://www.shdon.com/>, Tomasz Biela (Tebe)
 
-{****************************************************************************
-** VIMAGE unit (14.01.2018) VBXE					   **
+@version: 1.1 (14.01.2018)
+
+@description:
+A unit to load a variety of image formats to a buffer (BMP, GIF, PCX).
+
+Images must be in 256 colours and may be up to 336x240 in size.
+*)
+
+(****************************************************************************
+** VIMAGE unit VBXE							   **
 **   by Steven Henk Don, Tomasz Biela					   **
 *****************************************************************************
 ** A unit to load a variety of image formats to a buffer.		   **
@@ -23,17 +36,7 @@
 ** All functions are boolean. If they return false, check IMGERROR to find **
 ** out what happened.                                                      **
 **                                                                         **
-****************************************************************************}
-
-unit vimage;
-(*
-@type: unit
-@name: A unit to load a variety of image formats for VBXE
-@author: Steven Henk Don (https://www.shdon.com/), Tomasz Biela (Tebe)
-
-@description:
-VBXE Image
-*)
+****************************************************************************)
 
 {
 

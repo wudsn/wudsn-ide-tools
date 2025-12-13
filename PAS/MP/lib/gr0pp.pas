@@ -1,5 +1,4 @@
 unit gr0pp;
-
 (*
 * @type: unit
 * @author: bocianu <bocianu@gmail.com>, tebe <tebe6502@gmail.com>
@@ -7,9 +6,11 @@ unit gr0pp;
 * @version: 1.0
 * @description:
 * Set of procedures to initialize, run, and use special graphics mode 0++.
+*
 * Resolution 40x60 chars, 2 colors
 *
 *)
+
 interface
 uses atari;
 

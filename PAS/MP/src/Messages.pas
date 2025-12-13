@@ -121,9 +121,11 @@ begin
      IllegalTypeConversion, IncompatibleTypesArray:
 		     begin
 
-		      if err = IllegalTypeConversion then
-     		       Result := 'Illegal type conversion: "Array[0..'
-		      else begin
+		      if err = IllegalTypeConversion then begin
+     		       Result := 'Illegal type conversion: ';
+
+		       if Ident[IdentIndex].NumAllocElements > 0 then Result := Result + '"Array[0..';
+		      end else begin
 		       Result := 'Incompatible types: got ';
 		       if Ident[IdentIndex].NumAllocElements > 0 then Result := Result + '"Array[0..';
 		      end;
@@ -143,7 +145,7 @@ begin
 			Result := Result + IntToStr(Ident[IdentIndex].NumAllocElements-1)+'] Of '+InfoAboutToken(Ident[IdentIndex].AllocElementType)+'" ';
 
 		      if err = IllegalTypeConversion then
-		       Result := Result + 'to "'+InfoAboutToken(SrcType)+'"'
+		       Result := Result + 'to "' + InfoAboutToken(SrcType) + '"'
 		      else
 		       if SrcType < 0 then begin
 

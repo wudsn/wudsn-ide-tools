@@ -2,7 +2,7 @@ unit pp;
 (*
 * @type: unit
 * @author: Krzysztof 'Swiety/Zelax' Swiecicki, Tomasz 'Tebe' Biela
-* @name: Power Packer
+* @name: 'Power Packer' decompression unit
 *
 * @version: 1.0
 *
@@ -23,7 +23,11 @@ unPP
 
 interface
 
-	procedure unPP(src, dst: pointer); external 'pp\unpp';
+procedure unPP(src, dst: pointer); external 'pp\unpp';
+(*
+@description:
+*)
+
 
 implementation
 

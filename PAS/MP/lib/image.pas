@@ -1,5 +1,14 @@
+unit image;
+(*
+@type: unit
+@name: A unit to load a variety of image formats for ANTIC/GTIA
+@author: Steven Henk Don <https://www.shdon.com/>, Tomasz Biela (Tebe)
 
-{****************************************************************************
+@description:
+Load BMP, GIF, PCX, MIC, PIC.
+*)
+
+(****************************************************************************
 ** IMAGE unit, ANTIC/GTIA						   **
 **  by Steven Henk Don, Tomasz Biela					   **
 *****************************************************************************
@@ -25,17 +34,7 @@
 ** All functions are boolean. If they return false, check IMGERROR to find **
 ** out what happened.                                                      **
 **                                                                         **
-****************************************************************************}
-
-unit image;
-(*
-@type: unit
-@name: A unit to load a variety of image formats for ANTIC/GTIA
-@author: Steven Henk Don (https://www.shdon.com/), Tomasz Biela (Tebe)
-
-@description:
-GTIA
-*)
+****************************************************************************)
 
 
 {
@@ -250,13 +249,13 @@ begin
   assign(f, FileName);
   reset(f, 1);
 
-  blockread(f, Location, 192*40);
+  blockread(f, Location^, 192*40);
 
   Location:=pointer(712);
-  blockread(f, Location, 1);
+  blockread(f, Location^, 1);
 
   Location:=pointer(708);
-  blockread(f, Location, 3);
+  blockread(f, Location^, 3);
 
   {Close the file}
   Close (f);

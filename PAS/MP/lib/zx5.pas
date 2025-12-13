@@ -2,12 +2,12 @@ unit zx5;
 (*
 * @type: unit
 * @author: Einar Saukas, Krzysztof 'XXL' Dudek, Tomasz 'Tebe' Biela
-* @name: ZX0
+* @name: ZX5 decompression unit
 *
 * @version: 1.0
 *
 * @description:
-* ZX0 decompressor
+* ZX5 decompressor
 *
 * <https://github.com/einar-saukas/ZX5>
 *
@@ -22,8 +22,9 @@ unZX5
 
 interface
 
-	procedure unZX5(inputPointer, outputPointer: pointer); assembler; overload;
-	procedure unZX5(fnam: PString; outputPointer: pointer); overload;
+procedure unZX5(inputPointer, outputPointer: pointer); assembler; overload;
+procedure unZX5(fnam: PString; outputPointer: pointer); overload;
+
 
 implementation
 
@@ -32,7 +33,7 @@ implementation
 procedure unZX5(fnam: PString; outputPointer: pointer); overload;
 (*
 @description:
-ZX0 I/O stream decompressor (Einar Saukas, Krzysztof 'XXL' Dudek)
+ZX5 I/O stream decompressor (Einar Saukas, Krzysztof 'XXL' Dudek)
 
 @param: inputPointer - source data address
 @param: outputPointer - destination data address
@@ -331,7 +332,7 @@ end;
 procedure unZX5(inputPointer, outputPointer: pointer); assembler; overload;
 (*
 @description:
-ZX0 decompressor (Einar Saukas, Krzysztof 'XXL' Dudek)
+ZX5 decompressor (Einar Saukas, Krzysztof 'XXL' Dudek)
 
 @param: inputPointer - source data address
 @param: outputPointer - destination data address
@@ -490,7 +491,7 @@ dzx5s_elias_loop
 		asl   @
 		bne   dzx5s_elias_skip
 		jsr   _GET_BYTE
-		sec	; można usunąć jeśli dekompresja z pamięci a nie pliku
+//		sec	; można usunąć jeśli dekompresja z pamięci a nie pliku
 		rol   @
 dzx5s_elias_skip
 		bcc   dzx5s_elias_backtrack

@@ -1,10 +1,10 @@
 # Mad-Pascal
 
-[English Documentation](http://mads.atari8.info/doc/en/index.html) / [Polska Dokumentacja](http://mads.atari8.info/doc/pl/index.html)
+[English Documentation](https://tebe6502.github.io/mad-pascal-en-mkdocs/) / [Polska Dokumentacja](https://tebe6502.github.io/mad-pascal-mkdocs/)
 
-## Introduction
+[Full Pascal Programming Crash Course - Basics to Advanced](https://youtu.be/6jRVhT_JotY)
 
-[source]: # Section is copied from original https://mads.atari8.info/doc/en/introduction/
+## [Introduction](https://tebe6502.github.io/mad-pascal-en-mkdocs/introduction/)
 
 **Mad-Pascal** (MP) is a 32-bit **Turbo Pascal** compiler for **Atari 8-Bit** and other **MOS 6502 CPU**-based computers. By design, it is compatible with the **Free Pascal Compiler** (FPC) (the `-MDelphi` switch should be active). This means the possibility of obtaining executable code for **Atari 8-bit**, **Windows**, and every other platform for which **FPC** exists. **Mad-Pascal** is not a port of **FPC**. It has been written based on **SUB-Pascal** (2009) and **XD-Pascal** (2010), the author of which is [Vasiliy Tereshkov](mailto:vtereshkov@mail.ru).
 
@@ -35,7 +35,7 @@ The available features are:
 * `Type` aliases
 * `Records`
 * `Objects`
-* Separate program modules
+* Separate program modules (`PROGRAM`, `UNIT`, `LIBRARY`)
 * Recursion
 
 ## Compile
@@ -43,9 +43,9 @@ The available features are:
     fpc -MDelphi -vh -O3 mp.pas
 
 ## Usage
-[WUDSN and Mad Pascal](https://forums.atariage.com/topic/348660-wudsn-mad-pascal-quick-hack-increasing-usability/)
+[WUDSN and Mad-Pascal](https://forums.atariage.com/topic/348660-wudsn-mad-pascal-quick-hack-increasing-usability/)
 
-[Mad Pascal i Geany](http://bocianu.atari.pl/blog/madgeany)
+[Mad-Pascal i Geany](http://bocianu.atari.pl/blog/madgeany)
 
 ### [Atari 8-Bit](https://github.com/tebe6502/Mad-Pascal/tree/master/samples/a8)
     mp.exe filename.pas -ipath:<MadPascalPath>\lib
@@ -89,7 +89,7 @@ Source code at [GitLab](https://gitlab.com/bocianu/madstrap)
 
 ### [BLIBS](http://bocianu.atari.pl/blog/blibs)
 
-Set of custom libraries for MadPascal.
+Set of custom libraries for Mad-Pascal.
 
 The latest documentation is always on [GitLab]( https://bocianu.gitlab.io/blibs/)
 
@@ -101,11 +101,11 @@ Source code at [GitLab](https://gitlab.com/bocianu/pasdoc)
 
 ### [Effectus](https://github.com/Gury8/effectus) - Action! compiler
 
-The new version generates the source code using the Mad Pascal cross-compiler, which is further compiled into binary code with Mad Assembler.
+The new version generates the source code using the Mad-Pascal cross-compiler, which is further compiled into binary code with Mad Assembler.
 
 ### [Game tutorial](https://github.com/zbyti/a8-mp-simple-game-tutorial)
 
-Simple game tutorial by using Mad Pascal
+Simple game tutorial by using Mad-Pascal
 
 ### [FiDL](https://gitlab.com/bocianu/fidl)
 
@@ -122,6 +122,8 @@ CutAs, FiDL, SprED, Sprite XL
 ### [A8 Mad-Pascal Window Library](https://github.com/Ripjetski6502/A8MadPascalLibrary)
 
 This text-mode windowing library has window controls and modern gadgets (widgets). The gadgets allow you to build input forms that use buttons, radio buttons, input strings (with scrolled lengths and type restrictions), check boxes, progress bars, etc. This allows you to build applications with "modern" interfaces.
+
+### [Mad-Pascal libraries](https://mads.atari8.info/library/doc/index.html)
 
 ## Projects in Mad-Pascal
 
@@ -184,7 +186,7 @@ This text-mode windowing library has window controls and modern gadgets (widgets
 
 ## Benchmarks
 
-|                             |CC65 |Mad Pascal|Millfork|
+|                             |CC65 |Mad-Pascal|Millfork|
 |:----------------------------|:----|:--------:|:------:|
 |Sieve (less is better)       |602  |577       |579     |
 |YoshPlus (higher is better)  |41933|41933     |41933   |
@@ -213,14 +215,23 @@ This text-mode windowing library has window controls and modern gadgets (widgets
 ## Links
 
 * [HOME Page](http://mads.atari8.info/)
-* [Mad Pascal on Atari Age Forum](https://atariage.com/forums/topic/240919-mad-pascal/)
-* [Games in Mad Pascal](https://forums.atariage.com/topic/249968-games-in-mad-pascal/)
-* [Mad Pascal examples](https://forums.atariage.com/topic/243658-mad-pascal-examples/)
-* [Mad Pascal on Atari Area Forum](http://www.atari.org.pl/forum/viewtopic.php?id=13373)
-* [Mad Pascal Announcement for WUDSN](https://atariage.com/forums/topic/145386-wudsn-ide-the-free-integrated-atari-8-bit-development-plugin-for-eclipse/?do=findComment&comment=4340150)
+* [Mad-Pascal on Atari Age Forum](https://atariage.com/forums/topic/240919-mad-pascal/)
+* [Games in Mad-Pascal](https://forums.atariage.com/topic/249968-games-in-mad-pascal/)
+* [Mad-Pascal examples](https://forums.atariage.com/topic/243658-mad-pascal-examples/)
+* [Mad-Pascal on Atari Area Forum](http://www.atari.org.pl/forum/viewtopic.php?id=13373)
+* [Mad-Pascal Announcement for WUDSN](https://atariage.com/forums/topic/145386-wudsn-ide-the-free-integrated-atari-8-bit-development-plugin-for-eclipse/?do=findComment&comment=4340150)
 * [Some advice](https://github.com/ilmenit/CC65-Advanced-Optimizations)
-* [Programowanie w Mad Pascal dla C+4](https://c64portal.pl/2021/02/22/programowanie-w-mad-pascal-dla-c4/)
-* [Commodore Plus/4, Mad Pascal i bitmapy](https://c64portal.pl/2021/04/10/commodore-plus-4-mad-pascal-i-bitmapy/)
+* [Programowanie w Mad-Pascal dla C+4](https://c64portal.pl/2021/02/22/programowanie-w-mad-pascal-dla-c4/)
+* [Commodore Plus/4, Mad-Pascal i bitmapy](https://c64portal.pl/2021/04/10/commodore-plus-4-mad-pascal-i-bitmapy/)
+
+## Pascal related
+
+* [Awesome Pascal](https://github.com/Fr0sT-Brutal/awesome-pascal)
+* [Demoscene samples](https://github.com/jdelauney/BZScene-Demoscene-samples)
+* [Turbo Pascal vintage collection](https://github.com/torstenroeder/turbopascal)
+* [Nero 5 Chess program](https://github.com/JulStrat/nero5)
+* [KC Chess](https://github.com/JulStrat/kcchess)
+* [FreePascal meets SDL](https://www.freepascal-meets-sdl.net/)
 
 ## YouTube
 
@@ -231,8 +242,8 @@ This text-mode windowing library has window controls and modern gadgets (widgets
 * [gravity](https://youtu.be/xCwlX6QSn80)
 * [Block Attack](https://youtu.be/2LqFITTgDPI)
 * [Turbo Pascal "Sokoban"](https://youtu.be/bsQsEM3TYTA)
-* [Tron +4. Mad Pascal i C+4](https://youtu.be/a4Y2TYj1ymg)
-* [Mad Pascal Commodore Plus/4 plasma effect with TEDzakker demo music](https://youtu.be/Yg10zHR--14)
+* [Tron +4. Mad-Pascal i C+4](https://youtu.be/a4Y2TYj1ymg)
+* [Mad-Pascal Commodore Plus/4 plasma effect with TEDzakker demo music](https://youtu.be/Yg10zHR--14)
 * [Dungeon Adventurer](https://youtu.be/7lLPm5MywPc)
 * [Time Wizard](https://youtu.be/E12bu5whjpQ)
 

@@ -1,3 +1,49 @@
+16.08.2025
+- poprawione przekazywanie typu ENUM w procedurze/funkcji
+- dodana obsługa instrukcji WITH
+
+09.08.2025
+- optimizations opt_TAY, opt_EOR
+
+07.08.2025
+- bugfixes and optimizations
+
+01.08.2025
+- bugfixes and optimizations
+
+27.07.2025
+- opt_CMP_NE_EQ usunięta optymalizacja dla (WORD = WORD), koniecznie musi rozpatrzyć oba bajty, nie tylko najstarszy
+- nowy unit GIF, odczytuje obrazki max 336x240 GIF87, GIF89, wymaga VBXE
+
+26.07.2025
+- optymalizacje
+- poprawione definiowane ObjectVariable
+
+24.07.2025
+- opt_IMUL_CL dodana optymalizacja dla mnożenia *6
+- nowy unit SHA256
+
+14.07.2025
+- nowy unit AES
+- nowy unit BFONT (CHR Borland)
+- poprawiony błąd uniemożliwiający działanie LENGHT dla USERTYPE
+- dodane rzutowanie tablicy tablicą (AES)
+- poprawiony test limitu 256 bajtów na rekord, poprzednio zgłaszał błąd przy 255 bajtów
+
+09.06.2025
+- dodana obsługa adresowania wskaźnika do tablicy w OBJECT
+- optymalizacja 'opt_BOOLEAN_OR.inc'
+
+16.05.2025
+- poprawki dla adresowanie rekordów VARPASSING
+
+22.02.2025
+- nowy unti RC4
+
+12.02.2025
+- nowy unit E80
+- poprawki dla GRAPH_ATARI.INC (LineTo), wartość RMARGN zostaje zachowana
+
 06.02.2025
 - INC/DEC striped array, absolute array optimization
 
@@ -5,6 +51,7 @@
 - poprawione moduły RMT, SAPLZSS
 - poprawiony plik base/atari/RESOURCE.ASM
 - dodany zasób RMTPLAY2, umożliwia ładowanie playera RMT pod ROM
+- dodany zasób RMTPLAYV, wersja VinsCool, umożliwia ładowanie playera RMT pod ROM, posiada path16, nie wymaga pliku .FEAT
 
 23.01.2025
 - optymalizacje, opt_TEMP_TAIL_IF, opt_TEMP_TAIL_CASE

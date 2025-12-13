@@ -1,3 +1,4 @@
+program bobs_f;
 
 {
 Just a test of 3-frame snake-bob animation. By Bill Kendrick 12/29/94.
@@ -17,66 +18,88 @@ and no DIRECTION).
 -bill!  kendrick@vax.sonoma.edu
 }
 
-uses crt, fastgraph, joystick;
+uses
+  crt,
+  fastgraph,
+  joystick;
 
 const
-	rad=4;
-	dia=rad*2;
+  rad = 4;
+  dia = rad * 2;
 
-	b0=$4000;
-	b1=$4800;
-	b2=$4000;
-	b3=$4800;
+  mode = 6 + 16;
 
 var
-	ss: array [0..3] of word = (b0,b1,b2,b3);
-	
-	q, t: byte;
-	
-	dl: word;
-	
-	x, y, xm, ym: smallint;
+  buf1, buf2, buf3, buf4: TDisplayBuffer;
 
-	sc: pointer;
-	
+  q, t: Byte;
+
+  x, y, xm, ym: Smallint;
 
 begin
 
- InitGraph(6+16);
+  NewDisplayBuffer(buf1, mode, $50);
+  NewDisplayBuffer(buf2, mode, $60);
+  NewDisplayBuffer(buf3, mode, $70);
+  NewDisplayBuffer(buf4, mode, $80);
 
- SetColor(1);
- 
- dl:=dpeek($230);
- 
- x:=dia;
- y:=dia;
- 
- xm:=3;
- ym:=3;
- 
- q:=3;
- t:=0;
-  
+  SetColor(1);
+
+  x := dia;
+  y := dia;
+
+  xm := 3;
+  ym := 3;
+
+  q := 3;
+  t := 0;
+
   repeat
-	pause;
-	pause;
-	pause;
-	
-	FrameBuffer(ss[q]);
-	
-	dpoke(dl+4, ss[t]);
-	
-	inc(x, xm); 
-	inc(y, ym);
+    pause(2);
 
-	if (x<dia) or (x>ScreenWidth-dia) then begin xm:=-xm; inc(x, xm) end;
-	if (y<dia) or (y>ScreenHeight-dia) then begin ym:=-ym; inc(y, ym) end;
+    case t of
+      0:
+        SetDisplayBuffer(buf1);
+      1:
+        SetDisplayBuffer(buf2);
+      2:
+        SetDisplayBuffer(buf3);
+      3:
+        SetDisplayBuffer(buf4);
+    end;
 
-	Circle(x, y, rad);
+    case q of
+      0:
+        SetActiveBuffer(buf1);
+      1:
+        SetActiveBuffer(buf2);
+      2:
+        SetActiveBuffer(buf3);
+      3:
+        SetActiveBuffer(buf4);
+    end;
 
-	inc(q); q:=q and 3;
-	inc(t); t:=t and 3;
+    Inc(x, xm);
+    Inc(y, ym);
 
- until keypressed;
+    if (x < dia) or (x > ScreenWidth - dia) then
+    begin
+      xm := -xm;
+      Inc(x, xm);
+    end;
+    if (y < dia) or (y > ScreenHeight - dia) then
+    begin
+      ym := -ym;
+      Inc(y, ym);
+    end;
+
+    Circle(x, y, rad);
+
+    Inc(q);
+    q := q and 3;
+    Inc(t);
+    t := t and 3;
+
+  until keypressed;
 
 end.

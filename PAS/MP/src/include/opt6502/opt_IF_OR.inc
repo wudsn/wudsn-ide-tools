@@ -67,7 +67,6 @@
      end;
 
 
-
     if lab_a(i) and										//@					; 0	ORA :STACK -> JEQ
        tya(i+1) and										// tya					; 1
        ora_stack(i+2) and									// ora :STACKORIGIN			; 2
@@ -84,7 +83,8 @@
        if and_stack(p) or
           (sty_stack(p) and lab_a(p-1) and lda(p+1) and ora_stack(p+2)) or
           (sty_stack(p) and lab_a(p-1) and lda_stack(p+1)) or
-          (sty_stack(p) and lab_a(p-1) and (copy(listing[p], 6, 256) <> copy(listing[i+2], 6, 256))) or
+          (sty_stack(p) and lab_a(p-1) and ldy_1(p+1) and lda_stack(p+2) and argMatch(p, p+2)) or
+          (sty_stack(p) and lab_a(p-1) and (argMatch(p, i+2) = false)) or
           (tya(p) and (lab_a(p-1) = false) and (ora_stack(p+1) = false)) then begin yes:=false; Break end;
 
       if yes then begin

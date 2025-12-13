@@ -1,30 +1,27 @@
-{
-    This file is part of the Free Component Library (FCL)
-    Copyright (c) 1999-2000 by the Free Pascal development team
-
-    See the file COPYING.FPC, included in this distribution,
-    for details about the copyright.
-
-    This program is distributed in the hope that it will be useful,
-    but WITHOUT ANY WARRANTY; without even the implied warranty of
-    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
-
- **********************************************************************}
-{
-  Unit implementing simple blowfish algorithm
-}
 unit blowfish;
-
 (*
  @type: unit
- @author: Free Pascal development team, Tomasz Biela
- @name: Blowfish
+ @author: Free Pascal development team, Tomasz Biela (Tebe)
+ @name: Blowfish cipher unit
  @version: 1.1
 
  @description:
+ Unit implementing simple blowfish algorithm.
 
+ <https://en.wikipedia.org/wiki/Blowfish_(cipher)>
 *)
 
+{
+ This file is part of the Free Component Library (FCL)
+ Copyright (c) 1999-2000 by the Free Pascal development team
+
+ See the file COPYING.FPC, included in this distribution,
+ for details about the copyright.
+
+ This program is distributed in the hope that it will be useful,
+ but WITHOUT ANY WARRANTY; without even the implied warranty of
+ MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+}
 
 {
 
@@ -37,10 +34,24 @@ EncryptString
 interface
 
 
-	procedure Create(const KeyPhrase: String); overload;
-	function DecryptString(var Buffer: string): string;
-	function EncryptString(aString: string): string;	
-	
+procedure Create(const KeyPhrase: String); overload;
+(*
+@description:
+
+*)
+
+function DecryptString(var Buffer: string): string;
+(*
+@description:
+
+*)
+
+function EncryptString(aString: string): string;
+(*
+@description:
+
+*)
+
 
 implementation
 

@@ -2,12 +2,12 @@ unit inifiles;
 (*
  @type: unit
  @author: Tomasz Biela (Tebe)
- @name:
+ @name: INI Files
  @version: 1.0
 
  @description:
 
- https://github.com/graemeg/freepascal/blob/master/packages/fcl-base/src/inifiles.pp
+ <https://wiki.freepascal.org/Using_INI_Files>
 
  *)
 
@@ -62,6 +62,9 @@ end;
 
 
 function Search(var FileName, Section, Ident: TString): TString;
+(*
+@description:
+*)
 var t: text;
     yes: Boolean;
     s: string;

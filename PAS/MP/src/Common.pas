@@ -8,7 +8,7 @@ interface
 
 const
 
-  title = '1.7.2';
+  title = '1.7.4';
 
   TAB = ^I;		// Char for a TAB
   CR  = ^M;		// Char for a CR
@@ -151,6 +151,7 @@ const
   INTOK			= 114;
   VOLATILETOK		= 115;
   STRIPEDTOK		= 116;
+  WITHTOK		= 117;
 
 
   SETTOK		= 127;	// Size = 32 SET OF
@@ -173,7 +174,7 @@ const
   SINGLETOK		= 143;	// Size = 4 SINGLE / FLOAT		IEEE-754 32bit
   HALFSINGLETOK		= 144;	// Size = 2 HALFSINGLE / FLOAT16	IEEE-754 16bit
   PCHARTOK		= 145;	// Size = 2 POINTER TO ARRAY OF CHAR
-  ENUMTOK		= 146;	// Size = 1 BYTE
+  ENUMTOK		= 146;	// Size = AllocElementType (4)
   PROCVARTOK		= 147;	// Size = 2
   TEXTFILETOK		= 148;	// Size = 2/12 TEXTFILE
   FORWARDTYPE		= 149;	// Size = 2
@@ -227,15 +228,15 @@ const
 
   // Identifier kind codes
 
-  CONSTANT		= CONSTTOK;
-  USERTYPE		= TYPETOK;
-  VARIABLE		= VARTOK;
+  CONSTANT		= CONSTTOK;	// 1
+  USERTYPE		= TYPETOK;	// 2
+  VARIABLE		= VARTOK;	// 3
 //  PROC			= PROCEDURETOK;
 //  FUNC			= FUNCTIONTOK;
   LABELTYPE		= LABELTOK;
   UNITTYPE		= UNITTOK;
-
   ENUMTYPE		= ENUMTOK;
+
 
   // Compiler parameters
 
@@ -260,43 +261,11 @@ const
   CALLDETERMPASS	= 1;
   CODEGENERATIONPASS	= 2;
 
-  // Indirection levels
-
-  ASVALUE			= 0;
-  ASPOINTER			= 1;
-  ASPOINTERTOPOINTER		= 2;
-  ASPOINTERTOARRAYORIGIN	= 3;	// + GenerateIndexShift
-  ASPOINTERTOARRAYORIGIN2	= 4;	// - GenerateIndexShift
-  ASPOINTERTORECORD		= 5;
-  ASPOINTERTOARRAYRECORD	= 6;
-  ASSTRINGPOINTERTOARRAYORIGIN	= 7;
-  ASSTRINGPOINTER1TOARRAYORIGIN	= 8;
-  ASPOINTERTODEREFERENCE	= 9;
-  ASPOINTERTORECORDARRAYORIGIN	= 10;
-  ASARRAYORIGINOFPOINTERTORECORDARRAYORIGIN = 11;
-  ASPOINTERTOARRAYRECORDTOSTRING= 12;
-
-  ASCHAR		= 6;	// GenerateWriteString
-  ASBOOLEAN		= 7;
-  ASREAL		= 8;
-  ASSHORTREAL		= 9;
-  ASHALFSINGLE		= 10;
-  ASSINGLE		= 11;
-  ASPCHAR		= 12;
-
-  OBJECTVARIABLE	= 1;
-  RECORDVARIABLE	= 2;
 
   // Fixed-point 32-bit real number storage
 
   FRACBITS		= 8;	// Float Fixed Point
   TWOPOWERFRACBITS	= 256;
-
-  // Parameter passing
-
-  VALPASSING		= 1;
-  CONSTPASSING		= 2;
-  VARPASSING		= 3;
 
 
   // Data sizes
@@ -320,7 +289,7 @@ const
 	4,	// Size = 4 SINGLE / FLOAT
 	2,	// Size = 2 HALFSINGLE / FLOAT16
 	2,	// Size = 2 PCHAR
-	1,	// Size = 1 BYTE
+	4,	// Size = 1 ENUM
 	2,	// Size = 2 PROCVAR
 	2,	// Size = 2 TEXTFILE
 	2	// Size = 2 FORWARD
@@ -333,6 +302,45 @@ const
 
 
 type
+
+  // Indirection levels
+
+  TIndirectionLevel = (
+
+  ASVALUE				,	// Ord(Ident[IdentIndex].Kind = VARIABLE) -> 0 -> ASVALUE
+  ASPOINTER				,	// Ord(Ident[IdentIndex].Kind = VARIABLE) -> 1 -> ASPOINTER
+
+  ASPOINTERTOPOINTER			,
+  ASPOINTERTOARRAYORIGIN		,	// + GenerateIndexShift
+  ASPOINTERTOARRAYORIGIN2		,	// - GenerateIndexShift
+  ASPOINTERTORECORD			,
+  ASPOINTERTOARRAYRECORD		,
+  ASSTRINGPOINTERTOARRAYORIGIN		,
+  ASSTRINGPOINTER1TOARRAYORIGIN		,
+  ASPOINTERTODEREFERENCE		,
+  ASPOINTERTORECORDARRAYORIGIN		,
+  ASARRAYORIGINOFPOINTERTORECORDARRAYORIGIN ,
+  ASPOINTERTOARRAYRECORDTOSTRING	,
+
+  ASCHAR				,	// GenerateWriteString
+  ASBOOLEAN				,
+  ASREAL				,
+  ASSHORTREAL				,
+  ASHALFSINGLE				,
+  ASSINGLE				,
+  ASPCHAR
+  );
+
+  // Parameter passing
+
+  TParameterPassingMethod = (
+
+    UNDEFINED,
+    VALPASSING,   // By value, modifiable
+    CONSTPASSING, // By const, unmodifiable
+    VARPASSING    // By reference, modifiable
+    );
+
 
   ModifierCode = (mKeep = $100, mOverload= $80, mInterrupt = $40, mRegister = $20, mAssembler = $10, mForward = $08, mPascal = $04, mStdCall = $02, mInline = $01);
 
@@ -380,7 +388,7 @@ type
     DataType: Byte;
     NumAllocElements: Cardinal;
     AllocElementType: Byte;
-    PassMethod: Byte;
+    PassMethod: TParameterPassingMethod;
     i, i_: integer;
    end;
 
@@ -396,7 +404,7 @@ type
     DataType: Byte;
     NumAllocElements: Cardinal;
     AllocElementType: Byte;
-    Kind: Byte;
+    ObjectVariable: Boolean;
   end;
 
   TType = record
@@ -430,7 +438,7 @@ type
     Libraries : Integer;		// EXTERNAL alias 'libraries'
     DataType: Byte;
     IdType: Byte;
-    PassMethod: Byte;
+    PassMethod: TParameterPassingMethod;
     Pass: Byte;
 
     NestedNumAllocElements: cardinal;
@@ -473,7 +481,9 @@ type
 
       VARIABLE, USERTYPE:
 	(NumAllocElements, NumAllocElements_: Cardinal;
-	 AllocElementType: Byte);
+	 AllocElementType: Byte;
+	 ObjectVariable: Boolean;
+	);
     end;
 
 
@@ -549,14 +559,12 @@ var
 
   OldConstValType: byte;
 
-  NumTok: integer = 0;
-
   AddDefines: integer = 1;
   NumDefines: integer = 1;	// NumDefines = AddDefines
 
-  i, NumIdent, NumTypes, NumPredefIdent, NumStaticStrChars, NumUnits, NumBlocks, run_func, NumProc,
+  NumTok, NumIdent, NumTypes, NumPredefIdent, NumStaticStrChars, NumUnits, NumBlocks, NumProc,
   BlockStackTop, CodeSize, CodePosStackTop, BreakPosStackTop, VarDataSize, Pass, ShrShlCnt,
-  NumStaticStrCharsTmp, AsmBlockIndex, IfCnt, CaseCnt, IfdefLevel: Integer;
+  NumStaticStrCharsTmp, AsmBlockIndex, IfCnt, CaseCnt, IfdefLevel, run_func: Integer;
 
   iOut: integer = -1;
 
@@ -581,7 +589,7 @@ var
   MainPath, FilePath, optyA, optyY, optyBP2,
   optyFOR0, optyFOR1, optyFOR2, optyFOR3, outTmp, outputFile: TString;
 
-  msgWarning, msgNote, msgUser, UnitPath, OptimizeBuf, LinkObj: TArrayString;
+  msgWarning, msgNote, msgUser, UnitPath, OptimizeBuf, LinkObj, WithName: TArrayString;
 
 
   optimize : record

@@ -4,7 +4,6 @@
 // -----------------------------------------------------------------------------
 
 procedure opt_TEMP_JMP;
-var p: integer;
 begin
 
    if sta(0) and									// sta A		; 0
@@ -35,7 +34,7 @@ begin
      end;
 
 
-    if (pos('lda #$', TemporaryBuf[0]) > 0) and (TemporaryBuf[0] <> #9'lda #$00') and	// lda #$01		; 0
+    if (pos('lda #$', TemporaryBuf[0]) > 0) and (lda_im_0(0) = false) and		// lda #$01		; 0
        jeq_l(1) and									// jeq l_xxxx		; 1
        jmp(2) and									// jmp l_yyyy		; 2
        (pos(TemporaryBuf[3], TemporaryBuf[1]) > 0) then					//l_xxxx		; 3

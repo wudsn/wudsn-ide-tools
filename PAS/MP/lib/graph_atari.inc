@@ -25,6 +25,8 @@ const
 begin
 
  asm
+ dindex	equ $57
+
 	txa:pha
 
 	lda mode
@@ -42,7 +44,6 @@ begin
 
 	sty GraphResult
 
-
 	.ifdef MAIN.@DEFINES.ROMOFF
 	inc portb
 	.endif
@@ -57,8 +58,6 @@ shift	asl @
 	sta SCANLINE_WIDTH
 
 ; Fox/TQA
-
-dindex	equ $57
 
 	ldx dindex
 	lda adr.tmccn,x
@@ -232,6 +231,9 @@ sk1
 
 	stx @sp
 
+	lda RMARGN
+	pha
+
 	mwa x colcrs
 	mva y rowcrs
 
@@ -242,6 +244,9 @@ sk1
 	lda @COMMAND.colscr
 
 	m@call	@putchar.main
+
+	pla
+	sta RMARGN
 
 	ldx @sp: #$00
 stop
@@ -352,7 +357,10 @@ _2
 	sta x
 	sty x+1
 _3
-	txa:pha
+	stx @sp
+
+	lda RMARGN
+	pha
 
 	mwa CurrentX colcrs
 	mva CurrentY rowcrs
@@ -381,8 +389,10 @@ _3
 
 	jsr @COMMAND
 
-	pla:tax
+	pla
+	sta RMARGN
 
+	ldx @sp: #$00
 end;
 
 end;

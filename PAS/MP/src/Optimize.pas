@@ -92,40 +92,40 @@ var p, k , q: integer;
     yes: Boolean;
 
 
+{$i include\cmd_temporary.inc}
+
+
   function fail(i: integer): Boolean;
   begin
 
         if (pos('#asm:', TemporaryBuf[i]) = 1) or
 
-	   (pos('ldy ', TemporaryBuf[i]) > 0) or
+	   ldy(i) or
            (pos('mwy ', TemporaryBuf[i]) > 0) or
            (pos('mvy ', TemporaryBuf[i]) > 0) or
-           (pos('jsr ', TemporaryBuf[i]) > 0) or
+           jsr(i) or
            (pos(#9'.if', TemporaryBuf[i]) > 0) or
            (pos(#9'.LOCAL ', TemporaryBuf[i]) > 0) or
            (pos(#9'@print', TemporaryBuf[i]) > 0) or
-           (TemporaryBuf[i] = #9'iny') or
-           (TemporaryBuf[i] = #9'dey') or
-           (TemporaryBuf[i] = #9'tya') or
-           (TemporaryBuf[i] = #9'tay') then Result:=true else Result:=false;
+           iny(i) or
+           dey(i) or
+           tya(i) or
+           tay(i) then Result:=true else Result:=false;
 
   end;
-
-
-{$i include\cmd_temporary.inc}
 
 
   function SKIP(i: integer): Boolean;
   begin
 
-      Result :=	(TemporaryBuf[i] = #9'seq') or (TemporaryBuf[i] = #9'sne') or
-		(TemporaryBuf[i] = #9'spl') or (TemporaryBuf[i] = #9'smi') or
-		(TemporaryBuf[i] = #9'scc') or (TemporaryBuf[i] = #9'scs') or
-		(TemporaryBuf[i] = #9'svc') or (TemporaryBuf[i] = #9'svs') or
+      Result :=	seq(i) or sne(i) or
+		spl(i) or smi(i) or
+		scc(i) or scs(i) or
+		svc(i) or svs(i) or
 
-		(pos(#9'jne ', TemporaryBuf[i]) = 1) or (pos(#9'jeq ', TemporaryBuf[i]) = 1) or
-		(pos(#9'jcc ', TemporaryBuf[i]) = 1) or (pos(#9'jcs ', TemporaryBuf[i]) = 1) or
-		(pos(#9'jmi ', TemporaryBuf[i]) = 1) or (pos(#9'jpl ', TemporaryBuf[i]) = 1) or
+		jne(i) or jeq(i) or
+		jcc(i) or jcs(i) or
+		jmi(i) or jpl(i) or
 
 		(pos(#9'bne ', TemporaryBuf[i]) = 1) or (pos(#9'beq ', TemporaryBuf[i]) = 1) or
 		(pos(#9'bcc ', TemporaryBuf[i]) = 1) or (pos(#9'bcs ', TemporaryBuf[i]) = 1) or
@@ -248,6 +248,7 @@ end;
     opt_TEMP_JMP;
     opt_TEMP_ZTMP;
     opt_TEMP_UNROLL;
+
 
 // -----------------------------------------------------------------------------
 
@@ -571,6 +572,12 @@ var inxUse, found: Boolean;
    end;
 
 
+   function argMatch(i, j: integer): Boolean;
+   begin
+     Result := copy(listing[i], 6, 256) = copy(listing[j], 6, 256);
+   end;
+
+
    procedure WriteInstruction(i: integer);
    begin
 
@@ -707,7 +714,7 @@ var inxUse, found: Boolean;
    function LDA_STA_BP(i: integer): Boolean;
    begin
 
-    Result := (lda_bp_y(i) and sta(i+1)) or (lda(i) and sta_bp_y(i+1))
+    Result := (lda_bp_y(i) and sta_a(i+1)) or (lda_a(i) and sta_bp_y(i+1))
 
    end;
 
@@ -816,8 +823,8 @@ var inxUse, found: Boolean;
 
         if lda_stack(k) and 								// sta :STACKORIGIN	; k-1
 	   sta_stack(k-1) and								// lda :STACKORIGIN	; k
-	   sta_a(i+1) then								// sta			; i+1
-         if copy(listing[k], 6, 256) = copy(listing[k-1], 6, 256) then
+	   (sta_a(i+1) or add_sub(i+1)) then						// sta|add|sub		; i+1
+         if argMatch(k, k-1) then
 	  begin
 	   listing[k-1] := '';
 	   listing[k]   := '';
@@ -829,7 +836,7 @@ var inxUse, found: Boolean;
         if sta_stack(k) and 								// lda :STACKORIGIN	; k-1
 	   lda_stack(k-1) and								// sta :STACKORIGIN	; k
 	   lda_a(i+1) then								// lda			; i+1
-         if copy(listing[k], 6, 256) = copy(listing[k-1], 6, 256) then
+         if argMatch(k, k-1) then
 	  begin
 	   listing[k-1] := '';
 	   listing[k]   := '';
@@ -1369,7 +1376,7 @@ end;
 
 
 {
-if (pos('lda TE4+1', listing[i]) > 0) then begin
+if (pos('lda adr.ROW1+$20,y', listing[i]) > 0) then begin
 
       for p:=0 to l-1 do writeln(listing[p]);
       writeln('-------');
@@ -1424,14 +1431,13 @@ end;
 
 
 {
-if (pos('lda #$04', listing[i]) > 0) then begin
+if (pos(#9'add #$00', listing[i]) > 0) then begin
 
       for p:=0 to l-1 do writeln(listing[p]);
       writeln('-------');
 
 end;
 }
-
 
     if opt_FORTMP(i) = false then begin Result := false; Break end;
 
@@ -1714,7 +1720,7 @@ end;
 
     if lda(i) and										// lda				; 0
        ldy_1(i+1) and										// ldy #1			; 1
-       (listing[i+2] = #9'and #$00') and							// and #$00			; 2
+       and_im_0(i+2) and									// and #$00			; 2
        bne(i+3) and										// bne @+			; 3
        lda(i+4) then										// lda				; 4
      begin
@@ -1725,9 +1731,16 @@ end;
      end;
 
 
-    if (i>0) and (listing[i] = #9'and #$00') then						// lda #$00			; -1
+    if (i>0) and and_im_0(i) then								// lda #$00			; -1
      if lda_im_0(i-1) then begin								// and #$00			; 0
 	listing[i] := '';
+	Result:=false; Break;
+     end;
+
+
+    if (i>0) and ora(i) then									// lda #$00			; -1
+     if lda_im_0(i-1) then begin								// ora				; 0
+	listing[i] := #9'lda ' + copy(listing[i], 6, 256);
 	Result:=false; Break;
      end;
 
@@ -1753,7 +1766,7 @@ end;
 
 
     if (lda_a(i) or adc_sbc(i)) and								// lda|adc|sbc			; 0
-       ((listing[i+1] = #9'eor #$00') or (listing[i+1] = #9'ora #$00')) and			// eor|ora #$00			; 1
+       (eor_im_0(i+1) or ora_im_0(i+1)) and							// eor|ora #$00			; 1
        SKIP(i+2) then										// SKIP				; 2
      begin
 	listing[i+1] := '';
@@ -1762,7 +1775,7 @@ end;
 
 
     if and_ora_eor(i) and									// and|ora|eor			; 0
-       ((listing[i+1] = #9'eor #$00') or (listing[i+1] = #9'ora #$00')) and			// eor|ora #$00			; 1
+       (eor_im_0(i+1) or ora_im_0(i+1)) and							// eor|ora #$00			; 1
        SKIP(i+2) then										// SKIP				; 2
      begin
 	listing[i+1] := '';
@@ -1774,7 +1787,7 @@ end;
        iny(i+1) and										// iny				; 1
        lda_stack(i+2) and									// lda :STACKORIGIN+9		; 2
        cmp(i+3) then										// cmp				; 3
-     if (copy(listing[i], 6, 256) = copy(listing[i+2], 6, 256)) then
+     if argMatch(i, i+2) then
        begin
 	listing[i]   := '';
 
@@ -1784,9 +1797,9 @@ end;
 
 
     if sta_stack(i) and										// sta :STACKORIGIN+9		; 0
-       lda(i+1) and										// lda				; 1
+       lda(i+1) and										// lda				; 1	~lda adr.
        AND_ORA_EOR_STACK(i+2) then 								// ora|and|eor :STACKORIGIN+9	; 2
-     if (copy(listing[i], 6, 256) = copy(listing[i+2], 6, 256)) then
+     if argMatch(i, i+2) then
        begin
 	listing[i]   := '';
 	listing[i+1] := copy(listing[i+2], 1, 5) + copy(listing[i+1], 6, 256);
@@ -1799,8 +1812,8 @@ end;
        lda_stack(i+1) and									// lda :STACKORIGIN+9		; 1
        AND_ORA_EOR_STACK(i+2) and								// ora|and|eor :STACKORIGIN+10	; 2
        sta_stack(i+3) then									// sta :STACKORIGIN+9		; 3
-       if (copy(listing[i], 6, 256) = copy(listing[i+2], 6, 256)) and
-          (copy(listing[i+1], 6, 256) = copy(listing[i+3], 6, 256)) then
+       if argMatch(i, i+2) and
+          argMatch(i+1, i+3) then
        begin
 	listing[i]   := #9'tya';
 	listing[i+1] := copy(listing[i+2], 1, 5) + copy(listing[i+1], 6, 256);
@@ -1810,10 +1823,10 @@ end;
 
 
     if sty_stack(i) and										// sty :STACKORIGIN+10		; 0
-       lda(i+1) and										// lda 				; 1
+       lda(i+1) and										// lda 				; 1	~lda adr.
        add_stack(i+2) and									// add :STACKORIGIN+10		; 2
        sta(i+3) then										// sta				; 3
-       if (copy(listing[i], 6, 256) = copy(listing[i+2], 6, 256)) then
+       if argMatch(i, i+2) then
        begin
 	listing[i]   := #9'tya';
 	listing[i+1] := #9'add ' + copy(listing[i+1], 6, 256);
@@ -1829,9 +1842,9 @@ end;
        lda_stack(i+4) and									// lda :STACKORIGIN+STACKWIDTH	; 4
        bne(i+5) and										// bne @+			; 5
        lda_stack(i+6) then									// lda :STACKORIGIN		; 6
-       if (copy(listing[i], 6, 256) = copy(listing[i+4], 6, 256)) and
-          (copy(listing[i+1], 6, 256) = copy(listing[i+3], 6, 256)) and
-          (copy(listing[i+3], 6, 256) = copy(listing[i+6], 6, 256)) then
+       if argMatch(i, i+4) and
+          argMatch(i+1, i+3) and
+          argMatch(i+3, i+6) then
        begin
 	listing[i]   := listing[i+5];
 
@@ -1850,7 +1863,7 @@ end;
        ldy_1(i+2) and										// ldy #1			; 2
        lda_stack(i+3) and 									// lda :STACKORIGIN+N		; 3
        (bne(i+4) or beq(i+4)) then								// bne|beq			; 4
-     if copy(listing[i+1], 6, 256) = copy(listing[i+3], 6, 256) then
+     if argMatch(i+1, i+3) then
       begin
        listing[i+1] := '';
        listing[i+3] := listing[i];
@@ -1890,7 +1903,7 @@ end;
 {$i include/opt6502/opt_WHILE_AND.inc}
 {$i include/opt6502/opt_WHILE_OR.inc}
 {$i include/opt6502/opt_BOOLEAN_AND.inc}
-//{$i include/opt6502/opt_BOOLEAN_OR.inc}
+{$i include/opt6502/opt_BOOLEAN_OR.inc}
 
 // -----------------------------------------------------------------------------
 
@@ -3165,7 +3178,7 @@ begin				// OptimizeASM
  if optyA <> '' then
   for i:=0 to l-1 do
    if (listing[i] = #9'inc ' + optyA) or (listing[i] = #9'dec ' + optyA) or //((optyY <> '') and (optyA = optyY)) or
-      lda(i) or lda_adr(i) or mva(i) or mwa(i) or tya(i) or lab_a(i) or jsr(i) or
+      lda_a(i) or mva(i) or mwa(i) or tya(i) or lab_a(i) or jsr(i) or
       (pos(#9'jmp ', listing[i]) > 0) or (pos(#9'.if', listing[i]) > 0) then begin optyA := ''; Break end;
 
 
