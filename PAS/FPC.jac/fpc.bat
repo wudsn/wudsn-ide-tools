@@ -24,20 +24,33 @@ set PATH=%FPC_FOLDER%;%PATH%
 set INPUT_FOLDER=%~dp1
 cd /D %INPUT_FOLDER%
 set INPUT_FILE=%~n1
+set INPUT_FILE_EXT=%~nx1
 set OUTPUT_FILE=%INPUT_FILE%.exe
+set LOG_FILE=%INPUT_FILE%.log
 
 if exist %INPUT_FILE%.o del %INPUT_FILE%.o
 if exist %OUTPUT_FILE% del %OUTPUT_FILE%
+if exist %LOG_FILE% del %LOG_FILE%
 
-fpc.exe %INPUT_FILE%.pas
+rem Use recommended settings.
+fpc.exe -MDelphi -vh -O3 %INPUT_FILE_EXT%
+
 if ERRORLEVEL 1 (
   echo ERROR: FPC error. See error messages above.
   goto :end
 )
 if exist %INPUT_FILE%.o del %INPUT_FILE%.o
 
-start %OUTPUT_FILE%
+if "%MODE%"=="SHELL" goto :shell
 goto :eof
+
+:shell
+%OUTPUT_FILE%
+if exist %LOG_FILE% (
+    type %LOG_FILE%
+    goto :end
+)
+goto :end
 
 :end
 if "%MODE%"=="SHELL" (

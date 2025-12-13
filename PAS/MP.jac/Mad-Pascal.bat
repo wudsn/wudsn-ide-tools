@@ -19,37 +19,56 @@ if "%WUDSN_TOOLS_FOLDER%"=="" (
 )
 
 set MP_FOLDER=%WUDSN_TOOLS_FOLDER%\PAS\MP
-set MADS_FOLDER=%WUDSN_TOOLS_FOLDER%\ASM\MADS\bin\windows_x86_64
-set PATH=%MP_FOLDER%\bin\windows;%MADS_FOLDER%;%PATH%
+set MADS_FOLDER=%WUDSN_TOOLS_FOLDER%\ASM\MADS
+set PATH=%MP_FOLDER%\bin\windows;%MADS_FOLDER%\bin\windows_x86_64;%PATH%
 
 set INPUT_FOLDER=%~dp1
 cd /D %INPUT_FOLDER%
 set INPUT_FILE=%~n1
-set OUTPUT_FILE=%INPUT_FILE%.xex
+
+ECHO.%INPUT_FOLDER%| FIND /I "c64">Nul && ( 
+  set OUTPUT_TARGET=c64
+  set OUTPUT_FILE=%INPUT_FILE%.prg
+) || (
+  set OUTPUT_TARGET=a8
+  set OUTPUT_FILE=%INPUT_FILE%.xex
+)
 
 if exist %INPUT_FILE%.a65 del %INPUT_FILE%.a65
 if exist %INPUT_FILE%.lab del %INPUT_FILE%.lab
 if exist %INPUT_FILE%.lsr del %INPUT_FILE%.lst
 if exist %OUTPUT_FILE% del %OUTPUT_FILE%
 
-mp.exe %INPUT_FILE%.pas -ipath:%MP_FOLDER%\lib -ipath:%MP_FOLDER%\blibs
+mp.exe %INPUT_FILE%.pas -ipath:%MP_FOLDER%\lib -ipath:%MP_FOLDER%\blibs -t %OUTPUT_TARGET% 
 if ERRORLEVEL 1 (
   echo ERROR: Mad-Pascal error. See error messages above.
   goto :end
 ) 
 
-mads.exe %INPUT_FILE%.a65 -x -i:%MP_FOLDER%\base -l -t -o:%INPUT_FILE%.xex
+mads.exe %INPUT_FILE%.a65 -x -i:%MP_FOLDER%\base -l -t -o:%OUTPUT_FILE%
 if ERRORLEVEL 1 (
   echo ERROR: Mad-Assembler error. See error messages above.
   goto :end
 )
 
 start %OUTPUT_FILE%
+pause
 goto :eof
 
 :end
 if "%MODE%"=="SHELL" (
   pause
+)
+goto :eof
+
+:contains
+set SOURCE_STRING=%1
+set SEARCH_STRING=%2
+set CONTAINS=NO
+ECHO.%SOURCE_STRING%| FIND /I "%SEARCH_STRING%">Nul && ( 
+  set CONTAINS=YES
+) || (
+ rem
 )
 goto :eof
 
