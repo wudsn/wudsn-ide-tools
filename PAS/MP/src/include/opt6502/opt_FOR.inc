@@ -1,8 +1,13 @@
+
+procedure opt_FOR;
+var i, k: integer;
+begin
+
 // -----------------------------------------------------------------------------
 // ===		     		      FOR.
 // -----------------------------------------------------------------------------
 
-//  Rebuild;
+//   Rebuild;
 
    found := false;
 
@@ -28,22 +33,22 @@
       if sbc(i) then arg0 := #9'sbc ';
 
       if pos('+3', listing[i]) > 0 then begin
-       if pos(copy(listing[i], 6, 256), optyFOR3) > 0 then listing[i] := arg0 + GetString(optyFOR3);
+       if pos(GetARG(i), optyFOR3) > 0 then listing[i] := arg0 + GetString(optyFOR3);
       end else
       if pos('+2', listing[i]) > 0 then begin
-       if pos(copy(listing[i], 6, 256), optyFOR2) > 0 then listing[i] := arg0 + GetString(optyFOR2);
+       if pos(GetARG(i), optyFOR2) > 0 then listing[i] := arg0 + GetString(optyFOR2);
       end else
       if pos('+1', listing[i]) > 0 then begin
-       if pos(copy(listing[i], 6, 256), optyFOR1) > 0 then listing[i] := arg0 + GetString(optyFOR1);
+       if pos(GetARG(i), optyFOR1) > 0 then listing[i] := arg0 + GetString(optyFOR1);
       end else
-       if pos(copy(listing[i], 6, 256), optyFOR0) > 0 then listing[i] := arg0 + GetString(optyFOR0);
+       if pos(GetARG(i), optyFOR0) > 0 then listing[i] := arg0 + GetString(optyFOR0);
 
      end;
 
 
      if found then begin
 
-      Rebuild;
+      Rebuild('opt_FOR');
 
       if l > 0 then begin
 
@@ -52,7 +57,7 @@
           cmp_im_0(1) and
 	  (pos(#9'jcc l_', listing[2]) > 0 ) then
 	begin
-	 listing[0] := #9'#for:dec ' + copy(listing[0], 6, 256);
+	 listing[0] := #9'#for:dec ' + GetARG(0);
 	 listing[1] := #9'#for';
 	 listing[2] := '';
 	end;
@@ -63,11 +68,11 @@
           cmp(1) and (cmp_im(1) = false) and
 	  (listing[2] = #9'bcc *+7') and
 	  (listing[3] = #9'beq *+5') and
-	  jmp(4) then
+	  jmp_l(4) then
         begin
-	 listing[2] := #9'lda ' + copy(listing[1], 6, 256);
-	 listing[3] := #9'cmp ' + copy(listing[0], 6, 256);
-	 listing[4] := #9'jcc ' + copy(listing[4], 6, 256);
+	 listing[2] := #9'lda ' + GetARG(1);
+	 listing[3] := #9'cmp ' + GetARG(0);
+	 listing[4] := #9'jcc ' + GetARG(4);
 
 	 listing[0] := '';
 	 listing[1] := '';
@@ -79,7 +84,7 @@
           cmp_im(1) and
 	  (listing[2] = #9'bcc *+7') and
 	  (listing[3] = #9'beq *+5') and
-	  jmp(4) then
+	  jmp_l(4) then
         begin
         k := GetBYTE(1) + 1;
 
@@ -89,12 +94,12 @@
  	  listing[1] := '';
  	  listing[2] := '';
  	  listing[3] := '';
- 	  listing[4] := #9'jmi ' + copy(listing[4], 6, 256);
+ 	  listing[4] := #9'jmi ' + GetARG(4);
  	 end else begin
-	  listing[1] := #9'cmp #$'+IntToHex(k and $ff, 2);
+	  listing[1] := #9'cmp #' + HexByte(byte(k));
 	  listing[2] := '';
 	  listing[3] := '';
-	  listing[4] := #9'jcs ' + copy(listing[4], 6, 256);
+	  listing[4] := #9'jcs ' + GetARG(4);
  	 end;
 
         end else begin
@@ -134,15 +139,15 @@
           (listing[3] = #9'eor #$80') and
           (listing[4] = #9'bmi *+7') and
           (listing[5] = #9'beq *+5') and
-	  jmp(6) then
+	  jmp_l(6) then
 	begin
         k := GetBYTE(1) + 1;
 
 	 if k <> $80 then begin
-	  listing[1] := #9'sub #$' + IntToHex(k and $ff, 2);
+	  listing[1] := #9'sub #' + HexByte(byte(k));
 
 	  listing[4] := #9'asl @';
-	  listing[5] := #9'jcc ' + copy(listing[6], 6, 256);
+	  listing[5] := #9'jcc ' + GetARG(6);
 	  listing[6] := '';
 	 end;
 
@@ -155,9 +160,9 @@
 	  svc(2) and
           (listing[3] = #9'eor #$80') and
           (listing[4] = #9'bpl *+5') and
-	  jmp(5) then
+	  jmp_l(5) then
 	begin
-	 listing[4] := #9'jmi ' + copy(listing[5], 6, 256);
+	 listing[4] := #9'jmi ' + GetARG(5);
 	 listing[5] := '';
 	end;
 
@@ -171,7 +176,7 @@
           lab_a(5) and
 	  (listing[6] = #9'bcc *+7') and
 	  (listing[7] = #9'beq *+5') and
-	  jmp(8) then
+	  jmp_l(8) then
         begin
 
         k := GetBYTE(1) shl 8 + GetBYTE(4);
@@ -189,7 +194,7 @@
 	end else begin
 	 listing[5] := listing[4];
 	 listing[4] := listing[3];
-	 listing[3] := #9'jne ' + copy(listing[8], 6, 256);
+	 listing[3] := #9'jne ' + GetARG(8);
 	 listing[2] := #9'bcc @+';
 
 	 listing[6] := #9'bcc @+';
@@ -209,18 +214,18 @@
           lab_a(5) and
 	  (listing[6] = #9'bcc *+7') and
 	  (listing[7] = #9'beq *+5') and
-	  jmp(8) then
+	  jmp_l(8) then
         begin
 	 listing[7] := '@';
-	 listing[8] := #9'jcc ' + copy(listing[8], 6, 256);
+	 listing[8] := #9'jcc ' + GetARG(8);
 
-	 listing[5] := #9'lda ' + copy(listing[4], 6, 256);
-	 listing[6] := #9'cmp ' + copy(listing[3], 6, 256);
+	 listing[5] := #9'lda ' + GetARG(4);
+	 listing[6] := #9'cmp ' + GetARG(3);
 
 	 listing[4] := #9'bne @+';
 
-	 listing[2] := #9'lda ' + copy(listing[1], 6, 256);
-	 listing[3] := #9'cmp ' + copy(listing[0], 6, 256);
+	 listing[2] := #9'lda ' + GetARG(1);
+	 listing[3] := #9'cmp ' + GetARG(0);
 
 	 listing[0] := '';
 	 listing[1] := '';
@@ -242,24 +247,24 @@
           lab_a(11) and
 	  (listing[12] = #9'bcc *+7') and
 	  (listing[13] = #9'beq *+5') and
-	  jmp(14) then
+	  jmp_l(14) then
 	begin
 	 listing[13] := '@';
-	 listing[14] := #9'jcc ' + copy(listing[14], 6, 256);
+	 listing[14] := #9'jcc ' + GetARG(14);
 
-	 listing[11] := #9'lda ' + copy(listing[10], 6, 256);
-	 listing[12] := #9'cmp ' + copy(listing[9], 6, 256);
+	 listing[11] := #9'lda ' + GetARG(10);
+	 listing[12] := #9'cmp ' + GetARG(9);
 
-	 listing[8] := #9'lda ' + copy(listing[7], 6, 256);
-	 listing[9] := #9'cmp ' + copy(listing[6], 6, 256);
+	 listing[8] := #9'lda ' + GetARG(7);
+	 listing[9] := #9'cmp ' + GetARG(6);
 	 listing[10] := #9'bne @+';
 
-	 listing[5] := #9'lda ' + copy(listing[4], 6, 256);
-	 listing[6] := #9'cmp ' + copy(listing[3], 6, 256);
+	 listing[5] := #9'lda ' + GetARG(4);
+	 listing[6] := #9'cmp ' + GetARG(3);
 	 listing[7] := #9'bne @+';
 
-	 listing[2] := #9'lda ' + copy(listing[1], 6, 256);
-	 listing[3] := #9'cmp ' + copy(listing[0], 6, 256);
+	 listing[2] := #9'lda ' + GetARG(1);
+	 listing[3] := #9'cmp ' + GetARG(0);
 	 listing[4] := #9'bne @+';
 
 	 listing[0] := '';
@@ -313,7 +318,7 @@
           lab_a(11) and
 	  (listing[12] = #9'bcc *+7') and
 	  (listing[13] = #9'beq *+5') and
-	  jmp(14) then
+	  jmp_l(14) then
 	begin
 	 listing[0] := '';
 	 listing[1] := '';
@@ -353,18 +358,18 @@
           ENDL(16) and
           (listing[17] = #9'bmi *+7') and
           (listing[18] = #9'beq *+5') and
-	  jmp(19) then
+	  jmp_l(19) then
 	begin
          k := GetBYTE(2) shl 8 + GetBYTE(5) + 1;
 
          if k <> $8000 then begin
-	  listing[5] := #9'cmp #$' + IntToHex(k and $ff, 2);
+	  listing[5] := #9'cmp #' + HexByte(byte(k));
 	  listing[6] := listing[1];
-	  listing[7] := #9'sbc #$' + IntToHex(byte(k shr 8), 2);
+	  listing[7] := #9'sbc #' + HexByte(byte(k shr 8));
 	  listing[8] := #9'svc';
 	  listing[9] := #9'eor #$80';
 	  listing[10] := #9'asl @';
-	  listing[11] := #9'jcc ' + copy(listing[19], 6, 256);
+	  listing[11] := #9'jcc ' + GetARG(19);
 	  listing[12] := '';
 	  listing[13] := '';
 	  listing[14] := '';
@@ -402,17 +407,17 @@
           (listing[15] = 'L5') and
           ENDL(16) and
           (listing[17] = #9'bpl *+5') and
-	  jmp(18) then
+	  jmp_l(18) then
 	begin
          k := GetBYTE(2) shl 8 + GetBYTE(5);
 
          if k <> $8000 then begin
-	  listing[5] := #9'cmp #$' + IntToHex(k and $ff, 2);
+	  listing[5] := #9'cmp #' + HexByte(byte(k));
 	  listing[6] := listing[1];
-	  listing[7] := #9'sbc #$' + IntToHex(byte(k shr 8), 2);
+	  listing[7] := #9'sbc #' + HexByte(byte(k shr 8));
 	  listing[8] := #9'svc';
 	  listing[9] := #9'eor #$80';
-	  listing[10] := #9'jmi ' + copy(listing[18], 6, 256);
+	  listing[10] := #9'jmi ' + GetARG(18);
 	  listing[11] := '';
 	  listing[12] := '';
 	  listing[13] := '';
@@ -433,3 +438,6 @@
       end;
 
      end;
+
+
+end;		// procedure

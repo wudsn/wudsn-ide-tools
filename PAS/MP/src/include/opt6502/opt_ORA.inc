@@ -1,6 +1,5 @@
 
 function opt_ORA(i: integer): Boolean;
-var p :integer;
 begin
 
     Result := true;
@@ -37,10 +36,10 @@ begin
 	argMatch(i+5, i+15) and
 	argMatch(i+7, i+18) then
        begin
-	listing[i+9]  := #9'ora ' + copy(listing[i], 6, 256);
-	listing[i+12] := #9'ora ' + copy(listing[i+2], 6, 256);
-	listing[i+15] := #9'ora ' + copy(listing[i+4], 6, 256);
-	listing[i+18] := #9'ora ' + copy(listing[i+6], 6, 256);
+	listing[i+9]  := #9'ora ' + GetARG(i);
+	listing[i+12] := #9'ora ' + GetARG(i+2);
+	listing[i+15] := #9'ora ' + GetARG(i+4);
+	listing[i+18] := #9'ora ' + GetARG(i+6);
 
 	listing[i]   := '';
 	listing[i+1] := '';
@@ -110,7 +109,7 @@ begin
        sta_a(i+14) and									// sta					; 14
        lda_stack(i+15) and								// lda :STACKORIGIN+STACKWIDTH*2+10	; 15
        and_ora_eor(i+16) and								// and|ora|eor				; 16
-       sta_a(i+17) then									// sta					; 17      
+       sta_a(i+17) then									// sta					; 17
      if argMatch(i+1, i+9) and
 	argMatch(i+3, i+12) and
 	argMatch(i+5, i+15) then
@@ -136,8 +135,10 @@ begin
 // -----------------------------------------------------------------------------
 
 
-    if lda_a(i) and									// lda			; 0
-       ora_im_0(i+1) and								// ora #$00		; 1
+    if ora_im_0(i+1) and								// ora #$00		; 1
+
+       lda_a(i) and									// lda			; 0
+//     ora_im_0(i+1) and								// ora #$00		; 1
        sta_a(i+2) then									// sta			; 2
      begin
 
@@ -152,8 +153,10 @@ begin
      end;
 
 
-    if lda_a(i) and									// lda			; 0
-       ora_im_0(i+1) and								// ora #$00		; 1
+    if ora_im_0(i+1) and								// ora #$00		; 1
+
+       lda_a(i) and									// lda			; 0
+//     ora_im_0(i+1) and								// ora #$00		; 1
        and_ora_eor(i+2) then								// and|ora|eor		; 2
      begin
 	listing[i+1] := '';
@@ -162,8 +165,10 @@ begin
      end;
 
 
-    if and_ora_eor(i) and								// and|ora|eor		; 0
-       ora_im_0(i+1) then								// ora #$00		; 1
+    if ora_im_0(i+1) and								// ora #$00		; 1  
+
+       and_ora_eor(i) then								// and|ora|eor		; 0
+//     ora_im_0(i+1) then								// ora #$00		; 1
      begin
 	listing[i+1] := '';
 
@@ -175,7 +180,7 @@ begin
        ora(i+1) and									// ora 			; 1
        sta_a(i+2) then									// sta			; 2
      begin
-	listing[i]   := #9'lda ' + copy(listing[i+1], 6, 256) ;
+	listing[i]   := #9'lda ' + GetARG(i+1) ;
 	listing[i+1] := '';
 
 	exit(false);
@@ -199,7 +204,7 @@ begin
      if argMatch(i, i+2) then
        begin
 	listing[i] := '';
-	listing[i+1] := #9'ora ' + copy(listing[i+1], 6, 256);
+	listing[i+1] := #9'ora ' + GetARG(i+1);
 	listing[i+2] := '';
 
 	exit(false);
@@ -268,9 +273,9 @@ begin
      if argMatch(i+2, i+7) and
 	argMatch(i+5, i+10) then
        begin
-	listing[i+2] := #9'ora ' + copy(listing[i+6], 6, 256);
+	listing[i+2] := #9'ora ' + GetARG(i+6);
 
-	listing[i+5] := #9'ora ' + copy(listing[i+9], 6, 256);
+	listing[i+5] := #9'ora ' + GetARG(i+9);
 
 	listing[i+6] := listing[i+5];
 	listing[i+5] := listing[i+4];
@@ -331,10 +336,10 @@ begin
        adc_sbc(i+4) and									// adc|sbc				; 4
        sta_stack(i+5) and								// sta :STACKORIGIN+STACKWIDTH		; 5
        lda_stack(i+6) and								// lda :STACKORIGIN			; 6
-       ora(i+7) and (ora_stack(i+7) = false) and					// ora S				; 7
+       ora_val(i+7) and									// ora S				; 7	~:STACKORIGIN
        sta(i+8) and									// sta C				; 8
        lda_stack(i+9) and								// lda :STACKORIGIN+STACKWIDTH		; 9
-       ora(i+10) and (ora_stack(i+10) = false) and					// ora S+1				; 10
+       ora_val(i+10) and								// ora S+1				; 10	~:STACKORIGIN
        sta(i+11) then									// sta C+1				; 11
      if argMatch(i+2, i+6) and
 	argMatch(i+5, i+9) then

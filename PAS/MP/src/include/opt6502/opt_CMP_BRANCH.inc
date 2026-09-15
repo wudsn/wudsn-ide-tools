@@ -1,5 +1,5 @@
 
-function opt_BRANCH(i: integer): Boolean;
+function opt_CMP_BRANCH(i: integer): Boolean;
 var p: integer;
 begin
 
@@ -151,9 +151,9 @@ begin
 	listing[i] := '';
 
 	if jeq(i+1) then
-	 listing[i+1] := #9'jpl ' + copy(listing[i+1], 6, 256)
+	 listing[i+1] := #9'jpl ' + GetARG(i+1)
 	else
-	 listing[i+1] := #9'jmi ' + copy(listing[i+1], 6, 256);
+	 listing[i+1] := #9'jmi ' + GetARG(i+1);
 
 	exit(false);
      end;
@@ -170,7 +170,7 @@ begin
        jeq(i+7) and										// jeq			; 7
        (SKIP(i+8) = false) then									//~SKIP			; 8
      begin
-	listing[i+1] := #9'jpl ' + copy(listing[i+7], 6, 256);
+	listing[i+1] := #9'jpl ' + GetARG(i+7);
 	listing[i+2] := '';
 	listing[i+3] := '';
 	listing[i+4] := '';
@@ -200,9 +200,9 @@ begin
 	listing[i+6] := '';
 
 	if jeq(i+7) then
-	 listing[i+7] := #9'jmi ' + copy(listing[i+7], 6, 256)
+	 listing[i+7] := #9'jmi ' + GetARG(i+7)
 	else
-	 listing[i+7] := #9'jpl ' + copy(listing[i+7], 6, 256);
+	 listing[i+7] := #9'jpl ' + GetARG(i+7);
 
 	exit(false);
      end;
@@ -211,7 +211,7 @@ begin
     if (SKIP(i-1) = false) and
        lda(i) and 										// lda			; 0
        (listing[i+1] = #9'and #$80') and							// and #$80		; 1
-       (listing[i+2] = #9'cmp #$00') and							// cmp #$00		; 2
+       cmp_im_0(i+2) and									// cmp #$00		; 2
        bne(i+3) and										// bne			; 3
        lda_im_0(i+4) and									// lda #$00		; 4
        cmp_im_0(i+5) and									// cmp #$00		; 5
@@ -226,9 +226,9 @@ begin
 	listing[i+6] := '';
 
 	if jeq(i+7) then
-	 listing[i+7] := #9'jpl ' + copy(listing[i+7], 6, 256)
+	 listing[i+7] := #9'jpl ' + GetARG(i+7)
 	else
-	 listing[i+7] := #9'jmi ' + copy(listing[i+7], 6, 256);
+	 listing[i+7] := #9'jmi ' + GetARG(i+7);
 
 	exit(false);
      end;
@@ -240,9 +240,9 @@ begin
 	listing[i] := '';
 
 	if jcc(i+1) then
-	 listing[i+1] := #9'jpl ' + copy(listing[i+1], 6, 256)
+	 listing[i+1] := #9'jpl ' + GetARG(i+1)
 	else
-	 listing[i+1] := #9'jmi ' + copy(listing[i+1], 6, 256);
+	 listing[i+1] := #9'jmi ' + GetARG(i+1);
 
 	exit(false);
      end;
@@ -273,8 +273,8 @@ begin
        tya(i+4) and										// tya			; 4
        jeq(i+5) then										// jeq			; 5
       begin
-       listing[i]   := #9'jmi ' + copy(listing[i+5], 6, 256);
-       listing[i+1] := #9'jeq ' + copy(listing[i+5], 6, 256);
+       listing[i]   := #9'jmi ' + GetARG(i+5);
+       listing[i+1] := #9'jeq ' + GetARG(i+5);
        listing[i+2] := '';
        listing[i+3] := '';
        listing[i+4] := '';
@@ -295,8 +295,8 @@ begin
        tya(i+4) and										// tya			; 4
        jeq(i+5) then										// jeq			; 5
       begin
-       listing[i]   := #9'jmi ' + copy(listing[i+5], 6, 256);
-       listing[i+1] := #9'jeq ' + copy(listing[i+5], 6, 256);
+       listing[i]   := #9'jmi ' + GetARG(i+5);
+       listing[i+1] := #9'jeq ' + GetARG(i+5);
        listing[i+2] := '';
        listing[i+3] := '';
        listing[i+4] := '';
@@ -318,7 +318,7 @@ begin
        jne(i+5) then										// jne			; 5
       begin
        listing[i  ] := #9'smi';
-       listing[i+1] := #9'jne ' + copy(listing[i+5], 6, 256);
+       listing[i+1] := #9'jne ' + GetARG(i+5);
        listing[i+2] := '';
        listing[i+3] := '';
        listing[i+4] := '';
@@ -338,7 +338,7 @@ begin
        tya(i+4) and										// tya			; 4
        jeq(i+5) then										// jeq			; 5
       begin
-       listing[i+1] := #9'jmi ' + copy(listing[i+5], 6, 256);
+       listing[i+1] := #9'jmi ' + GetARG(i+5);
        listing[i+2] := '';
        listing[i+3] := '';
        listing[i+4] := '';
@@ -358,7 +358,7 @@ begin
        tya(i+4) and										// tya			; 4
        jeq(i+5) then										// jeq			; 5
       begin
-       listing[i+1] := #9'jpl ' + copy(listing[i+5], 6, 256);
+       listing[i+1] := #9'jpl ' + GetARG(i+5);
        listing[i+2] := '';
        listing[i+3] := '';
        listing[i+4] := '';
@@ -383,7 +383,7 @@ begin
        jeq(i+9) and										// jeq			; 9
        (SKIP(i+10) = false) then								//~SKIP			; 10
       begin
-       	listing[i+5] := #9'jne ' + copy(listing[i+9], 6, 256);
+       	listing[i+5] := #9'jne ' + GetARG(i+9);
 
        	listing[i+6] := '';
 
@@ -437,7 +437,7 @@ begin
        jeq(i+10) and										// jeq			; 10
        (SKIP(i+11) = false) then								//~SKIP			; 11
       begin
-       	listing[i+1] := #9'jmi ' + copy(listing[i+10], 6, 256);
+       	listing[i+1] := #9'jmi ' + GetARG(i+10);
 
        	listing[i+5] := listing[i+10];
 
@@ -464,7 +464,7 @@ begin
        jeq(i+7) and										// jeq			; 7
        (SKIP(i+8) = false) then									//~SKIP			; 8
       begin
-       	listing[i+3] := #9'jne ' + copy(listing[i+7], 6, 256);
+       	listing[i+3] := #9'jne ' + GetARG(i+7);
 
        	listing[i+4] := '';
 
@@ -487,9 +487,9 @@ begin
       begin
 
        if jeq(i+5) then
-        listing[i+1] := #9'jne ' + copy(listing[i+5], 6, 256)
+        listing[i+1] := #9'jne ' + GetARG(i+5)
        else
-        listing[i+1] := #9'jeq ' + copy(listing[i+5], 6, 256);
+        listing[i+1] := #9'jeq ' + GetARG(i+5);
 
        listing[i+2] := '';
        listing[i+3] := '';
@@ -530,8 +530,8 @@ begin
        tya(i+5) and										// tya			; 5
        jne(i+6) then										// jne l_		; 6
       begin
-       listing[i+1] := #9'jmi ' + copy(listing[i+6], 6, 256);
-       listing[i+2] := #9'jeq ' + copy(listing[i+6], 6, 256);
+       listing[i+1] := #9'jmi ' + GetARG(i+6);
+       listing[i+2] := #9'jeq ' + GetARG(i+6);
        listing[i+3] := '';
        listing[i+4] := '';
        listing[i+5] := '';
@@ -552,7 +552,7 @@ begin
        tya(i+5) and										// tya			; 5
        jeq(i+6) then										// jeq l_		; 6
       begin
-       listing[i+2] := #9'jne ' + copy(listing[i+6], 6, 256);
+       listing[i+2] := #9'jne ' + GetARG(i+6);
        listing[i+3] := '';
 
        listing[i+5] := '';
@@ -572,7 +572,7 @@ begin
        tya(i+4) and										// tya			; 4
        jne(i+5) then										// jne l_		; 5
       begin
-       listing[i+1] := #9'jmi ' + copy(listing[i+5], 6, 256);
+       listing[i+1] := #9'jmi ' + GetARG(i+5);
        listing[i+2] := '';
        listing[i+3] := '';
        listing[i+4] := '';
@@ -592,7 +592,7 @@ begin
        tya(i+4) and										// tya			; 4
        jne(i+5) then										// jne l_		; 5
       begin
-       listing[i+1] := #9'jpl ' + copy(listing[i+5], 6, 256);
+       listing[i+1] := #9'jpl ' + GetARG(i+5);
        listing[i+2] := '';
        listing[i+3] := '';
        listing[i+4] := '';
@@ -612,7 +612,7 @@ begin
        tya(i+4) and										// tya			; 4
        jeq(i+5) then										// jeq l_		; 5
       begin
-       listing[i+1] := #9'jmi ' + copy(listing[i+5], 6, 256);
+       listing[i+1] := #9'jmi ' + GetARG(i+5);
        listing[i+2] := '';
        listing[i+3] := '';
        listing[i+4] := '';
@@ -633,8 +633,8 @@ begin
        tya(i+4) and										// tya			; 4
        jeq(i+5) then										// jeq l_		; 5
      begin
-       listing[i]   := #9'jcc ' + copy(listing[i+5], 6, 256);
-       listing[i+1] := #9'jeq ' + copy(listing[i+5], 6, 256);
+       listing[i]   := #9'jcc ' + GetARG(i+5);
+       listing[i+1] := #9'jeq ' + GetARG(i+5);
        listing[i+2] := '';
        listing[i+3] := '';
        listing[i+4] := '';
@@ -656,7 +656,7 @@ begin
        jne(i+5) then										// jne l_		; 5
      begin
        listing[i]   := #9'beq @+';
-       listing[i+1] := #9'jcs ' + copy(listing[i+5], 6, 256);
+       listing[i+1] := #9'jcs ' + GetARG(i+5);
        listing[i+2] := '';
 
        listing[i+4] := '';
@@ -676,7 +676,7 @@ begin
        tya(i+3) and										// tya			; 3
        jne(i+4) then										// jne l_		; 4
      begin
-       listing[i]   := #9'jcc ' + copy(listing[i+4], 6, 256);
+       listing[i]   := #9'jcc ' + GetARG(i+4);
        listing[i+1] := '';
        listing[i+2] := '';
        listing[i+3] := '';
@@ -696,7 +696,7 @@ begin
        tya(i+3) and										// tya			; 3
        jeq(i+4) then										// jeq l_		; 4
      begin
-       listing[i]   := #9'jcs ' + copy(listing[i+4], 6, 256);
+       listing[i]   := #9'jcs ' + GetARG(i+4);
        listing[i+1] := '';
        listing[i+2] := '';
        listing[i+3] := '';
@@ -716,7 +716,7 @@ begin
        tya(i+3) and										// tya			; 3
        jeq(i+4) then										// jeq l_		; 4
      begin
-       listing[i]   := #9'jcc ' + copy(listing[i+4], 6, 256);
+       listing[i]   := #9'jcc ' + GetARG(i+4);
        listing[i+1] := '';
        listing[i+2] := '';
        listing[i+3] := '';
@@ -736,7 +736,7 @@ begin
        tya(i+3) and										// tya			; 3
        jne(i+4) then										// jne l_		; 4
      begin
-      listing[i]   := #9'jcs ' + copy(listing[i+4], 6, 256);
+      listing[i]   := #9'jcs ' + GetARG(i+4);
       listing[i+1] := '';
       listing[i+2] := '';
       listing[i+3] := '';
@@ -758,8 +758,8 @@ begin
        jne(i+5) then 										// jne l_		; 5
      begin
 
-      listing[i]   := #9'jcc ' + copy(listing[i+5], 6, 256);
-      listing[i+1] := #9'jeq ' + copy(listing[i+5], 6, 256);
+      listing[i]   := #9'jcc ' + GetARG(i+5);
+      listing[i+1] := #9'jeq ' + GetARG(i+5);
       listing[i+2] := '';
       listing[i+3] := '';
       listing[i+4] := '';
@@ -782,7 +782,7 @@ begin
      begin
 
       listing[i]   := #9'bcc @+';
-      listing[i+1] := #9'jne ' + copy(listing[i+5], 6, 256);
+      listing[i+1] := #9'jne ' + GetARG(i+5);
       listing[i+2] := '@';
       listing[i+3] := '';
       listing[i+4] := '';
@@ -801,10 +801,10 @@ begin
     if (SKIP(i-1) = false) and
        cmp(i) and										// cmp			; 0
        beq(i+1) and										// beq @+		; 1
-       jmp(i+2) and										// jmp l_		; 2
+       jmp_l(i+2) and										// jmp l_		; 2
        lab_a(i+3) then										// @			; 3
      begin
-       listing[i+1] := #9'jne ' + copy(listing[i+2], 6, 256);
+       listing[i+1] := #9'jne ' + GetARG(i+2);
        listing[i+2] := '';
        //listing[i+3] := '';
 
@@ -815,10 +815,10 @@ begin
     if (SKIP(i-1) = false) and
        cmp(i) and										// cmp			; 0
        bcc_a(i+1) and										// bcc @+		; 1
-       jmp(i+2) and										// jmp l_		; 2
+       jmp_l(i+2) and										// jmp l_		; 2
        lab_a(i+3) then										// @			; 3
      begin
-       listing[i+1] := #9'jcs ' + copy(listing[i+2], 6, 256);
+       listing[i+1] := #9'jcs ' + GetARG(i+2);
        listing[i+2] := '';
        //listing[i+3] := '';
 
@@ -829,10 +829,10 @@ begin
     if //(listing[i] = #9'.ENDL') and								//
        bmi_a(i+1) and										// bmi @+		; 1
        beq(i+2) and										// beq @+		; 2
-       jmp(i+3) and										// jmp l_		; 3
+       jmp_l(i+3) and										// jmp l_		; 3
        lab_a(i+4) then										//@			; 4
       begin
-       listing[i+2] := #9'jne ' + copy(listing[i+3], 6, 256);
+       listing[i+2] := #9'jne ' + GetARG(i+3);
        listing[i+3] := '';
 
        exit(false);
@@ -842,11 +842,11 @@ begin
     if //(listing[i] = #9'.ENDL') and								//
        seq(i+1) and										// seq			; 1
        bpl_a(i+2) and										// bpl @+		; 2
-       jmp(i+3) and										// jmp l_		; 3
+       jmp_l(i+3) and										// jmp l_		; 3
        lab_a(i+4) then										//@			; 4
       begin
-       listing[i+1] := #9'jmi ' + copy(listing[i+3], 6, 256);
-       listing[i+2] := #9'jeq ' + copy(listing[i+3], 6, 256);
+       listing[i+1] := #9'jmi ' + GetARG(i+3);
+       listing[i+2] := #9'jeq ' + GetARG(i+3);
        listing[i+3] := '';
 //       listing[i+4] := '';
 
@@ -856,10 +856,10 @@ begin
 
     if (SKIP(i) = false) and									//
        bpl_a(i+1) and										// bpl @+		; 1
-       jmp(i+2) and										// jmp l_		; 2
+       jmp_l(i+2) and										// jmp l_		; 2
        lab_a(i+3) then										//@			; 3
       begin
-       listing[i+1] := #9'jmi ' + copy(listing[i+2], 6, 256);
+       listing[i+1] := #9'jmi ' + GetARG(i+2);
        listing[i+2] := '';
        //listing[i+3] := '';
 
@@ -869,10 +869,10 @@ begin
 
     if (SKIP(i) = false) and									//
        bmi_a(i+1) and										// bmi @+		; 1
-       jmp(i+2) and										// jmp l_		; 2
+       jmp_l(i+2) and										// jmp l_		; 2
        lab_a(i+3) then										//@			; 3
       begin
-       listing[i+1] := #9'jpl ' + copy(listing[i+2], 6, 256);
+       listing[i+1] := #9'jpl ' + GetARG(i+2);
        listing[i+2] := '';
        //listing[i+3] := '';
 
@@ -882,10 +882,10 @@ begin
 
     if bcc_a(i) and										// bcc @+		; 0
        beq(i+1) and										// beq @+		; 1
-       jmp(i+2) and										// jmp l_		; 2
+       jmp_l(i+2) and										// jmp l_		; 2
        lab_a(i+3) then										//@			; 3
       begin
-       listing[i+1] := #9'jne ' + copy(listing[i+2], 6, 256);
+       listing[i+1] := #9'jne ' + GetARG(i+2);
        listing[i+2] := '';
 
        exit(false);
@@ -894,10 +894,10 @@ begin
 
     if (SKIP(i-1) = false) and
        bne(i) and										// bne @+		; 0
-       jmp(i+1) and										// jmp l_		; 1
+       jmp_l(i+1) and										// jmp l_		; 1
        lab_a(i+2) then										//@			; 2
      begin
-       listing[i]   := #9'jeq ' + copy(listing[i+1], 6, 256);
+       listing[i]   := #9'jeq ' + GetARG(i+1);
        listing[i+1] := '';
        //listing[i+2] := '';
 
@@ -907,11 +907,11 @@ begin
 
     if seq(i) and										// seq			; 0
        bcs_a(i+1) and										// bcs @+		; 1
-       jmp(i+2) and										// jmp l_		; 2
+       jmp_l(i+2) and										// jmp l_		; 2
        lab_a(i+3) then										//@			; 3
      begin
-       listing[i]   := #9'jcc ' + copy(listing[i+2], 6, 256);
-       listing[i+1] := #9'jeq ' + copy(listing[i+2], 6, 256);
+       listing[i]   := #9'jcc ' + GetARG(i+2);
+       listing[i+1] := #9'jeq ' + GetARG(i+2);
        listing[i+2] := '';
        //listing[i+3] := '';
 
@@ -921,10 +921,10 @@ begin
 
     if (SKIP(i-1) = false) and
        bcs_a(i) and										// bcs @+		; 0
-       jmp(i+1) and										// jmp l_		; 1
+       jmp_l(i+1) and										// jmp l_		; 1
        lab_a(i+2) then										//@			; 2
      begin
-       listing[i]   := #9'jcc ' + copy(listing[i+1], 6, 256);
+       listing[i]   := #9'jcc ' + GetARG(i+1);
        listing[i+1] := '';
        //listing[i+2] := '';
 
@@ -934,10 +934,10 @@ begin
 
     if (SKIP(i-1) = false) and
        bcc_a(i) and										// bcc @+		; 0
-       jmp(i+1) and										// jmp l_		; 1
+       jmp_l(i+1) and										// jmp l_		; 1
        lab_a(i+2) then										//@			; 2
      begin
-       listing[i]   := #9'jcs ' + copy(listing[i+1], 6, 256);
+       listing[i]   := #9'jcs ' + GetARG(i+1);
        listing[i+1] := '';
        //listing[i+2] := '';
 
@@ -947,10 +947,10 @@ begin
 
     if (SKIP(i-1) = false) and
        beq(i) and										// beq @+		; 0
-       jmp(i+1) and										// jmp l_		; 1
+       jmp_l(i+1) and										// jmp l_		; 1
        lab_a(i+2) then										//@			; 2
      begin
-       listing[i]   := #9'jne ' + copy(listing[i+1], 6, 256);
+       listing[i]   := #9'jne ' + GetARG(i+1);
        listing[i+1] := '';
        //listing[i+2] := '';
 
@@ -960,10 +960,10 @@ begin
 
     if (SKIP(i-1) = false) and
        (listing[i] = #9'bne *+5') and								// bne *+5		; 0
-       jmp(i+1) then										// jmp l_		; 1
+       jmp_l(i+1) then										// jmp l_		; 1
      begin
        listing[i]   := '';
-       listing[i+1] := #9'jeq ' + copy(listing[i+1], 6, 256);
+       listing[i+1] := #9'jeq ' + GetARG(i+1);
 
        exit(false);
      end;
@@ -971,10 +971,10 @@ begin
 
     if (SKIP(i-1) = false) and
        (listing[i] = #9'beq *+5') and								// beq *+5		; 0
-       jmp(i+1) then										// jmp l_		; 1
+       jmp_l(i+1) then										// jmp l_		; 1
      begin
        listing[i]   := '';
-       listing[i+1] := #9'jne ' + copy(listing[i+1], 6, 256);
+       listing[i+1] := #9'jne ' + GetARG(i+1);
 
        exit(false);
      end;
@@ -982,10 +982,10 @@ begin
 
     if (SKIP(i-1) = false) and
        (listing[i] = #9'bcs *+5') and								// bcs *+5		; 0
-       jmp(i+1) then										// jmp l_		; 1
+       jmp_l(i+1) then										// jmp l_		; 1
      begin
        listing[i]   := '';
-       listing[i+1] := #9'jcc ' + copy(listing[i+1], 6, 256);
+       listing[i+1] := #9'jcc ' + GetARG(i+1);
 
        exit(false);
      end;
@@ -993,9 +993,9 @@ begin
 
     if (SKIP(i-1) = false) and									//
        seq(i) and										// seq			; 0
-       jmp(i+1) then										// jmp l_		; 1
+       jmp_l(i+1) then										// jmp l_		; 1
       begin
-       listing[i] := #9'jne ' + copy(listing[i+1], 6, 256);
+       listing[i] := #9'jne ' + GetARG(i+1);
        listing[i+1] := '';
 
        exit(false);
@@ -1015,7 +1015,7 @@ begin
        jeq(i+1) then										// jeq			; 1
       begin
        listing[i] := '';
-       listing[i+1] := #9'jmp ' + copy(listing[i+1], 6, 256);
+       listing[i+1] := #9'jmp ' + GetARG(i+1);
 
        exit(false);
       end;
@@ -1025,7 +1025,7 @@ begin
        jne(i+1) then										// jne			; 1
       begin
        listing[i] := '';
-       listing[i+1] := #9'jmp ' + copy(listing[i+1], 6, 256);
+       listing[i+1] := #9'jmp ' + GetARG(i+1);
 
        exit(false);
       end;
@@ -1053,7 +1053,7 @@ begin
       begin
 	listing[i]   := '';
 	listing[i+1] := '';
-	listing[i+2] := #9'jmp ' + copy(listing[i+2], 6, 256);
+	listing[i+2] := #9'jmp ' + GetARG(i+2);
 
 	exit(false);
       end;
@@ -1069,7 +1069,7 @@ begin
       listing[i]   := '';
       listing[i+1] := '';
       listing[i+2] := '';
-      listing[i+3] := #9'jmp ' + copy(listing[i+3], 6, 256);
+      listing[i+3] := #9'jmp ' + GetARG(i+3);
 
       exit(false);
      end;
@@ -1093,10 +1093,10 @@ begin
 
 
     if jcc(i) and										// jcc l_00C5w		; 0
-       jmp(i+1) and										// jmp l_		; 1
-       (listing[i+2] = copy(listing[i], 6, 256)) then						//l_00C5w		; 2
+       jmp_l(i+1) and										// jmp l_		; 1
+       (listing[i+2] = GetARG(i)) then								//l_00C5w		; 2
      begin
-       listing[i]   := #9'jcs ' + copy(listing[i+1], 6, 256);
+       listing[i]   := #9'jcs ' + GetARG(i+1);
        listing[i+1] := '';
 
        exit(false);
@@ -1104,10 +1104,10 @@ begin
 
 
     if jcs(i) and										// jcs l_00C5w		; 0
-       jmp(i+1) and										// jmp l_		; 1
-       (listing[i+2] = copy(listing[i], 6, 256)) then						//l_00C5w		; 2
+       jmp_l(i+1) and										// jmp l_		; 1
+       (listing[i+2] = GetARG(i)) then								//l_00C5w		; 2
      begin
-       listing[i]   := #9'jcc ' + copy(listing[i+1], 6, 256);
+       listing[i]   := #9'jcc ' + GetARG(i+1);
        listing[i+1] := '';
 
        exit(false);
@@ -1115,10 +1115,10 @@ begin
 
 
     if jne(i) and										// jne l_00C5w		; 0
-       jmp(i+1) and										// jmp l_		; 1
-       (listing[i+2] = copy(listing[i], 6, 256)) then						//l_00C5w		; 2
+       jmp_l(i+1) and										// jmp l_		; 1
+       (listing[i+2] = GetARG(i)) then								//l_00C5w		; 2
      begin
-       listing[i]   := #9'jeq ' + copy(listing[i+1], 6, 256);
+       listing[i]   := #9'jeq ' + GetARG(i+1);
        listing[i+1] := '';
 
        exit(false);
@@ -1126,19 +1126,20 @@ begin
 
 
     if jeq(i) and										// jeq l_00C5w		; 0
-       jmp(i+1) and										// jmp l_		; 1
-       (listing[i+2] = copy(listing[i], 6, 256)) then						//l_00C5w		; 2
+       jmp_l(i+1) and										// jmp l_		; 1
+       (listing[i+2] = GetARG(i)) then								//l_00C5w		; 2
      begin
-       listing[i]   := #9'jne ' + copy(listing[i+1], 6, 256);
+       listing[i]   := #9'jne ' + GetARG(i+1);
        listing[i+1] := '';
 
        exit(false);
      end;
 
 
-    if (listing[i] = #9'jmp *+6') and								// jmp *+6			; 0
-       (pos('@'#9'jmp l_', listing[i+1]) > 0) and						//@ jmp l_			; 1
-       jmp(i+2) and										// jmp l_			; 2
+    if jmp_6(i) and										// jmp *+6			; 0
+
+       (pos('@'#9'jmp l_', listing[i+1]) = 1) and						//@ jmp l_			; 1
+       jmp_l(i+2) and										// jmp l_			; 2
        lab_l(i+3) then										//l_				; 3
      if (pos(listing[i+3], listing[i+1]) > 0) then
       begin
@@ -1150,11 +1151,13 @@ begin
       end;
 
 
-    if bcc(i) and										// bcc @+			; 0
-       beq(i+1) and										// beq @+			; 1
-       (listing[i+2] = #9'jmp *+6') and								// jmp *+6			; 2
-       (pos('@'#9'jmp l_', listing[i+3]) > 0) and						//@ jmp l_			; 3
-       (jmp(i+4) = false) then									//~jmp l_			; 4
+    if jmp_6(i+2) and										// jmp *+6			; 2
+
+       bcc_a(i) and										// bcc @+			; 0
+       beq_a(i+1) and										// beq @+			; 1
+//       jmp_6(i+2) and										// jmp *+6			; 2
+       (pos('@'#9'jmp l_', listing[i+3]) = 1) and						//@ jmp l_			; 3
+       (jmp_l(i+4) = false) then								//~jmp l_			; 4
       begin
 	listing[i]   := #9'jcc ' + copy(listing[i+3], 7, 256);
 	listing[i+1] := #9'jeq ' + copy(listing[i+3], 7, 256);
@@ -1166,11 +1169,13 @@ begin
       end;
 
 
-    if (SKIP(i-1) = false) and
-       (beq(i) or bne(i)) and									// beq|bne @+			; 0
-       (listing[i+1] = #9'jmp *+6') and								// jmp *+6			; 1
-       (pos('@'#9'jmp l_', listing[i+2]) > 0) and						//@ jmp l_			; 2
-       (jmp(i+3) = false) then									//~jmp l_			; 3
+    if jmp_6(i+1) and										// jmp *+6			; 1
+
+       (SKIP(i-1) = false) and
+       (beq_a(i) or bne_a(i)) and								// beq|bne @+			; 0
+//       jmp_6(i+1) and										// jmp *+6			; 1
+       (pos('@'#9'jmp l_', listing[i+2]) = 1) and						//@ jmp l_			; 2
+       (jmp_l(i+3) = false) then								//~jmp l_			; 3
       begin
 	if beq(i) then
 	 listing[i]   := #9'jeq ' + copy(listing[i+2], 7, 256)
@@ -1184,11 +1189,13 @@ begin
       end;
 
 
-    if (SKIP(i-1) = false) and
+    if jmp_6(i+1) and										// jmp *+6			; 1
+
+       (SKIP(i-1) = false) and
        (bcs_a(i) or bcc_a(i)) and								// bcs|bcc @+			; 0
-       (listing[i+1] = #9'jmp *+6') and								// jmp *+6			; 1
-       (pos('@'#9'jmp l_', listing[i+2]) > 0) and						//@ jmp l_			; 2
-       (jmp(i+3) = false) then									//~jmp l_			; 3
+//       jmp_6(i+1) and										// jmp *+6			; 1
+       (pos('@'#9'jmp l_', listing[i+2]) = 1) and						//@ jmp l_			; 2
+       (jmp_l(i+3) = false) then								//~jmp l_			; 3
       begin
         if bcs_a(i) then
 	 listing[i]   := #9'jcs ' + copy(listing[i+2], 7, 256)
@@ -1202,11 +1209,13 @@ begin
       end;
 
 
-    if (SKIP(i-1) = false) and
-       (bpl_a(i) or bmi(i)) and									// bpl|bmi @+			; 0
-       (listing[i+1] = #9'jmp *+6') and								// jmp *+6			; 1
-       (pos('@'#9'jmp l_', listing[i+2]) > 0) and						//@ jmp l_			; 2
-       (jmp(i+3) = false) then									//~jmp l_			; 3
+    if jmp_6(i+1) and										// jmp *+6			; 1
+
+       (SKIP(i-1) = false) and
+       (bpl_a(i) or bmi_a(i)) and								// bpl|bmi @+			; 0
+//       jmp_6(i+1) and										// jmp *+6			; 1
+       (pos('@'#9'jmp l_', listing[i+2]) = 1) and						//@ jmp l_			; 2
+       (jmp_l(i+3) = false) then								//~jmp l_			; 3
       begin
         if bpl_a(i) then
 	 listing[i]   := #9'jpl ' + copy(listing[i+2], 7, 256)
@@ -1220,10 +1229,30 @@ begin
       end;
 
 
+    if jmp_6(i+1) and										// jmp *+6			; 1
+
+       (SKIP(i-1) = false) and
+       (beq_a(i) or bne_a(i)) and								// beq|bne @+			; 0
+//       jmp_6(i+1) and										// jmp *+6			; 1
+       (pos('@\'#9'jmp l_', listing[i+2]) = 1) and						//@\ jmp l_			; 2
+       (jmp_l(i+3) = false) then								//~jmp l_			; 3
+      begin
+	if beq(i) then
+	 listing[i]   := #9'jeq ' + copy(listing[i+2], 8, 256)
+	else
+	 listing[i]   := #9'jne ' + copy(listing[i+2], 8, 256);
+
+	listing[i+1] := '';
+	listing[i+2] := '';
+
+	exit(false);
+      end;
+
+
     if ldy_1(i) and										// ldy #1			; 0
-       (pos(#9'jne l_', listing[i+1]) > 0) then							// jne l_			; 1
+       (pos(#9'jne l_', listing[i+1]) = 1) then							// jne l_			; 1
      begin
-       listing[i]   := #9'jmp ' + copy(listing[i+1], 6, 256);
+       listing[i]   := #9'jmp ' + GetARG(i+1);
        listing[i+1] := '';
 
        exit(false);

@@ -37,10 +37,10 @@ begin
 	argMatch(i+5, i+15) and
 	argMatch(i+7, i+18) then
        begin
-	listing[i+9]  := #9'and ' + copy(listing[i], 6, 256);
-	listing[i+12] := #9'and ' + copy(listing[i+2], 6, 256);
-	listing[i+15] := #9'and ' + copy(listing[i+4], 6, 256);
-	listing[i+18] := #9'and ' + copy(listing[i+6], 6, 256);
+	listing[i+9]  := #9'and ' + GetARG(i);
+	listing[i+12] := #9'and ' + GetARG(i+2);
+	listing[i+15] := #9'and ' + GetARG(i+4);
+	listing[i+18] := #9'and ' + GetARG(i+6);
 
 	listing[i]   := '';
 	listing[i+1] := '';
@@ -68,29 +68,6 @@ begin
      end;
 
 
-    if lda_a(i) and (iy(i) = false) and								// lda 					; 0
-       and_im_0(i+1) and									// and #$00				; 1
-       sta_a(i+2) then										// sta 					; 2
-     begin
-	listing[i]   := '';
-	listing[i+1] := #9'lda #$00';
-
-	exit(false);
-     end;
-
-
-    if lda_stack(i) and										// lda :STACKORIGIN			; 0
-       and_im_0(i+1) and									// and #$00				; 1
-       sta_stack(i+2) then									// sta :STACKORIGIN			; 2
-     if argMatch(i, i+2) then
-     begin
-	listing[i]   := '';
-	listing[i+1] := #9'lda #$00';
-
-	exit(false);
-     end;
-
-
     if and_im_0(i) and										// and #$00				; 0
        mwy(i+1) and										// mwy					; 1
        ldy(i+2) and										// ldy					; 2
@@ -102,8 +79,49 @@ begin
      end;
 
 
-    if lda_a(i) and										// lda 					; 0
-       (listing[i+1] = #9'and #$FF') and							// and #$FF				; 1
+    if and_im_0(i+1) and									// and #$00				; 1
+
+       lda_a(i) and (iy(i) = false) and								// lda 					; 0
+//       and_im_0(i+1) and									// and #$00				; 1
+       sta_a(i+2) then										// sta 					; 2
+     begin
+	listing[i]   := '';
+	listing[i+1] := #9'lda #$00';
+
+	exit(false);
+     end;
+
+
+    if and_im_0(i+1) and									// and #$00				; 1
+
+       lda_adr(i) and										// lda adr.				; 0
+//       and_im_0(i+1) and									// and #$00				; 1
+       sta_a(i+2) then										// sta 					; 2
+     begin
+	listing[i]   := '';
+	listing[i+1] := #9'lda #$00';
+
+	exit(false);
+     end;
+
+
+    if and_im_0(i+1) and									// and #$00				; 1
+
+       lda_bp2_y(i) and										// lda (:bp2),y				; 0
+//       and_im_0(i+1) and									// and #$00				; 1
+       sta_a(i+2) then										// sta 					; 2
+     begin
+	listing[i]   := '';
+	listing[i+1] := #9'lda #$00';
+
+	exit(false);
+     end;
+
+
+    if and_im_ff(i+1) and									// and #$FF				; 1
+
+       lda_a(i) and										// lda 					; 0
+//     and_im_ff(i+1) and									// and #$FF				; 1
        sta_a(i+2) then										// sta 					; 2
      begin
 
@@ -118,8 +136,10 @@ begin
      end;
 
 
-    if and_ora_eor(i) and									// and|ora|eor				; 0
-       (listing[i+1] = #9'and #$FF') and							// and #$FF				; 1
+    if and_im_ff(i+1) and									// and #$FF				; 1
+
+       and_ora_eor(i) and									// and|ora|eor				; 0
+//     and_im_ff(i+1) and									// and #$FF				; 1
        sta_a(i+2) then										// sta 					; 2
      begin
 	listing[i+1] := '';
@@ -134,14 +154,16 @@ begin
      if argMatch(i, i+2) then
      begin
 	listing[i]   := '';
-	listing[i+1] := #9'and ' + copy(listing[i+1], 6, 256);
+	listing[i+1] := #9'and ' + GetARG(i+1);
 	listing[i+2] := '';
 
 	exit(false);
      end;
 
 
-    if //ldy_im_0(i) and									// ldy #$00				; 0
+    if and_im(i+14) and										// and #				; 14
+
+       //ldy_im_0(i) and									// ldy #$00				; 0
        lda_bp2_y(i+1) and									// lda (:bp2),y				; 1
        and_im(i+2) and										// and #				; 2
        sta_stack(i+3) and									// sta :STACKORIGIN			; 3
@@ -155,7 +177,7 @@ begin
        sta_stack(i+11) and									// sta :STACKORIGIN+STACKWIDTH*2	; 11
        iny(i+12) and										// iny					; 12
        lda_bp2_y(i+13) and									// lda (:bp2),y				; 13
-       and_im(i+14) and										// and #				; 14
+//       and_im(i+14) and									// and #				; 14
        sta_stack(i+15) and									// sta :STACKORIGIN+STACKWIDTH*3	; 15
        lda_a(i+16) and 										// lda					; 16
        eor_stack(i+17) and 									// eor :STACKORIGIN			; 17
@@ -177,14 +199,17 @@ begin
 
         for p:=0 to 3 do
 
-	if listing[p*4+i+2] = #9'and #$00' then begin
+	if and_im_0(p*4+i+2) then begin
+
 	  listing[p*4+i+1] := '';
 	  listing[p*4+i+2] := '';
 	  listing[p*4+i+3] := '';
 
 	  listing[p*3+i+17] := '';
+
 	end else
-	if listing[p*4+i+2] = #9'and #$FF' then begin
+	if and_im_ff(p*4+i+2) then begin
+
 	  listing[p*4+i+1] := listing[p*3+i+16];
 	  listing[p*4+i+2] := #9'eor (:bp2),y';
 	  listing[p*4+i+3] := listing[p*3+i+18];
@@ -192,6 +217,7 @@ begin
 	  listing[p*3+i+16] := '';
 	  listing[p*3+i+17] := '';
 	  listing[p*3+i+18] := '';
+
 	end;
 
 
@@ -216,15 +242,5 @@ begin
 	exit(false);
        end;
 
-
-    if lda_bp2_y(i) and										// lda (:bp2),y				; 0
-       and_im_0(i+1) and									// and #$00				; 1
-       sta_a(i+2) then										// sta 					; 2
-     begin
-	listing[i]   := '';
-	listing[i+1] := #9'lda #$00';
-
-	exit(false);
-     end;
 
 end;		// function

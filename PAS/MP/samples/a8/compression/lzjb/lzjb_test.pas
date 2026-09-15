@@ -1,7 +1,9 @@
 {
 
-107
-43
+87
+32
+
+4085 KORONIS.MIC
 
 }
 
@@ -33,7 +35,7 @@ begin
  writeln(ln,'b (',GetTickCount-tick,' ticks)');
 
 
- write('Decompress ');
+ write('Decompress ', ln, 'b -> ');
 
  tick:=GetTickCount;
  ln := lzjb_decompress_mem(@dst, ln, Pointer(dpeek(88)) );
@@ -45,4 +47,4 @@ begin
 
 end.
 
-// 12327
+// 12171

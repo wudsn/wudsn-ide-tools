@@ -4,7 +4,7 @@ unit fastgraph;
 @name: Unit to handle screen graphics, accelerated bitmap modes
 @author: Tomasz Biela (Tebe/Madteam)
 
-@version: 1.2
+@version: 1.3
 
 @description:
 <http://www.freepascal.org/docs-html/rtl/graph/index-5.html>
@@ -24,6 +24,7 @@ VLine
 InitGraph		mode: 3, 5, 7, 8, 9, 10, 11, 15
 Line
 LineTo
+LineRel
 MoveTo
 PutPixel
 Scanline
@@ -86,6 +87,7 @@ var	WIN_LEFT: smallint = 0;
 	procedure Line(x1, y1, x2, y2: real); overload;
 	procedure MoveRel(Dx, Dy: smallint);
 	procedure MoveTo(x, y: smallint); assembler;
+	procedure OutTextXY(x,y: smallint; s: string);
 	procedure PieSlice(X, Y, StAngle, EndAngle, Radius: Word);
 	procedure Rectangle(x1, y1, x2, y2: Smallint); overload;
 	procedure Rectangle(Rect: TRect); overload;
@@ -120,6 +122,7 @@ var	WIN_LEFT: smallint = 0;
 	procedure Hline(x0,x1,y: smallint);
 	procedure Vline(x,y0,y1: smallint);
 	procedure LineTo(x, y: smallint);
+	procedure LineRel(dx, dy: smallint);	
 	procedure PutPixel(x,y: smallint); assembler; register;
 	function Scanline(y: smallint): PByte;
 	function NewDisplayBuffer(var a: TDisplayBuffer; mode, bound: byte): TDisplayBuffer;
@@ -597,7 +600,7 @@ sk0
 sk1
 	bcc ok1
 
-	mwa MAIN.SYSTEM.ScreenWidth x0
+	mwa WIN_RIGHT x0
 
 ok1	lda x1+1
 	bmi error
@@ -608,7 +611,7 @@ ok1	lda x1+1
 sk2
 	bcc ok2
 
-	mwa MAIN.SYSTEM.ScreenWidth x1
+	mwa WIN_RIGHT x1
 	clc
 ok2
 	ldy y
@@ -803,7 +806,7 @@ sk0
 sk1
 	bcc ok1
 
-	mwa MAIN.SYSTEM.ScreenHeight y0
+	mwa WIN_BOTTOM y0
 
 ok1	lda x+1
 	bmi error
@@ -814,7 +817,7 @@ ok1	lda x+1
 sk2
 	bcc ok2
 
-	mwa MAIN.SYSTEM.ScreenWidth x
+	mwa WIN_RIGHT x
 	clc
 ok2
 	ldy y0
@@ -1104,27 +1107,15 @@ _0
 	sta x
 	sta x+1
 _1
-	cpw y main.system.ScreenHeight
+	cpw y MAIN.SYSTEM.ScreenHeight
 	bcc _2
 
-	lda main.system.ScreenHeight
-	ldy main.system.ScreenHeight+1
-	sbc #1
-	scs
-	dey
-	sta y
-	sty y+1
+	mwa WIN_BOTTOM y
 _2
-	cpw x main.system.ScreenWidth
+	cpw x MAIN.SYSTEM.ScreenWidth
 	bcc _3
 
-	lda main.system.ScreenWidth
-	ldy main.system.ScreenWidth+1
-	sbc #1
-	scs
-	dey
-	sta x
-	sty x+1	
+	mwa WIN_RIGHT x
 _3
 	mwa x CurrentX
 	mwa y CurrentY
@@ -1171,15 +1162,15 @@ _0
 	sta x
 	sta x+1
 _1
-	cpw y main.system.ScreenHeight
+	cpw y MAIN.SYSTEM.ScreenHeight
 	bcc _2
 
-	sbw main.system.ScreenHeight #1 y
+	mwa WIN_BOTTOM y
 _2
-	cpw x main.system.ScreenWidth
+	cpw x MAIN.SYSTEM.ScreenWidth
 	bcc _3
 
-	sbw main.system.ScreenWidth #1 x
+	mwa WIN_RIGHT x
 _3
 end;
 
@@ -1187,6 +1178,20 @@ end;
 
 	CurrentX := x;
 	CurrentY := y;
+end;
+
+
+procedure LineRel(dx, dy: smallint);
+(*
+@description:
+LineRel draws a line starting from the current pointer position to the point(DX,DY),
+relative to the current position, in the current line style and color.
+The Current Position is set to the endpoint of the line.
+*)
+begin
+
+ LineTo(CurrentX + dx, CurrentY + dy)
+
 end;
 
 
@@ -1609,6 +1614,33 @@ begin
  SetActiveBuffer(b);
 
  b.clr;
+
+end;
+
+
+procedure OutTextXY(x,y: smallint; s: string);
+var i, j, k, v: byte;
+    w: word;
+begin
+
+ for i:=1 to length(s) do begin
+  v:= ord(ata2int(s[i]));
+
+  w:= v shl 3 + mem[756]*256;
+
+  for j:=0 to 7 do begin
+  v:=mem[w + j];
+
+   for k:=0 to 7 do begin
+    if v and $80 <> 0 then PutPixel(x+k, y+j);
+    v:=v shl 1;
+   end;
+
+  end;
+
+  inc(x, 8);
+
+ end;
 
 end;
 

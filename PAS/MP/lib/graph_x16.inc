@@ -293,6 +293,20 @@ begin
 end;
 
 
+procedure LineRel(dx, dy: smallint);
+(*
+@description:
+LineRel draws a line starting from the current pointer position to the point(DX,DY),
+relative to the current position, in the current line style and color.
+The Current Position is set to the endpoint of the line.
+*)
+begin
+
+ LineTo(CurrentX + dx, CurrentY + dy)
+
+end;
+
+
 procedure CloseGraph; assembler;
 (*
 @description:
@@ -301,6 +315,7 @@ procedure CloseGraph; assembler;
 asm
 
 end;
+
 
 procedure ClearDevice; assembler;
 (*
@@ -311,3 +326,9 @@ asm
 	jsr GRAPH_clear
 end;
 
+
+procedure OutTextXY(x,y: smallint; s: string);
+begin
+
+
+end;

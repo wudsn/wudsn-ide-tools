@@ -338,24 +338,12 @@ _1
 	cpw y main.system.ScreenHeight
 	bcc _2
 
-	lda main.system.ScreenHeight
-	ldy main.system.ScreenHeight+1
-	sbc #1
-	scs
-	dey
-	sta y
-	sty y+1
+	mwa WIN_BOTTOM y
 _2
 	cpw x main.system.ScreenWidth
 	bcc _3
 
-	lda main.system.ScreenWidth
-	ldy main.system.ScreenWidth+1
-	sbc #1
-	scs
-	dey
-	sta x
-	sty x+1
+	mwa WIN_RIGHT x
 _3
 	stx @sp
 
@@ -394,6 +382,47 @@ _3
 
 	ldx @sp: #$00
 end;
+
+end;
+
+
+procedure LineRel(dx, dy: smallint);
+(*
+@description:
+LineRel draws a line starting from the current pointer position to the point(DX,DY),
+relative to the current position, in the current line style and color.
+The Current Position is set to the endpoint of the line.
+*)
+begin
+
+ LineTo(CurrentX + dx, CurrentY + dy)
+
+end;
+
+
+procedure OutTextXY(x,y: smallint; s: string);
+var i, j, k, v: byte;
+    w: word;
+begin
+
+ for i:=1 to length(s) do begin
+  v:= ord(ata2int(s[i]));
+
+  w:= v shl 3 + mem[756]*256;
+
+  for j:=0 to 7 do begin
+  v:=mem[w + j];
+
+   for k:=0 to 7 do begin
+    if v and $80 <> 0 then PutPixel(x+k, y+j);
+    v:=v shl 1;
+   end;
+
+  end;
+
+  inc(x, 8);
+
+ end;
 
 end;
 

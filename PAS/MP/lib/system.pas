@@ -206,8 +206,10 @@ const
 	D_PI_180= pi/180;
 
 
-{$i '../src/targets/systemh.inc'}
+{$i './targets/systemh.inc'}
 
+var
+	mem: array [0..0] of byte absolute $0000;
 
 	function Abs(x: Real): Real; register; assembler; overload;
 	function Abs(x: Single): Single; register; assembler; overload;
@@ -215,8 +217,8 @@ const
 	function Abs(x: shortint): shortint; register; assembler; overload;
 	function Abs(x: smallint): smallint; register; assembler; overload;
 	function Abs(x: Integer): Integer; register; assembler; overload;
-	function ArcTan(value: real): real; overload;
-	function ArcTan(value: single): single; overload;
+	function ArcTan(a: real): real; overload;
+	function ArcTan(a: single): single; overload;
 	function ata2int(a: char): char; assembler;
 	function BinStr(Value: cardinal; Digits: byte): TString; assembler;
 	function CompareByte(P1,P2: PByte; Len: word): smallint; register; overload;
@@ -248,8 +250,7 @@ const
 	procedure FillChar(var a; count: word; value: byte); assembler; register; overload; inline;
 	function FloatToStr(a: real): TString; stdcall; assembler;
 	procedure FreeMem(var p; size: word); assembler; register;
-	procedure GetMem(var p; size: word); assembler; register; overload;
-	function GetMem(size: word): pointer; assembler; register; overload;
+	function GetMem(size: word): pointer; assembler; register;
 	function HexStr(Value: cardinal; Digits: byte): TString; register; assembler;
 	function IsLetter(A: char): Boolean;
 	function IsDigit(A: char): Boolean;
@@ -325,8 +326,6 @@ const
 implementation
 
 var
-	mem: array [0..0] of byte absolute $0000;
-
 	RndSeed: smallint;
 
 procedure RunError(a: byte);
@@ -625,7 +624,7 @@ var sp: ^shortreal;
     c: word;
 begin
 
-	if x <= 0.0 then exit(shortreal(0.0));
+	if (x <= 0.0) then exit(shortreal(0.0));
 
 	sp:=@c;
 
@@ -635,7 +634,7 @@ begin
 
 	Result := sp^;
 
-	Result:=(Result + x/Result);// * 0.5;
+	Result := (Result + x / Result);// * 0.5;
 
 	asm
 	 lsr Result+1
@@ -668,57 +667,34 @@ Sqrt returns the square root of its argument X, which must be positive
 
 @returns: Real (Q24.8)
 *)
-var sp: ^real;
-    c: cardinal;
-
+var r, t, q: cardinal;
+    b: integer;
 begin
 
-	if x <= 0.0 then exit(0.0);
+    if (x <= 0.0) then exit(0.0);
 
-	sp:=@c;
+    r:=(PCardinal(@x)^) shr 8;
 
-	//c:=cardinal(x);
+    b := $40000000;
+    q := 0;
 
-	c := cardinal(x) shr 8 + $100;
+    while( b > 0 ) do begin
 
-	Result := sp^;
+        t := q + b;
+        if( r >= t ) then begin
 
-	Result:=(Result + x/Result); //* 0.5;
+            r := r - t;
+            q := t + b;
+        end;
+        r := r shl 1;
+        b := b shr 1;
+    end;
 
-	asm
-	 lsr Result+3
-	 ror Result+2
-	 ror Result+1
-	 ror Result
-	end;
+    if( r > q ) then inc(q);
 
-	Result:=(Result + x/Result); //* 0.5;
+    q:=q shr 8;
 
-	asm
-	 lsr Result+3
-	 ror Result+2
-	 ror Result+1
-	 ror Result
-	end;
-
-	Result:=(Result + x/Result); //* 0.5;
-
-	asm
-	 lsr Result+3
-	 ror Result+2
-	 ror Result+1
-	 ror Result
-	end;
-
-	Result:=(Result + x/Result); //* 0.5;
-
-	asm
-	 lsr Result+3
-	 ror Result+2
-	 ror Result+1
-	 ror Result
-	end;
-
+    Result:=PReal(@q)^;
 end;
 
 
@@ -733,25 +709,35 @@ https://suraj.sh/fast-square-root-approximation
 
 @returns: Single
 *)
-var sp: ^single;
-    c: cardinal;
+var c: cardinal;
 begin
 	if integer(x) <= 0 then exit(single(0.0));
 
-	sp:=@c;
-
-	//c:=cardinal(x) shr 1;
-
 	// Solved equation for square roots
-	//c := (c + $3f800000) shr 1;
 	c := (cardinal(x) shr 1) + $1fc00000;
 
-	Result := sp^;
+	Result := PSingle(@c)^;
 
 	// Newton-Rapson iteration
-	Result:=(Result + x/Result) * 0.5;
-//	Result:=(Result + x/Result) * 0.5;	// x < 1 -> higher precision
+	Result := (Result + x / Result);
+
+	//Result := 0.5 * (Result + x / Result);
+
+	c:=cardinal(Result);
+
+        if (c and $7F800000) <> 0 then			// * 0.5
+        begin
+        // normalna liczba -> zmniejszamy cechę o 1
+          c := c - $00800000;
+
+          Result := PSingle(@c)^;
+        end else
+        // denormalne lub zero -> lepiej podzielić "klasycznie"
+          Result := 0.5 * Result;
+
+//	Result := 0.5 * (Result + x / Result);	// x < 1 -> higher precision
 end;
+
 
 
 function Sqrt(x: float16): float16; overload;
@@ -765,23 +751,17 @@ https://suraj.sh/fast-square-root-approximation
 
 @returns: float16
 *)
-var sp: ^float16;
-    c: word;
+var c: word;
 begin
 	if smallint(x) <= 0 then exit(float16(0.0));
 
-	sp:=@c;
-
-	//c:=word(x) shr 1;
-
 	// Solved equation for square roots
-	//c := (c + $3c00) shr 1;
 	c := (word(x) shr 1) + $1e00;
 
-	Result := sp^;
+	Result := PFloat16(@c)^;
 
 	// Newton-Rapson iteration
-	Result:=(Result + x/Result) * 0.5;
+	Result := 0.5 * (Result + x / Result);
 end;
 
 
@@ -794,23 +774,8 @@ Sqrt returns the square root of its argument X, which must be positive
 
 @returns: integer
 *)
-var sp: ^single;
-    c: cardinal;
 begin
-
-	if x <= 0 then exit(single(0.0));
-
-	sp:=@c;
-
-	c:=cardinal(single(x));
-
-	if c > $3f800000 then c := (c - $3f800000) shr 1 + $3f800000;
-
-	Result := sp^;
-
-	Result:=(Result + x/Result) * 0.5;
-	Result:=(Result + x/Result) * 0.5;
-	Result:=(Result + x/Result) * 0.5;
+	Result := Sqrt( Single(X) )
 end;
 
 
@@ -827,25 +792,34 @@ Fast inverse square root
 
 @returns: Single
 *)
-var sp: ^single;
-    c: cardinal;
+var c: cardinal;
     f0, f1: single;
-const
-    threehalfs: single = 1.5;
 begin
+	//f0 := number * 0.5;
 
-	sp:=@c;
+	c := cardinal(number);
 
-	f0 := number * 0.5;
+        if (c and $7F800000) <> 0 then		// * 0.5
+        begin
+        // normalna liczba -> zmniejszamy cechę o 1
+          c := c - $00800000;
+
+          f0 := PSingle(@c)^;
+        end else
+        // denormalne lub zero -> lepiej podzielić "klasycznie"
+          f0 := 0.5 * number;
+
 	c  := cardinal(number);		// evil floating point bit level hacking
 	c  := $5f3759df - (c shr 1);	// what the fuck?
-        f1 := f0 * sp^ * sp^;
-	Result := sp^ * ( 1.5 - f1 );	// 1st iteration
 
+	f1 := PSingle(@c)^;
+
+        Result := f0 * f1 * f1;
+	Result := f1 * ( 1.5 - Result );	// 1st iteration
 end;
 
 
-function ArcTan(value: real): real; overload;
+function ArcTan(a: real): real; overload;
 (*
 @description:
 Arctan returns the Arctangent of Value, which can be any Real type.
@@ -856,75 +830,87 @@ The resulting angle is in radial units.
 
 @returns: Real (Q24.8)
 *)
-var x, y: real;
-    sign: Boolean;
+const
+  c1 = 0.2447;
+  c2 = 0.0663;
+  pi_2 = 1.570796326;
+  pi_4 = 0.785398163;
+
+var
+  sign, yes: Boolean;
+  x: real;
+
 begin
-  sign:=false;
-  x:=value;
-  y:=0.0;
 
-  if (value=0.0) then begin
-    Result:=0.0;
-    exit;
-  end else
-   if (x < 0.0) then begin
-    sign:=true;
-    x:=-x;
-   end;
+  if a < 0 then begin
+    x := -a;
+    sign := true;
+  end else begin
+    x := a;
+    sign := false;
+  end;
 
-  x:=(x-1.0)/(x+1.0);
-  y:=x*x;
-  x := ((((((((.0028662257*y - .0161657367)*y + .0429096138)*y -
-             .0752896400)*y + .1065626393)*y - .1420889944)*y +
-             .1999355085)*y - .3333314528)*y + 1.0)*x;
-  x:= .785398163397 + x;
+  if x > 1.0 then begin
+   a := 1/x;
+   yes := true;
+  end else begin
+   a := x;
+   yes := false;
+  end;
 
-  if sign then
-   Result := -x
-  else
-   Result := x;
+  Result := pi_4*a - a*(a-1) *(c1+c2*a);
+
+  if yes then Result := pi_2 - Result;
+
+  if sign then Result := -Result;
 
 end;
 
 
-function ArcTan(value: single): single; overload;
+function ArcTan(a: single): single; overload;
 (*
 @description:
 Arctan returns the Arctangent of Value, which can be any Real type.
 
 The resulting angle is in radial units.
 
-@param: value - Real (Q24.8)
+@param: value - Single
 
-@returns: Real (Q24.8)
+@returns: Single
 *)
-var x, y: single;
-    sign: Boolean;
+const
+  c1: single = 0.2447;
+  c2: single = 0.0663;
+  pi_2: single = 1.570796326;
+  pi_4: single = 0.785398163;
+
+var
+  sign, yes: Boolean;
+  x: single;
+
 begin
-  sign:=false;
-  x:=value;
-  y:=0;
 
-  if (integer(value) = 0) then begin
-    Result:=0;
-    exit;
-  end else
-   if (integer(x) < 0) then begin
-    sign:=true;
-    x:=-x;
-   end;
+  if a < 0 then begin
+    x := -a;
+    sign := true;
+  end else begin
+    x := a;
+    sign := false;
+  end;
 
-  x:=(x-1)/(x+1);
-  y:=x*x;
-  x := ((((((((.0028662257*y - .0161657367)*y + .0429096138)*y -
-             .0752896400)*y + .1065626393)*y - .1420889944)*y +
-             .1999355085)*y - .3333314528)*y + 1.0)*x;
-  x:= .785398163397 + x;
+  if x > 1.0 then begin
+   a := 1/x;
+   yes := true;
+  end else begin
+   a := x;
+   yes := false;
+  end;
 
-  if sign then
-   Result := -x
-  else
-   Result := x;
+  Result := pi_4*a - a*(a-1) *(c1+c2*a);
+
+  if yes then Result := pi_2 - Result;
+
+  if sign then Result := -Result;
 
 end;
 
@@ -1251,14 +1237,14 @@ begin
 
 	Seek(f, i);
 
-asm
-{	mwa f :bp2
+	asm
+	  mwa f :bp2
 
-	ldy #s@file.status
-	lda (:bp2),y
-	and #e@file.eof
-	sta Result
-};
+	  ldy #s@file.status
+	  lda (:bp2),y
+	  and #e@file.eof
+	  sta Result
+	end;
 end;
 
 
@@ -1480,7 +1466,7 @@ begin
 
  code:=1;
 
- len:=length(s) + 1;
+ len:=length(s^) + 1;
 
  if len > 1 then begin
 
@@ -1783,10 +1769,10 @@ begin
     i := trunc(x);
 
     { Fixes negative part, needed to calculate "fractional" part }
-    if x<0 then dec(i);
+    //if x < 0 then dec(i);
 
     { And finally get's fractional part }
-    x := x - shortint(i);
+    x := x - integer(i);
 
     { If we need cosine, adds pi/2 }
     if sc then inc(i);
@@ -1849,7 +1835,7 @@ begin
     i := trunc(x);
 
     { Fixes negative part, needed to calculate "fractional" part }
-    if x<0 then dec(i);
+    //if x < 0 then dec(i);
 
     { And finally get's fractional part }
     x := x - shortint(i);
@@ -1916,10 +1902,10 @@ begin
     i := trunc(x);
 
     { Fixes negative part, needed to calculate "fractional" part }
-    if integer(x) < 0 then dec(i); { this is shorter than "x < 0" }
+    //if integer(x) < 0 then dec(i); { this is shorter than "x < 0" }
 
     { And finally get's fractional part }
-    x := x - shortint(i);
+    x := x - integer(i);
 
     { If we need cosine, adds pi/2 }
     if sc then inc(i);
@@ -1981,10 +1967,10 @@ begin
     i := trunc(x);
 
     { Fixes negative part, needed to calculate "fractional" part }
-    if smallint(x) < 0 then dec(i); { this is shorter than "x < 0" }
+    //if smallint(x) < 0 then dec(i); { this is shorter than "x < 0" }
 
     { And finally get's fractional part }
-    x := x - i ;
+    x := x - smallint(i);
 
     { If we need cosine, adds pi/2 }
     if sc then inc(i);
@@ -2169,7 +2155,7 @@ _toct2	lsr Value+3
 end;
 
 
-{$i '../src/targets/system.inc'}
+{$i 'targets/system.inc'}
 
 
 procedure Delete(var s: string; index, count: byte);
@@ -2254,7 +2240,7 @@ begin
     s2len := Length(s2);
 
     result := 0;
-    
+
     if s1len > s2len then exit;
 
     for i := 1 to s2len - s1len + 1 do
@@ -2438,40 +2424,7 @@ begin
 end;
 
 
-procedure GetMem(var p; size: word); assembler; register; overload;
-(*
-@description:
-Getmem reserves Size bytes memory, and returns a pointer to this memory in p.
-
-@param: p - pointer
-@param: size
-*)
-asm
-	ldy #$00
-	lda :psptr
-	sta (P),y
-	iny
-	lda :psptr+1
-	sta (P),y
-
-	adw :psptr size
-
-	cpw :psptr #$c000
-	bcc @exit
-
-	@print #$45
-	@print #$52
-	@print #$52
-	@print #$20
-	lda #147		; Insufficient RAM
-	jsr @printBYTE._a
-	@printEOL
-	lda #$02
-	jmp @halt
-end;
-
-
-function GetMem(size: word): pointer; assembler; register; overload;
+function GetMem(size: word): pointer; assembler; register;
 (*
 @description:
 Getmem reserves Size bytes memory, and returns a pointer to this memory in Result.
@@ -2481,12 +2434,20 @@ Getmem reserves Size bytes memory, and returns a pointer to this memory in Resul
 asm
 	lda :psptr
 	sta Result
+	clc
+	adc size
+	sta :psptr
+
 	lda :psptr+1
 	sta Result+1
+	adc size+1
+	sta :psptr+1
 
-	adw :psptr size
-
-	cpw :psptr #$c000
+	cmp >$c000
+	bne @+
+	lda :psptr
+	cmp <$c000
+@
 	bcc @exit
 
 	@print #$45

@@ -4,7 +4,10 @@ unit md5;
  @author: Free Pascal development team, Tomasz Biela (Tebe)
  @name: MD5
 
- @version: 1.1 (2022-09-28)
+ @version:
+ 1.3 (2026-04-25) [striped] K
+ 1.2 (2025-09-24) MD5Print
+ 1.1 (2022-09-28)
 
  @description:
  Implements a MD5 digest algorithm (RFC 1321)
@@ -41,6 +44,8 @@ documentation and/or software.
 interface
 
 type
+
+ FourBytes = array[0..3] of byte;
 
  TMD5 = record
     Align,
@@ -82,6 +87,7 @@ s: array[0..63] of byte = (
 	4, 11, 16, 23,  4, 11, 16, 23,  4, 11, 16, 23,  4, 11, 16, 23,
 	6, 10, 15, 21,  6, 10, 15, 21,  6, 10, 15, 21,  6, 10, 15, 21 );
 
+[striped]
 K: array[0..63] of cardinal = (
 	$d76aa478, $e8c7b756, $242070db, $c1bdceee,
 	$f57c0faf, $4787c62a, $a8304613, $fd469501,
@@ -308,7 +314,7 @@ begin
 
   if IOResult < 128 then
   begin
-    GetMem(Buf, 256);
+    Buf := GetMem(256);
 
     repeat
 
@@ -328,28 +334,29 @@ end;
 
 
 function MD5Print(var MD5: TMD5): TString;
+const
+    thex: array [0..15] of char = ('0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'A', 'B', 'C', 'D', 'E', 'F');
 
- procedure MoveBuf; assembler;
- asm
- 	ldy #31
- mv:	lda @buf+1,y
-	sta @buf+9,y
-	dey
-	bpl mv
- end;
+var i,j,k, a: byte;
 
 begin
 
- hexStr(md5.State[3],8); MoveBuf;
- hexStr(md5.State[2],8); MoveBuf;
- hexStr(md5.State[1],8); MoveBuf;
- hexStr(md5.State[0],8);
+ Result[0]:=#32;
+ i:=1;
 
- asm
- 	mva #32 @buf
-	mwa #@buf Result
- end;
+ for k:=0 to 3 do
+   for j:=3 downto 0 do begin
+
+    a := FourBytes( md5.State[k] )[j];
+  
+    Result[i]:=thex[a shr 4];
+    Result[i+1]:=thex[a and $0f];
+    
+    inc(i, 2);
+   end; 
+  
 
 end;
+
 
 end.

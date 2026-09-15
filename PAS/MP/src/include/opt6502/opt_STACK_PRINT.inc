@@ -2,6 +2,18 @@
 function opt_STACK_PRINT(i: integer): Boolean;
 var p: integer;
     tmp: string;
+
+
+ function fail(i: integer): Boolean;
+ begin
+
+  Result := jsr(i) or
+            dex(i) or
+            (pos(#9'@print', listing[i]) > 0);
+
+ end;
+
+
 begin
 
     Result := true;
@@ -17,7 +29,7 @@ begin
       begin
         p:=GetWORD(i+0, i+1);
 
-	listing[i+2] := #9'@printPCHAR #$' + IntToHex(p, 4);
+	listing[i+2] := #9'@printPCHAR #' + Hex(p, 4);
 
 	listing[i]   := '';
 	listing[i+1] := '';
@@ -31,9 +43,9 @@ begin
        lda_val(i) and										// lda ~:STACKORIGIN			; 0
        ldy(i+1) then										// ldy					; 1
       begin
-        tmp := copy(listing[i], 6, 256);
+        tmp := GetARG(i);
 
-	if tmp + '+1' = copy(listing[i+1], 6, 256) then begin
+	if tmp + '+1' = GetARG(i+1) then begin
 	  listing[i+2] := #9'@printPCHAR ' + tmp;
 
 	  listing[i]   := '';
@@ -52,7 +64,7 @@ begin
       begin
         p:=GetWORD(i+0, i+1);
 
-	listing[i+2] := #9'@printSTRING #$' + IntToHex(p, 4);
+	listing[i+2] := #9'@printSTRING #' + Hex(p, 4);
 
 	listing[i]   := '';
 	listing[i+1] := '';
@@ -66,9 +78,9 @@ begin
        lda_val(i) and										// lda ~:STACKORIGIN			; 0
        ldy(i+1) then										// ldy					; 1
       begin
-        tmp := copy(listing[i], 6, 256);
+        tmp := GetARG(i);
 
-	if tmp + '+1' = copy(listing[i+1], 6, 256) then begin
+	if tmp + '+1' = GetARG(i+1) then begin
 	  listing[i+2] := #9'@printSTRING ' + tmp;
 
 	  listing[i]   := '';
@@ -92,7 +104,7 @@ begin
         argMatch(i+3, i+5) then
       begin
 	listing[i+4] := listing[i];
-	listing[i+5] := #9'ldy ' + copy(listing[i+2], 6, 256);
+	listing[i+5] := #9'ldy ' + GetARG(i+2);
 
 	listing[i]   := '';
 	listing[i+1] := '';
@@ -101,7 +113,7 @@ begin
 
 	if dex(i+7) then
 	 for p:=i-1 downto 0 do
-	  if jsr(p) then Break else
+	  if fail(p) then Break else
 	   if inx(p) then begin listing[i+7] := ''; listing[p] := ''; Break end;
 
   	exit(false);
@@ -116,14 +128,14 @@ begin
        ldy_stack(i+3) then									// ldy :STACKORIGIN+STACKWIDTH		; 3
      if argMatch(i+1, i+3) then
       begin
-	listing[i+3] := #9'ldy ' + copy(listing[i], 6, 256);
+	listing[i+3] := #9'ldy ' + GetARG(i);
 
 	listing[i]   := '';
 	listing[i+1] := '';
 
 	if dex(i+5) then
 	 for p:=i-1 downto 0 do
-	  if jsr(p) then Break else
+	  if fail(p) then Break else
 	   if inx(p) then begin listing[i+5] := ''; listing[p] := ''; Break end;
 
   	exit(false);
@@ -134,7 +146,7 @@ begin
 
        mva_im(i) then										// mva #  :STACKORIGIN			; 0
 //       (listing[i+1] = #9'@printCHAR') then							// @printCHAR				; 1
-     if (pos(' :STACKORIGIN,x', listing[i]) > 0 ) then
+     if stack_0x(i) then
       begin
 	listing[i+1] := #9'@print ' + GetString(i);
 
@@ -146,16 +158,16 @@ begin
 
     if (listing[i+1] = #9'@printCHAR') and							// @printCHAR				; 1
 
-       (pos(#9'mva adr.', listing[i]) > 0) and iy(i) then					// mva adr. ,y  :STACKORIGIN		; 0
+       mva_adr(i) and iy(i) then								// mva adr. ,y  :STACKORIGIN		; 0
 //       (listing[i+1] = #9'@printCHAR') then							// @printCHAR				; 1
-     if (pos(' :STACKORIGIN,x', listing[i]) > 0 ) then
+     if stack_0x(i) then
       begin
 	listing[i]   := #9'lda ' + GetString(i);
 	listing[i+1] := #9'@print @';
 
 	if dex(i+2) then
 	 for p:=i-1 downto 0 do
-	  if jsr(p) then Break else
+	  if fail(p) then Break else
 	   if inx(p) then begin listing[i+2] := ''; listing[p] := ''; Break end;
 
 	exit(false);
@@ -201,13 +213,12 @@ begin
        sta_stack(i) then									// sta :STACKORIGIN,x			; 0
 //       (listing[i+1] = #9'jsr @printBYTE') then						// jsr @printBYTE			; 1
       begin
-
         listing[i]   := '';
 	listing[i+1] := #9'jsr @printBYTE._a';
 
 	if dex(i+2) then
 	 for p:=i-1 downto 0 do
-	  if jsr(p) then Break else
+	  if fail(p) then Break else
 	   if inx(p) then begin listing[i+2] := ''; listing[p] := ''; Break end;
 
 	exit(false);
@@ -218,15 +229,14 @@ begin
 
        mva(i) and (iy(i) = false) then								// mva I :STACKORIGIN,x			; 0
 //       (listing[i+1] = #9'jsr @printBYTE') then						// jsr @printBYTE			; 1
-     if (pos(' :STACKORIGIN,x', listing[i]) > 0 ) then
+     if stack_0x(i) then
       begin
-
         listing[i]   := #9'lda ' + GetString(i);
 	listing[i+1] := #9'jsr @printBYTE._a';
 
 	if dex(i+2) then
 	 for p:=i-1 downto 0 do
-	  if jsr(p) then Break else
+	  if fail(p) then Break else
 	   if inx(p) then begin listing[i+2] := ''; listing[p] := ''; Break end;
 
 	exit(false);
@@ -238,8 +248,8 @@ begin
        mva(i) and (iy(i) = false) and								// mva ... :STACKORIGIN,x		; 0
        mva(i+1) and (iy(i+1) = false) then							// mva ... :STACKORIGIN+STACKWIDTH,x	; 1
 //       (listing[i+2] = #9'jsr @printWORD') then						// jsr @printWORD			; 2
-     if (pos(' :STACKORIGIN,x', listing[i]) > 0 ) and
-        (pos(' :STACKORIGIN+STACKWIDTH,x', listing[i+1]) > 0 ) then
+     if stack_0x(i) and
+        stack_1x(i+1) then
       begin
 
         listing[i]   := #9'lda ' + GetString(i);
@@ -248,7 +258,7 @@ begin
 
 	if dex(i+3) then
 	 for p:=i-1 downto 0 do
-	  if jsr(p) then Break else
+	  if fail(p) then Break else
 	   if inx(p) then begin listing[i+3] := ''; listing[p] := ''; Break end;
 
 	exit(false);
@@ -262,10 +272,10 @@ begin
        mva(i+2) and										// mva ... :STACKORIGIN+STACKWIDTH*2,x	; 2
        mva(i+3) then										// mva ... :STACKORIGIN+STACKWIDTH*3,x	; 3
 //       (listing[i+4] = #9'jsr @printCARD') then						// jsr @printCARD			; 4
-     if (pos(' :STACKORIGIN,x', listing[i]) > 0 ) and
-        (pos(' :STACKORIGIN+STACKWIDTH,x', listing[i+1]) > 0 ) and
-        (pos(' :STACKORIGIN+STACKWIDTH*2,x', listing[i+2]) > 0 ) and
-        (pos(' :STACKORIGIN+STACKWIDTH*3,x', listing[i+3]) > 0 ) then
+     if stack_0x(i) and
+        stack_1x(i+1) and
+        stack_2x(i+2) and
+        stack_3x(i+3) then
       begin
 
         listing[i]   := #9'mva ' + GetString(i) + ' :dx';
@@ -276,7 +286,7 @@ begin
 
 	if dex(i+5) then
 	 for p:=i-1 downto 0 do
-	  if jsr(p) then Break else
+	  if fail(p) then Break else
 	   if inx(p) then begin listing[i+5] := ''; listing[p] := ''; Break end;
 
 	exit(false);

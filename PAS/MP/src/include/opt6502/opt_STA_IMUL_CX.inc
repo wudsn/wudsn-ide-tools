@@ -198,8 +198,8 @@ begin
 	  listing[i]   := listing[i+14];
 
 	  listing[i+3] := listing[i+16];
-	  listing[i+4] := #9'asl ' + copy(listing[i+14], 6, 256);
-	  listing[i+5] := #9'rol ' + copy(listing[i+16], 6, 256);
+	  listing[i+4] := #9'asl ' + GetARG(i+14);
+	  listing[i+5] := #9'rol ' + GetARG(i+16);
 
 	  listing[i+13] := '';
 	  listing[i+14] := '';
@@ -322,10 +322,10 @@ begin
 	  listing[i]   := listing[i+14];
 
 	  listing[i+3] := listing[i+16];
-	  listing[i+4] := #9'asl ' + copy(listing[i+14], 6, 256);
-	  listing[i+5] := #9'rol ' + copy(listing[i+16], 6, 256);
-	  listing[i+6] := #9'asl ' + copy(listing[i+14], 6, 256);
-	  listing[i+7] := #9'rol ' + copy(listing[i+16], 6, 256);
+	  listing[i+4] := #9'asl ' + GetARG(i+14);
+	  listing[i+5] := #9'rol ' + GetARG(i+16);
+	  listing[i+6] := #9'asl ' + GetARG(i+14);
+	  listing[i+7] := #9'rol ' + GetARG(i+16);
 
 	  listing[i+13] := '';
 	  listing[i+14] := '';
@@ -509,20 +509,20 @@ begin
 
 	listing[i+3] := listing[i+16];
 	listing[i+4] := #9'tay';
-	listing[i+5] := #9'lda ' + copy(listing[i+1], 6, 256);
+	listing[i+5] := #9'lda ' + GetARG(i+1);
 	listing[i+6] := #9'asl @';
-	listing[i+7] := #9'rol ' + copy(listing[i+3], 6, 256);
+	listing[i+7] := #9'rol ' + GetARG(i+3);
 	listing[i+8] := #9'asl @';
-	listing[i+9] := #9'rol ' + copy(listing[i+3], 6, 256);
+	listing[i+9] := #9'rol ' + GetARG(i+3);
 
-	listing[i+10] := #9'add ' + copy(listing[i+1], 6, 256);
-	listing[i+11] := #9'sta ' + copy(listing[i+1], 6, 256);
+	listing[i+10] := #9'add ' + GetARG(i+1);
+	listing[i+11] := #9'sta ' + GetARG(i+1);
 
 	listing[i+12] := #9'tya';
-	listing[i+13] := #9'adc ' + copy(listing[i+3], 6, 256);
-	listing[i+14] := #9'asl ' + copy(listing[i+1], 6, 256);
+	listing[i+13] := #9'adc ' + GetARG(i+3);
+	listing[i+14] := #9'asl ' + GetARG(i+1);
 	listing[i+15] := #9'rol @';
-	listing[i+16] := #9'sta ' + copy(listing[i+3], 6, 256);
+	listing[i+16] := #9'sta ' + GetARG(i+3);
 
 	exit(false);
      end;
@@ -547,20 +547,20 @@ begin
 
 	listing[i+3] := listing[i+16];
 	listing[i+4] := #9'tay';
-	listing[i+5] := #9'lda ' + copy(listing[i+1], 6, 256);
+	listing[i+5] := #9'lda ' + GetARG(i+1);
 	listing[i+6] := #9'asl @';
-	listing[i+7] := #9'rol ' + copy(listing[i+3], 6, 256);
+	listing[i+7] := #9'rol ' + GetARG(i+3);
 	listing[i+8] := #9'asl @';
-	listing[i+9] := #9'rol ' + copy(listing[i+3], 6, 256);
+	listing[i+9] := #9'rol ' + GetARG(i+3);
 
-	listing[i+10] := #9'add ' + copy(listing[i+1], 6, 256);
-	listing[i+11] := #9'sta ' + copy(listing[i+1], 6, 256);
+	listing[i+10] := #9'add ' + GetARG(i+1);
+	listing[i+11] := #9'sta ' + GetARG(i+1);
 
 	listing[i+12] := #9'tya';
-	listing[i+13] := #9'adc ' + copy(listing[i+3], 6, 256);
-	listing[i+14] := #9'asl ' + copy(listing[i+1], 6, 256);
+	listing[i+13] := #9'adc ' + GetARG(i+3);
+	listing[i+14] := #9'asl ' + GetARG(i+1);
 	listing[i+15] := #9'rol @';
-	listing[i+16] := #9'sta ' + copy(listing[i+3], 6, 256);
+	listing[i+16] := #9'sta ' + GetARG(i+3);
 
 	exit(false);
      end;
@@ -584,7 +584,7 @@ begin
 	listing[i]   := listing[i+4];
 	listing[i+1] := #9'asl @';
 	listing[i+2] := #9'asl @';
-	listing[i+3] := #9'add ' + copy(listing[i], 6, 256);
+	listing[i+3] := #9'add ' + GetARG(i);
 	listing[i+4] := #9'asl @';
 
 	listing[i+5] := '';
@@ -610,7 +610,7 @@ begin
 	 listing[i]   := listing[i+4];
 	 listing[i+1] := #9'asl @';
 	 listing[i+2] := #9'asl @';
-	 listing[i+3] := #9'add ' + copy(listing[i], 6, 256);
+	 listing[i+3] := #9'add ' + GetARG(i);
 	 listing[i+4] := #9'asl @';
 	 listing[i+5] := #9'sta :eax';
 
@@ -708,7 +708,7 @@ begin
      spl(i+2) and 									// spl					; 2
      dey(i+3) and 									// dey					; 3
      sta_eax(i+4) and		 							// sta :eax				; 4
-     (listing[i+5] = #9'sty :eax+1') and 						// sty :eax+1				; 5
+     sty_eax_1(i+5) and									// sty :eax+1				; 5
      (listing[i+6] = #9'lda #$0A') and 							// lda #$0A				; 6
      sta_ecx(i+7) and		 							// sta :ecx				; 7
      lda_im_0(i+8) and 									// lda #$00				; 8
@@ -729,7 +729,7 @@ begin
 
       listing[i+2] := #9'asl @';
       listing[i+3] := #9'asl @';
-      listing[i+4] := #9'add ' + copy(listing[i+1], 6, 256);
+      listing[i+4] := #9'add ' + GetARG(i+1);
       listing[i+5] := #9'asl @';
       listing[i+6] := #9'sta :eax';
 
@@ -743,9 +743,9 @@ begin
       listing[i+14] := '';
 
       if listing[i+16] = #9'add :eax' then
-	listing[i+15] := #9'add ' + copy(listing[i+15], 6, 256)
+	listing[i+15] := #9'add ' + GetARG(i+15)
       else
-	listing[i+15] := #9'sub ' + copy(listing[i+15], 6, 256);
+	listing[i+15] := #9'sub ' + GetARG(i+15);
 
       listing[i+6] := '';
       listing[i+16] := '';
@@ -763,7 +763,7 @@ begin
 
       listing[i+2] := #9'asl @';
       listing[i+3] := #9'asl @';
-      listing[i+4] := #9'add ' + copy(listing[i+1], 6, 256);
+      listing[i+4] := #9'add ' + GetARG(i+1);
       listing[i+5] := #9'asl @';
       listing[i+6] := #9'sta :eax';
 
@@ -777,9 +777,9 @@ begin
       listing[i+14] := '';
 
       if listing[i+17] = #9'add :eax' then
-	listing[i+15] := #9'add ' + copy(listing[i+15], 6, 256)
+	listing[i+15] := #9'add ' + GetARG(i+15)
       else
-	listing[i+15] := #9'sub ' + copy(listing[i+15], 6, 256);
+	listing[i+15] := #9'sub ' + GetARG(i+15);
 
       listing[i+6] := '';
       listing[i+17] := '';
@@ -878,9 +878,36 @@ begin
 
 
       if lda_eax(i+13) and								// lda :eax		; 13
-         sta(i+14) and									// sta			; 14
+         sta_a(i+14) and								// sta			; 14
          lda_eax_1(i+15) and								// lda :eax+1		; 15
-         sta(i+16) and									// sta			; 16
+         sta_a(i+16) and								// sta			; 16
+         lda_eax_2(i+17) and								// lda :eax+2		; 17
+         sta_a(i+18) and								// sta			; 18
+         lda_eax_3(i+19) and								// lda :eax+3		; 19
+         sta_a(i+20) then								// sta			; 20
+       begin
+	listing[i]   := '';
+	listing[i+1] := '';
+	listing[i+2] := '';
+	listing[i+3] := '';
+
+	listing[i+8] := listing[i+6];
+	listing[i+9] := #9'sta :eax+2';
+	listing[i+10]:= #9'lda #$00';
+	listing[i+11]:= #9'sta :eax+3';
+	listing[i+12] := '';
+
+	listing[i+6] := listing[i+4];
+	listing[i+4] := #9'lda #$00';
+
+	exit(false);
+       end;
+
+
+      if lda_eax(i+13) and								// lda :eax		; 13
+         sta_a(i+14) and								// sta			; 14
+         lda_eax_1(i+15) and								// lda :eax+1		; 15
+         sta_a(i+16) and								// sta			; 16
          (lda_eax_x(i+17) = false) then							//~lda :eax+2		; 17
        begin
 	listing[i]   := '';
@@ -902,9 +929,9 @@ begin
 
 
       if lda_eax_1(i+13) and								// lda :eax+1		; 13
-         sta(i+14) and									// sta			; 14
+         sta_a(i+14) and								// sta			; 14
          lda_eax(i+15) and								// lda :eax		; 15
-         sta(i+16) and									// sta			; 16
+         sta_a(i+16) and								// sta			; 16
          (lda_eax_x(i+17) = false) then							//~lda :eax+2		; 17
        begin
 	listing[i]   := '';
@@ -927,10 +954,10 @@ begin
 
       if lda_eax(i+13) and								// lda :eax		; 13
 	 add_sub(i+14) and								// add|sub		; 14
-         sta(i+15) and									// sta			; 15
+         sta_a(i+15) and								// sta			; 15
          lda_eax_1(i+16) and								// lda :eax+1		; 16
 	 adc_sbc(i+17) and								// adc|sbc		; 17
-         sta(i+18) and									// sta			; 18
+         sta_a(i+18) and								// sta			; 18
          (lda_eax_x(i+19) = false) then							//~lda :eax+2		; 19
        begin
 	listing[i]   := '';
@@ -1034,7 +1061,7 @@ begin
      begin
       listing[i+14] := '';	//#9'add #$00';
 
-      listing[i+17] := #9'add ' + copy(listing[i], 6, 256);
+      listing[i+17] := #9'add ' + GetARG(i);
 
       listing[i]   := '';
       listing[i+1] := '';

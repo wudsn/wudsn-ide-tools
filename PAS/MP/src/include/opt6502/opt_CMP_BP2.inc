@@ -54,9 +54,9 @@ begin
 
 	if pos(#9'ldy #$', listing[i]) = 1 then begin
           p:=GetBYTE(i) + 3;
-	  listing[i] := #9'ldy #$' + IntToHex(p, 2);
+	  listing[i] := #9'ldy #' + HexByte(p);
 	end else
-	  listing[i] := #9'ldy ' + copy(listing[i], 6, 256) + '+$03';
+	  listing[i] := #9'ldy ' + GetARG(i) + '+$03';
 
 	listing[i+1] := #9'lda (:bp2),y';
 	listing[i+2] := listing[i+11];
@@ -172,7 +172,7 @@ begin
         listing[i+2] := listing[i+3];
         listing[i+3] := listing[i+4];
         listing[i+4] := listing[i];
-        listing[i+5] := #9'cmp ' + copy(listing[i+1], 6, 256);
+        listing[i+5] := #9'cmp ' + GetARG(i+1);
 
 	listing[i]   := '';
 	listing[i+1] := '';
@@ -246,9 +246,9 @@ begin
 
 	if pos(#9'ldy #$', listing[i]) = 1 then begin
           p:=GetBYTE(i) + 1;
- 	  listing[i] := #9'ldy #$' + IntToHex(p, 2);
+ 	  listing[i] := #9'ldy #' + HexByte(p);
 	end else
-	  listing[i] := #9'ldy ' + copy(listing[i], 6, 256) + '+$01';
+	  listing[i] := #9'ldy ' + GetARG(i) + '+$01';
 
 	listing[i+1] := #9'lda (:bp2),y';
 	listing[i+2] := listing[i+5];
@@ -280,9 +280,9 @@ begin
 
 	if pos(#9'ldy #$', listing[i]) = 1 then begin
           p:=GetBYTE(i) + 1;
- 	  listing[i] := #9'ldy #$' + IntToHex(p, 2);
+ 	  listing[i] := #9'ldy #' + HexByte(p);
 	end else
-	  listing[i] := #9'ldy ' + copy(listing[i], 6, 256) + '+$01';
+	  listing[i] := #9'ldy ' + GetARG(i) + '+$01';
 
 	listing[i+1] := listing[i+4];
 	listing[i+2] := listing[i+5];
@@ -310,9 +310,9 @@ begin
 
 	if pos(#9'ldy #$', listing[i]) = 1 then begin
           p:=GetBYTE(i) + 1;
- 	  listing[i] := #9'ldy #$' + IntToHex(p, 2);
+ 	  listing[i] := #9'ldy #' + HexByte(p);
 	end else
-	  listing[i] := #9'ldy ' + copy(listing[i], 6, 256) + '+$01';
+	  listing[i] := #9'ldy ' + GetARG(i) + '+$01';
 
 	listing[i+1] := #9'lda (:bp2),y';
 	listing[i+2] := listing[i+5];

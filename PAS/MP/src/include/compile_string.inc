@@ -1,242 +1,258 @@
+  // -----------------------------------------------------------------------------
+  // ===              STRING
+  // -----------------------------------------------------------------------------
 
-// -----------------------------------------------------------------------------
-// ===				      STRING
-// -----------------------------------------------------------------------------
+  case TokenAt(i + 2).Kind of
 
-	      case Tok[i + 2].Kind of
+    // Character assignment to pointer  f:='a'
 
- // Character assignment to pointer  f:='a'
+    TTokenKind.CHARLITERALTOK:
+    begin
 
-	CHARLITERALTOK:
-		begin
+      IdentifierAt(IdentIndex).isInit := True;
 
-		 Ident[IdentIndex].isInit := true;
+      StopOptimization;
 
-		 StopOptimization;
+      case IndirectionLevel of
 
-		 case IndirectionLevel of
+        ASPOINTERTOPOINTER:
+        begin
+          asm65(#9'mwy ' + IdentifierAt(IdentIndex).Name + ' :bp2');
+          asm65(#9'ldy #$00');
+          asm65(#9'mva #$01 (:bp2),y');
+          asm65(#9'iny');
+          asm65(#9'mva #' + HexByte(byte(TokenAt(i + 2).Value)) + ' (:bp2),y');
+        end;
 
-		     ASPOINTERTOPOINTER:
-		     begin
-		       asm65(#9'mwy ' + Ident[IdentIndex].Name + ' :bp2');
-		       asm65(#9'ldy #$00');
-		       asm65(#9'mva #$01 (:bp2),y');
-		       asm65(#9'iny');
-		       asm65(#9'mva #$' + IntToHex(Tok[i + 2].Value , 2) + ' (:bp2),y');
-		     end;
+        ASPOINTERTOARRAYORIGIN:
+        begin
+          asm65(#9'mwy ' + IdentifierAt(IdentIndex).Name + ' :bp2');
+          asm65(#9'ldy :STACKORIGIN,x');
+          asm65(#9'mva #' + HexByte(byte(TokenAt(i + 2).Value)) + ' (:bp2),y');
 
-		     ASPOINTERTOARRAYORIGIN:
-		     begin
-		       asm65(#9'mwy ' + Ident[IdentIndex].Name+' :bp2');
-		       asm65(#9'ldy :STACKORIGIN,x');
-		       asm65(#9'mva #$' + IntToHex(Tok[i + 2].Value , 2) + ' (:bp2),y');
+          a65(TCode65.subBX);
+        end;
 
-		       a65(__subBX);
-		     end;
+        ASPOINTER:
+        begin
+          asm65(#9'mva #$01 ' + GetLocalName(IdentIndex, 'adr.'));
+          asm65(#9'mva #' + HexByte(byte(TokenAt(i + 2).Value)) + ' ' + GetLocalName(IdentIndex, 'adr.') + '+1');
+        end;
 
-		     ASPOINTER:
-		     begin
-		       asm65(#9'mva #$01 ' + GetLocalName(IdentIndex, 'adr.'));
-		       asm65(#9'mva #$' + IntToHex(Tok[i + 2].Value , 2) + ' ' + GetLocalName(IdentIndex, 'adr.') + '+1');
-		     end;
+      end;    // case IndirectionLevel
 
-		 end;		// case IndirectionLevel
+      Result := i + 2;
+    end;    // case CHARLITERALTOK
 
-		Result := i + 2;
-		end;		// case CHARLITERALTOK
+    // String assignment to pointer  f:='string'
 
- // String assignment to pointer  f:='string'
+    TTokenKind.STRINGLITERALTOK:
+    begin
 
-	STRINGLITERALTOK:
-		begin
+      IdentifierAt(IdentIndex).isInit := True;
 
-		Ident[IdentIndex].isInit := true;
+      StopOptimization;
 
-		StopOptimization;
+      ResetOpty;
 
-		ResetOpty;
+      if IdentifierAt(IdentIndex).NumAllocElements in [0, 1] then
+        NumCharacters := TokenAt(i + 2).StrLength
+      else
+        NumCharacters := Min(TokenAt(i + 2).StrLength, IdentifierAt(IdentIndex).NumAllocElements - 1);
 
-		if Ident[IdentIndex].NumAllocElements in [0,1] then
-		  NumCharacters := Tok[i + 2].StrLength
-		else
-		  NumCharacters := Min(Tok[i + 2].StrLength, Ident[IdentIndex].NumAllocElements - 1);
+      case IndirectionLevel of
 
-		 case IndirectionLevel of
+        ASPOINTERTOPOINTER:
 
-		   ASPOINTERTOPOINTER:
+          if TokenAt(i + 2).StrLength = 0 then
+          begin
+            asm65(#9'mwy ' + IdentifierAt(IdentIndex).Name + ' :bp2');
+            asm65(#9'ldy #$00');
+            asm65(#9'mva #$00 (:bp2),y');
+          end
+          else
+          if pos('.', IdentifierAt(IdentIndex).Name) > 0 then
+          begin
 
-		   if Tok[i + 2].StrLength = 0 then begin
-		     asm65(#9'mwy '+Ident[IdentIndex].Name+' :bp2');
-		     asm65(#9'ldy #$00');
-		     asm65(#9'mva #$00 (:bp2),y');
-		   end else
-		    if pos('.', Ident[IdentIndex].Name) > 0 then begin
+            asm65(#9'mwa #CODEORIGIN+' + HexWord(word(TokenAt(i + 2).StrAddress - CODEORIGIN)) + ' @move.src');
+            asm65(#9'adw ' + copy(IdentifierAt(IdentIndex).Name, 1, pos('.', IdentifierAt(IdentIndex).Name) - 1) + ' #' + IdentifierAt(IdentIndex).Name + '-DATAORIGIN @move.dst');
+            asm65(#9'mwa #' + IntToStr(Succ(NumCharacters)) + ' @move.cnt');
+            asm65(#9'jsr @move');
 
-		     asm65(#9'mwa #CODEORIGIN+$'+IntToHex(Tok[i + 2].StrAddress - CODEORIGIN, 4)+' @move.src');
-		     asm65(#9'adw '+copy(Ident[IdentIndex].Name,1, pos('.', Ident[IdentIndex].Name)-1) + ' #' +Ident[IdentIndex].Name +'-DATAORIGIN @move.dst');
-		     asm65(#9'mwa #'+IntToStr(Succ(NumCharacters))+' @move.cnt');
-		     asm65(#9'jsr @move');
+          end
+          else
+            asm65(#9'@move #CODEORIGIN+' + HexWord(word(TokenAt(i + 2).StrAddress - CODEORIGIN)) + ' ' + IdentifierAt(IdentIndex).Name + ' #' + IntToStr(Succ(NumCharacters)));
 
-		    end else
-		     asm65(#9'@move #CODEORIGIN+$'+IntToHex(Tok[i + 2].StrAddress - CODEORIGIN, 4)+' '+Ident[IdentIndex].Name+' #'+IntToStr(Succ(NumCharacters)));
+        ASPOINTERTOARRAYORIGIN:
+          CheckCommonType(i + 1, TDataType.CHARTOK, TDataType.POINTERTOK);
 
-		   ASPOINTERTOARRAYORIGIN:
-		   GetCommonType(i + 1, CHARTOK, POINTERTOK);
+        ASPOINTER:
+        begin
 
-		   ASPOINTER:
-		   begin
+          if TokenAt(i + 2).StrLength = 0 then
+            asm65(#9'mva #$00 ' + GetLocalName(IdentIndex, 'adr.'))
+          else
+          begin
 
-		     if Tok[i + 2].StrLength = 0 then
-		      asm65(#9'mva #$00 '+GetLocalName(IdentIndex, 'adr.'))
-		     else begin
+            if IdentifierAt(IdentIndex).DataType = TDataType.POINTERTOK then
+              //           asm65(#9'@move #CODEORIGIN+$'+IntToHex(TokenAt(i + 2).StrAddress - CODEORIGIN + 1, 4)+' #'+GetLocalName(IdentIndex, 'adr.'){  IdentifierAt(IdentIndex).Name}+' #'+IntToStr(vlen))
+              k := TokenAt(i + 2).StrAddress - CODEORIGIN + 1
+            else
+              //           asm65(#9'@move #CODEORIGIN+$'+IntToHex(TokenAt(i + 2).StrAddress - CODEORIGIN, 4)+' #'+GetLocalName(IdentIndex, 'adr.'){  IdentifierAt(IdentIndex).Name}+' #'+IntToStr(Succ(NumCharacters)));
+              k := TokenAt(i + 2).StrAddress - CODEORIGIN;
 
-		      if Ident[IdentIndex].DataType = POINTERTOK then
-//		       asm65(#9'@move #CODEORIGIN+$'+IntToHex(Tok[i + 2].StrAddress - CODEORIGIN + 1, 4)+' #'+GetLocalName(IdentIndex, 'adr.'){  Ident[IdentIndex].Name}+' #'+IntToStr(vlen))
-		       k := Tok[i + 2].StrAddress - CODEORIGIN + 1
-		      else
-//		       asm65(#9'@move #CODEORIGIN+$'+IntToHex(Tok[i + 2].StrAddress - CODEORIGIN, 4)+' #'+GetLocalName(IdentIndex, 'adr.'){  Ident[IdentIndex].Name}+' #'+IntToStr(Succ(NumCharacters)));
-		       k := Tok[i + 2].StrAddress - CODEORIGIN;
+            vlen := Succ(NumCharacters);
 
-		       vlen := Succ(NumCharacters);
+            if vlen <= 256 then
+            begin
+              asm65(#9'ldy #256-' + IntToStr(vlen));
+              asm65(#9'mva:rne CODEORIGIN+' + HexWord(word(k)) + '+' + IntToStr(vlen) + '-256,y ' + GetLocalName(IdentIndex, 'adr.') + '+' + IntToStr(vlen) + '-256,y+');
+            end
+            else
+              asm65(#9'@move #CODEORIGIN+' + HexWord(word(k)) + ' #' + GetLocalName(IdentIndex, 'adr.'){  IdentifierAt(IdentIndex).Name} + ' #' + IntToStr(vlen));
 
-		       if vlen <= 256 then begin
-		        asm65(#9'ldy #256-' + IntToStr(vlen));
-			asm65(#9'mva:rne CODEORIGIN+$'+ IntToHex(k, 4) +'+'+IntToStr(vlen)+'-256,y ' + GetLocalName(IdentIndex, 'adr.') + '+' + IntToStr(vlen) + '-256,y+');
-		       end else
-		        asm65(#9'@move #CODEORIGIN+$'+ IntToHex(k, 4) +' #'+GetLocalName(IdentIndex, 'adr.'){  Ident[IdentIndex].Name} + ' #' + IntToStr(vlen));
+          end;
+          //move_1
 
-		     end;
-//move_1
+          if Succ(TokenAt(i + 2).StrLength) > IdentifierAt(IdentIndex).NumAllocElements then
+          begin
+            WarningShortStringLength(i + 2);
+            asm65(#9'mva #' + HexByte(byte(NumCharacters)) + ' ' + GetLocalName(IdentIndex, 'adr.'));
+            //adr.'+IdentifierAt(IdentIndex).Name);
+          end;
 
-		     if Succ(Tok[i + 2].StrLength) > Ident[IdentIndex].NumAllocElements then begin
-		      Warning(i + 2, ShortStringLength);
-		      asm65(#9'mva #$'+IntToHex(NumCharacters,2)+' '+GetLocalName(IdentIndex, 'adr.'));    //adr.'+Ident[IdentIndex].Name);
-		     end;
+        end;
 
-		   end;
+      end;    // case IndirectionLevel
 
-		 end;		// case IndirectionLevel
+      Result := i + 2;
+    end;    // case STRINGLITERALTOK
 
-		Result := i + 2;
-		end;		// case STRINGLITERALTOK
 
+    TTokenKind.IDENTTOK:
+    begin
 
-	IDENTTOK:
-		begin
+      IdentifierAt(IdentIndex).isInit := True;
 
-		 Ident[IdentIndex].isInit := true;
+      Result := CompileExpression(i + 2, ExpressionType, VarType);      // Right-hand side expression
 
-		 Result := CompileExpression(i + 2, ExpressionType, VarType);      // Right-hand side expression
+      svar := GetLocalName(IdentIndex);
 
-		 svar := GetLocalName(IdentIndex);
 
+      // Character assignment to pointer  var f:=c
 
- // Character assignment to pointer  var f:=c
+      //  writeln(IdentifierAt(IdentIndex).Name,',',IdentifierAt(IdentIndex).DataType,',',IdentifierAt(IdentIndex).AllocElementType,',',IdentifierAt(IdentIndex).PassMethod,' | ',VarType,',',ExpressionType,',',IndirectionLevel);
 
-//	writeln(Ident[IdentIndex].Name,',',Ident[IdentIndex].DataType,',',Ident[IdentIndex].AllocElementType,',',Ident[IdentIndex].PassMethod,' | ',VarType,',',ExpressionType,',',IndirectionLevel);
+      if ExpressionType = TDataType.CHARTOK then
+      begin
 
-		if ExpressionType = CHARTOK then begin
+        case IndirectionLevel of
 
-		 case IndirectionLevel of
+          ASPOINTER:
+          begin
 
-		   ASPOINTER:
-		     begin
+	    asm65(#9'lda :STACKORIGIN,x');
+	    asm65(#9'sta ' + GetLocalName(IdentIndex, 'adr.') + '+1');
+	    asm65(#9'mva #$01 '+ GetLocalName(IdentIndex, 'adr.'));
 
-		      asm65(#9'mva :STACKORIGIN,x '+GetLocalName(IdentIndex, 'adr.')+'+1');
-		      asm65(#9'mva #$01 '+GetLocalName(IdentIndex, 'adr.'));
+            a65(TCode65.subBX);
+          end;
 
-		      a65(__subBX);
-		     end;
+          ASPOINTERTOPOINTER:
+          begin
 
-		   ASPOINTERTOPOINTER:
-		     begin
+            asm65(#9'mwy ' + svar + ' :bp2');
+            asm65(#9'ldy #$00');
+            asm65(#9'mva #$01 (:bp2),y');
+            asm65(#9'iny');
+	    asm65(#9'lda :STACKORIGIN,x');
+	    asm65(#9'sta (:bp2),y');
 
-		       asm65(#9'mwy ' + svar + ' :bp2');
-		       asm65(#9'ldy #$00');
-		       asm65(#9'mva #$01 (:bp2),y');
-		       asm65(#9'iny');
-		       asm65(#9'mva :STACKORIGIN,x (:bp2),y');
+            a65(TCode65.subBX);
+          end;
 
-		       a65(__subBX);
-		     end;
+          ASPOINTERTOARRAYORIGIN:
+          begin
 
-		   ASPOINTERTOARRAYORIGIN:
-		     begin
+            asm65(#9'mwy ' + svar + ' :bp2');
+            asm65(#9'ldy :STACKORIGIN-1,x');
+            asm65(#9'lda :STACKORIGIN,x');
+            asm65(#9'sta (:bp2),y');
 
-		      asm65(#9'mwy ' + svar + ' :bp2');
-		      asm65(#9'ldy :STACKORIGIN-1,x');
-		      asm65(#9'lda :STACKORIGIN,x');
-		      asm65(#9'sta (:bp2),y');
+            a65(TCode65.subBX);
+            a65(TCode65.subBX);
+          end;
 
-		      a65(__subBX);
-		      a65(__subBX);
-		     end;
+          else
+            GenerateAssignment(IndirectionLevel, GetDataSize(VarType), IdentIndex);
 
-		 else
-		    GenerateAssignment(IndirectionLevel, DataSize[VarType], IdentIndex);
+        end;// case IndirectionLevel
 
-		 end;// case IndirectionLevel
+      end
+      else
 
-		end else
+      // String assignment to pointer  var f:=txt
 
- // String assignment to pointer  var f:=txt
+      if ExpressionType in Pointers then
+      begin
 
-		if ExpressionType in Pointers then begin
+        case IndirectionLevel of
 
-		  case IndirectionLevel of
+          ASPOINTER, ASPOINTERTOPOINTER:
+          begin
 
-		    ASPOINTER, ASPOINTERTOPOINTER:
-		      begin
+            if TokenAt(i + 3).Kind = TTokenKind.DEREFERENCETOK then
+            begin
 
-		      	if Tok[i+3].Kind = DEREFERENCETOK then begin
+              asm65(#9'mwy ' + GetLocalName(GetIdentIndex(TokenAt(i + 2).Name)) + ' :bp2');
+              asm65(#9'ldy #$00');
+              asm65(#9'lda (:bp2),y');
+              asm65(#9'sta @move.src');
+              asm65(#9'iny');
+              asm65(#9'lda (:bp2),y');
+              asm65(#9'sta @move.src+1');
 
-		          asm65(#9'mwy ' + GetLocalName(GetIdent(Tok[i + 2].Name^)) + ' :bp2');
-		          asm65(#9'ldy #$00');
-		          asm65(#9'lda (:bp2),y');
-			  asm65(#9'sta @move.src');
-		          asm65(#9'iny');
-		          asm65(#9'lda (:bp2),y');
-			  asm65(#9'sta @move.src+1');
+              Inc(i);
 
-			  inc(i);
+            end
+            else
+            begin
 
-			end else begin
+              asm65(#9'lda :STACKORIGIN,x');
+              asm65(#9'sta @move.src');
+              asm65(#9'lda :STACKORIGIN+STACKWIDTH,x');
+              asm65(#9'sta @move.src+1');
 
-			  asm65(#9'lda :STACKORIGIN,x');
-			  asm65(#9'sta @move.src');
-			  asm65(#9'lda :STACKORIGIN+STACKWIDTH,x');
-			  asm65(#9'sta @move.src+1');
+            end;
 
-			end;
 
+            if (ExpressionType = TDataType.PCHARTOK) and (IdentifierAt(IdentIndex).DataType = TDataType.STRINGPOINTERTOK) then
+              asm65(#9'@movePCHAR ' + svar + ' #' + IntToStr(IdentifierAt(IdentIndex).NumAllocElements - 1))
+            else
+            if IdentifierAt(IdentIndex).DataType = TDataType.POINTERTOK then
+              asm65(#9'@moveSTRING_P ' + svar)
+            else
+              asm65(#9'@moveSTRING ' + svar + ' #' + IntToStr(IdentifierAt(IdentIndex).NumAllocElements - 1));
 
-		        if (ExpressionType = PCHARTOK) and (Ident[IdentIndex].DataType = STRINGPOINTERTOK) then
-			 asm65(#9'@movePCHAR ' + svar + ' #' + IntToStr(Ident[IdentIndex].NumAllocElements-1))
-			else
-			if Ident[IdentIndex].DataType = POINTERTOK then
-			 asm65(#9'@moveSTRING_P ' + svar)
-			else
-			 asm65(#9'@moveSTRING ' + svar + ' #' + IntToStr(Ident[IdentIndex].NumAllocElements-1));
 
+            a65(TCode65.subBX);
 
-			a65(__subBX);
+            StopOptimization;
 
-			StopOptimization;
+            ResetOpty;
 
-			ResetOpty;
+          end;
 
-		      end;
+          else
+            GenerateAssignment(IndirectionLevel, GetDataSize(VarType), IdentIndex);
 
-		  else
-		   GenerateAssignment(IndirectionLevel, DataSize[VarType], IdentIndex);
+        end;// case IndirectionLevel
 
-		  end;// case IndirectionLevel
+      end
+      else
+        ErrorIncompatibleTypes(i, ExpressionType, VarType);
 
+    end;
 
-		end else
-		 iError(i, IncompatibleTypes, 0, ExpressionType, VarType);
+  end; // case TokenAt(i + 2).Kind
 
-		end;
-
-
-	      end; // case Tok[i + 2].Kind

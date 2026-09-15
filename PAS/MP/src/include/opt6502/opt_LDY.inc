@@ -20,6 +20,50 @@ begin
      end;
 
 
+    if ldy(i) and										// ldy					; 0
+       lda_a(i+1) and										// lda					; 1
+       sta_a(i+2) and										// sta					; 2
+       sty(i+3) then										// sty					; 3
+     begin
+      listing_tmp[0] := listing[i+1];
+      listing_tmp[1] := listing[i+2];
+      listing_tmp[2] := listing[i];
+      listing_tmp[3] := listing[i+3];
+
+      listing[i]   := listing_tmp[0];
+      listing[i+1] := listing_tmp[1];
+      listing[i+2] := listing_tmp[2];
+      listing[i+3] := listing_tmp[3];
+     end;
+
+
+    if ldy_1(i+2) and										// ldy #1				; 2
+
+       (iny(i) or dey(i)) and									// iny|dey				; 0
+       (add_sub(i+1) or and_ora_eor(i+1)) and (iy(i+1) = false) then				// add|sub|and|ora|eor			; 1
+     begin
+	listing[i] := '';
+
+      	exit(false);
+     end;
+
+
+    if mwy_bp2(i+7) and										// mwy ... :bp2				; 7
+
+       (iny(i) or dey(i)) and									// iny|dey				; 0
+       lda_a(i+1) and (iy(i+1) = false) and							// lda					; 1
+       (add_sub(i+2) or and_ora_eor(i+2)) and (iy(i+2) = false) and				// add|sub|and|ora|eor			; 2
+       cmp(i+3) and (iy(i+3) = false) and							// cmp					; 3
+       SKIP(i+4) and										// bcc|bcs|...				; 4
+       jmp_l(i+5) and										// jmp l_				; 5
+       lab_a(i+6) then										//@					; 6
+     begin
+	listing[i] := '';
+
+      	exit(false);
+     end;
+
+
     if iny(i) and										// iny					; 0
        (lsr_stack(i+1) or asl_stack(i+1)) then							// lsr|asl :STACKORIGIN			; 1
      begin
@@ -40,7 +84,7 @@ begin
 
 
     if (iny(i) or dey(i)) and									// iny|dey				; 0
-       (ldy(i+1) or mvy(i+1)) then								// ldy|mvy				; 1
+       (ldy(i+1) or mwy(i+1) or mvy(i+1) or tay(i+1)) then					// ldy|mwy|mvy|tay			; 1
        begin
 	listing[i] := '';
 
@@ -53,11 +97,11 @@ begin
     if ldy(i) and 										// ldy					; 0
        sty(i+1) and (sty_bp_1(i+1) = false) then						// sty					; 1
        begin
-	listing[i] := #9'lda ' + copy(listing[i], 6, 256);
+	listing[i] := #9'lda ' + GetARG(i);
 
 	k:=i+1;
 	while sty(k) do begin
-	 listing[k] := #9'sta ' + copy(listing[k], 6, 256);
+	 listing[k] := #9'sta ' + GetARG(k);
 	 inc(k);
 	end;
 
@@ -67,19 +111,72 @@ begin
        end;
 
 
-    if ldy_im(i) and 										// ldy #				; 0
+    if ldy_im(i) and (DATA(i) = false) and							// ldy #				; 0
        iny(i+1) then										// iny					; 1
-       begin
+      begin
 	p := GetBYTE(i) + 1;
 
 	if p < 256 then begin
- 	 listing[i]   := #9'ldy #$' + IntToHex(p, 2);
+ 	 listing[i]   := #9'ldy #' + HexByte(p);
 	 listing[i+1] := '';
 
 	 exit(false);
 	end;
 
-       end;
+      end;
+
+
+    if ldy_im(i) and DATA(i) and								// ldy #CONTEXT.STATE-DATAORIGIN	; 0
+       iny(i+1) then										// iny					; 1
+    begin
+     listing[i] := listing[i] + '+1';
+     listing[i+1] := '';
+
+     exit(false);
+    end;
+
+
+    if (iny(i) or dey(i)) and									// iny|dey				; 0
+       lda_a(i+1) and (iy(i+1) = false) and							// lda					; 1
+       sta_a(i+2) and (iy(i+2) = false) and							// sta					; 2
+       (ldy(i+3) or mwy(i+3) or mvy(i+3) or tay(i+3)) then					// ldy|mwy|mvy|tay			; 3
+    begin
+     listing[i] := '';
+
+     exit(false);
+    end;
+
+
+    if ldy(i) and (listing[i] = listing[i+3]) and						// ldy A				; 0
+       lda_a(i+1) and										// lda					; 1
+       sta_a(i+2) then										// sta					; 2
+//       ldy(i+3) then										// ldy A				; 3
+    begin
+     listing[i+3] := '';
+
+     exit(false);
+    end;
+
+
+    if (iny(i) or dey(i)) and									// iny|dey				; 0
+       lda_a(i+1) and (iy(i+1) = false) and							// lda					; 1
+       (add_sub(i+2) or and_ora_eor(i+2)) and (iy(i+2) = false) and				// add|sub|and|ora|eor			; 2
+       tay(i+3) then										// tay					; 3
+    begin
+     listing[i] := '';
+
+     exit(false);
+    end;
+
+
+    if (iny(i) or dey(i)) and									// iny|dey				; 0
+       sta_a(i+1) and (iy(i+1) = false) and							// sta					; 1
+       (ldy(i+2) or mwy(i+2) or mvy(i+2)) then							// ldy|mwy|mvy				; 2
+    begin
+     listing[i] := '';
+
+     exit(false);
+    end;
 
 
     if lda_val(i) and (lda_im(i) = false) and							// lda I				; 0	~:STACKORIGIN
@@ -92,7 +189,7 @@ begin
 	listing[i+2] := listing[i+1];
 	listing[i+1] := #9'tya';
 
-	listing[i] := #9'ldy ' + copy(listing[i], 6, 256);
+	listing[i] := #9'ldy ' + GetARG(i);
 
 	exit(false);
      end;
@@ -127,7 +224,7 @@ begin
        ldy(i+2) then										// ldy					; 2
       begin
 	listing[i] := '';
-	listing[i+1] := #9'sta ' + copy(listing[i+1], 6, 256);
+	listing[i+1] := #9'sta ' + GetARG(i+1);
 
 	exit(false);
       end;
@@ -209,7 +306,7 @@ begin
     if ldy_stack(i+5) and									// ldy :STACKORIGIN+9			; 5
 
        lda(i) and										// lda I				; 0
-       (listing[i+1] = #9'add #$01') and 							// add #$01				; 1
+       add_im_1(i+1) and 									// add #$01				; 1
        sta_stack(i+2) and									// sta :STACKORIGIN+9			; 2
        ldy(i+3) and										// ldy I				; 3
        lda_a(i+4) then 										// lda					; 4
@@ -266,7 +363,7 @@ begin
 //       ldy_stack(i+4) then									// ldy :STACKORIGIN+9			; 4
      if argMatch(i+1, i+4) then
      begin
-	listing[i+4] := #9'ldy ' + copy(listing[i], 6, 256);
+	listing[i+4] := #9'ldy ' + GetARG(i);
 
 	listing[i]   := '';
 	listing[i+1] := '';
@@ -309,10 +406,10 @@ begin
       end;
 
 
-    if ldy_im(i+5) and										// ldy #				; 5
+    if ldy_im(i+5) and (DATA(i+5) = false) and							// ldy #				; 5
 
        lda_bp2(i) and										// lda :bp2				; 0
-       add_im(i+1) and (pos('-DATAORIGIN', listing[i+1]) > 0) and				// add #CONTEXT.STATE-DATAORIGIN	; 1
+       add_im(i+1) and DATA(i+1) and								// add #CONTEXT.STATE-DATAORIGIN	; 1
        sta_bp2(i+2) and										// sta :bp2				; 2
        scc(i+3) and										// scc					; 3
        inc_bp2_1(i+4) then									// inc :bp2+1				; 4
@@ -320,9 +417,9 @@ begin
       begin
 
         if ldy_im_0(i+5) then
-	 listing[i] := #9'ldy ' + copy(listing[i+1], 6, 256)
+	 listing[i] := #9'ldy ' + GetARG(i+1)
 	else
-	 listing[i] := #9'ldy ' + copy(listing[i+1], 6, 256) + '+' + copy(listing[i+5], 7, 256);
+	 listing[i] := #9'ldy ' + GetARG(i+1) + '+' + copy(listing[i+5], 7, 256);
 
 	listing[i+1] := '';
 	listing[i+2] := '';
@@ -337,7 +434,7 @@ begin
     if ldy_im(i+12) and										// ldy #				; 12
 
        lda_bp2(i) and										// lda :bp2				; 0
-       add_im(i+1) and (pos('-DATAORIGIN', listing[i+1]) > 0) and				// add #CONTEXT.STATE-DATAORIGIN	; 1
+       add_im(i+1) and DATA(i+1) and								// add #CONTEXT.STATE-DATAORIGIN	; 1
        sta_bp2(i+2) and										// sta :bp2				; 2
        lda_bp2_1(i+3) and									// lda :bp2+1				; 3
        adc_im_0(i+4) and									// adc #$00				; 4
@@ -352,9 +449,9 @@ begin
       begin
 
         if ldy_im_0(i+5) then
-	 listing[i] := #9'ldy ' + copy(listing[i+1], 6, 256)
+	 listing[i] := #9'ldy ' + GetARG(i+1)
 	else
-	 listing[i] := #9'ldy ' + copy(listing[i+1], 6, 256) + '+' + copy(listing[i+7], 7, 256);
+	 listing[i] := #9'ldy ' + GetARG(i+1) + '+' + copy(listing[i+7], 7, 256);
 
 	listing[i+1] := '';
 	listing[i+2] := '';
@@ -438,9 +535,9 @@ begin
       begin
 
 	if add_stack(i+5) then
-	 listing[i+5] := #9'add ' + copy(listing[i+1], 6, 256)
+	 listing[i+5] := #9'add ' + GetARG(i+1)
 	else
-	 listing[i+5] := #9'sub ' + copy(listing[i+1], 6, 256);
+	 listing[i+5] := #9'sub ' + GetARG(i+1);
 
 	listing[i+1]  := '';
 	listing[i+2]  := '';
@@ -463,9 +560,9 @@ begin
       begin
 
 	if add_stack(i+4) then
-	 listing[i+4] := #9'add ' + copy(listing[i+1], 6, 256)
+	 listing[i+4] := #9'add ' + GetARG(i+1)
 	else
-	 listing[i+4] := #9'sub ' + copy(listing[i+1], 6, 256);
+	 listing[i+4] := #9'sub ' + GetARG(i+1);
 
 	listing[i+1]  := '';
 	listing[i+2]  := '';
@@ -487,9 +584,9 @@ begin
        begin
 
         if add_stack(i+7) then
-	 listing[i+4] := #9'add ' + copy(listing[i+4], 6, 256)
+	 listing[i+4] := #9'add ' + GetARG(i+4)
 	else
-	 listing[i+4] := #9'sub ' + copy(listing[i+4], 6, 256);
+	 listing[i+4] := #9'sub ' + GetARG(i+4);
 
 	listing[i+2] := '';
 
@@ -510,7 +607,7 @@ begin
        (and_ora_eor_stack(i+4) or add_sub_stack(i+4)) then					// ora|and|eor|add|sub :STACKORIGIN+9	; 4
      if argMatch(i+1, i+4) then
       begin
-	listing[i+4] := copy(listing[i+4], 1, 5) + copy(listing[i], 6, 256);
+	listing[i+4] := GetCMD(i+4) + GetARG(i);
 
 	listing[i]   := '';
 	listing[i+1] := '';
@@ -528,7 +625,7 @@ begin
      if argMatch(i+2, i+5) then
       begin
 	listing[i+2] := '';
-	listing[i+4] := copy(listing[i+5], 1, 5) + copy(listing[i+4], 6, 256);
+	listing[i+4] := GetCMD(i+5) + GetARG(i+4);
 	listing[i+5] := '';
 
 	exit(false);
@@ -549,7 +646,7 @@ begin
 	listing[i+2] := '';
 	listing[i+5] := '';
 	listing[i+6] := '';
-	listing[i+4] := copy(listing[i+7], 1, 5) + copy(listing[i+4], 6, 256);
+	listing[i+4] := GetCMD(i+7) + GetARG(i+4);
 	listing[i+7] := '';
 
 	exit(false);
@@ -594,8 +691,8 @@ begin
 	argMatch(i+4, i+9) then
       begin
 	listing[i+2] := '';
-	listing[i+6] := copy(listing[i+6], 1, 5) + copy(listing[i+1], 6, 256);
-	listing[i+9] := copy(listing[i+9], 1, 5) + copy(listing[i+3], 6, 256);
+	listing[i+6] := GetCMD(i+6) + GetARG(i+1);
+	listing[i+9] := GetCMD(i+9) + GetARG(i+3);
 	listing[i+1] := '';
 	listing[i+3] := '';
 	listing[i+4] := '';
@@ -617,8 +714,8 @@ begin
      if argMatch(i+2, i+5) and
 	argMatch(i+4, i+6) then
       begin
-	listing[i+5] := copy(listing[i+5], 1, 5) + copy(listing[i+1], 6, 256);
-	listing[i+6] := copy(listing[i+6], 1, 5) + copy(listing[i+3], 6, 256);
+	listing[i+5] := GetCMD(i+5) + GetARG(i+1);
+	listing[i+6] := GetCMD(i+6) + GetARG(i+3);
 	listing[i+1] := '';
 	listing[i+2] := '';
 	listing[i+3] := '';
@@ -765,13 +862,13 @@ begin
         argMatch(i+6, i+17) and
         argMatch(i+8, i+20) then
       begin
-	listing[i+11] := copy(listing[i+11], 1, 5) + copy(listing[i+1], 6, 256);
+	listing[i+11] := GetCMD(i+11) + GetARG(i+1);
 
-	listing[i+14] := copy(listing[i+14], 1, 5) + copy(listing[i+3], 6, 256);
+	listing[i+14] := GetCMD(i+14) + GetARG(i+3);
 
-	listing[i+17] := copy(listing[i+17], 1, 5) + copy(listing[i+5], 6, 256);
+	listing[i+17] := GetCMD(i+17) + GetARG(i+5);
 
-	listing[i+20] := copy(listing[i+20], 1, 5) + copy(listing[i+7], 6, 256);
+	listing[i+20] := GetCMD(i+20) + GetARG(i+7);
 
 	listing[i+1] := '';
 	listing[i+2] := '';

@@ -2,6 +2,8 @@
 
 [English Documentation](https://tebe6502.github.io/mad-pascal-en-mkdocs/) / [Polska Dokumentacja](https://tebe6502.github.io/mad-pascal-mkdocs/)
 
+[Turbo Pascal](https://turbopascal.org/)
+
 [Full Pascal Programming Crash Course - Basics to Advanced](https://youtu.be/6jRVhT_JotY)
 
 ## [Introduction](https://tebe6502.github.io/mad-pascal-en-mkdocs/introduction/)
@@ -39,8 +41,9 @@ The available features are:
 * Recursion
 
 ## Compile
+	src\
 
-    fpc -MDelphi -vh -O3 mp.pas
+	fpc -MDelphi -vh -O3 mp.pas
 
 ## Usage
 [WUDSN and Mad-Pascal](https://forums.atariage.com/topic/348660-wudsn-mad-pascal-quick-hack-increasing-usability/)
@@ -119,7 +122,7 @@ Simple binary data manipulation tool written in JavaScript (export to Action!, A
 
 CutAs, FiDL, SprED, Sprite XL
 
-### [A8 Mad-Pascal Window Library](https://github.com/Ripjetski6502/A8MadPascalLibrary)
+### [A8 Mad-Pascal Window Library](https://unfinishedbitness.info/pascal-library/)
 
 This text-mode windowing library has window controls and modern gadgets (widgets). The gadgets allow you to build input forms that use buttons, radio buttons, input strings (with scrolled lengths and type restrictions), check boxes, progress bars, etc. This allows you to build applications with "modern" interfaces.
 
@@ -143,6 +146,7 @@ This text-mode windowing library has window controls and modern gadgets (widgets
 * [artur](https://gitlab.com/bocianu/artur)
 * [jcq](https://gitlab.com/bocianu/jcq)
 * [Fujinet udp shoutbox](https://gitlab.com/bocianu/fujinet-udp-shoutbox)
+* [Fujitalk-client](https://gitlab.com/bocianu/fujitalk-client)
 * [speedway](https://gitlab.com/bocianu/speedway)
 * [chessnet](https://gitlab.com/bocianu/chessnet)
 * [gr9Lab](https://gitlab.com/amarok8bit/gr9Lab)
@@ -174,15 +178,43 @@ This text-mode windowing library has window controls and modern gadgets (widgets
 * [µSoukoban](https://github.com/zbyti/pikoban)
 * [Time Wizard](https://gitlab.com/amarok8bit/time-wizard)
 * [run-fox-run](https://gitlab.com/bocianu/run-fox-run)
-* [Robots Rumble](https://github.com/tebe6502/robotsrumble)
+* [Robots Rumble-VBXE](https://github.com/tebe6502/robotsrumble)
+* [neo-pas-template](https://gitlab.com/bocianu/neo-pas-template)
 * [neo-sandbox](https://gitlab.com/bocianu/neo-sandbox)
 * [neo-swimo](https://gitlab.com/bocianu/neo-swimo)
 * [neo-solsuite](https://gitlab.com/bocianu/neo-solsuite)
+* [neo-bohomaze](https://gitlab.com/bocianu/neo-bohomaze)
 * [neo-mplib](https://gitlab.com/bocianu/neo-mplibs)
 * [Mafia](https://github.com/drunkeneye/MAFIA.A8)
 * [PokeyMAX](https://github.com/MADRAFi/PokeyMAX)
 * [PokeyMAX update tool](https://github.com/MADRAFi/PMAX_Update)
 * [rogul](https://gitlab.com/bocianu/rogul)
+* [kara-t-rex](https://gitlab.com/bocianu/kara-t-rex)
+* [Minimum Spanning Tree](https://github.com/mgr-inz-rafal/atari_msp_test)
+* [Piranhas](https://gitlab.com/bocianu/3.14ranhas)
+* [Nurek z wielkim...](https://github.com/mgr-inz-rafal/nurek_madp)
+* [diagnostyka_serca](https://github.com/mgr-inz-rafal/diagnostyka_serca)
+* [Tetris-VBXE](https://github.com/tebe6502/Tetris-VBXE)
+
+## Compression / Decompression
+* [LZJB](https://en.wikipedia.org/wiki/LZJB) -> [unit](https://github.com/tebe6502/Mad-Pascal/blob/master/lib/lzjb.pas), [sample](https://github.com/tebe6502/Mad-Pascal/tree/master/samples/a8/compression/lzjb)
+* [RDC](https://files.mpoli.fi/unpacked/software/dos/misc/mc314pc2.zip/examples/misc/rdc.c) -> [unit](https://github.com/tebe6502/Mad-Pascal/blob/master/lib/rdc.pas), [sample](https://github.com/tebe6502/Mad-Pascal/tree/master/samples/a8/compression/rdc)
+* [LZW](https://en.wikipedia.org/wiki/Lempel%E2%80%93Ziv%E2%80%93Welch) -> [sample](https://github.com/tebe6502/Mad-Pascal/tree/master/samples/a8/compression/lzw)
+* [LZH](https://en.wikipedia.org/wiki/LHA_(file_format)) -> [sample](https://github.com/tebe6502/Mad-Pascal/tree/master/samples/a8/compression/lzh)
+* [LZRW1KH](https://sunsite.icm.edu.pl/delphi//d10free/tlzrw1.htm) -> [unit](https://github.com/tebe6502/Mad-Pascal/blob/master/lib/lzrw1kh.pas), [sample](https://github.com/tebe6502/Mad-Pascal/tree/master/samples/a8/compression/lzrw1kh)
+
+## Decompression
+* [DEFLATE](https://github.com/pfusik/zlib6502) -> [unit](https://github.com/tebe6502/Mad-Pascal/blob/master/lib/deflate.pas), [sample](https://github.com/tebe6502/Mad-Pascal/tree/master/samples/a8/compression/deflate)
+* [APL](https://github.com/emmanuel-marty/apultra) -> [unit](https://github.com/tebe6502/Mad-Pascal/blob/master/lib/aplib.pas), [sample](https://github.com/tebe6502/Mad-Pascal/tree/master/samples/a8/compression/apl)
+* [LZ4](https://github.com/emmanuel-marty/lz4ultra) -> [unit](https://github.com/tebe6502/Mad-Pascal/blob/master/lib/lz4.pas), [sample](https://github.com/tebe6502/Mad-Pascal/tree/master/samples/a8/compression/lz4)
+* [PACKFIRE](https://github.com/tebe6502/Mad-Assembler/tree/master/examples/compression/packfire) -> [unit](https://github.com/tebe6502/Mad-Pascal/blob/master/lib/packfire.pas), [sample](https://github.com/tebe6502/Mad-Pascal/tree/master/samples/a8/compression/packfire)
+* [POWER PACKER](https://github.com/retrocoder68/PowerPacker) -> [unit](https://github.com/tebe6502/Mad-Pascal/blob/master/lib/pp.pas), [sample](https://github.com/tebe6502/Mad-Pascal/tree/master/samples/a8/compression/pp)
+* [SNAPPY](https://github.com/google/snappy/tree/main) -> [unit](https://github.com/tebe6502/Mad-Pascal/blob/master/lib/snappy.pas), [sample](https://github.com/tebe6502/Mad-Pascal/tree/master/samples/a8/compression/snappy)
+* [UPKR](https://github.com/pfusik/upkr6502) -> [unit](https://github.com/tebe6502/Mad-Pascal/blob/master/lib/upk.pas), [sample](https://github.com/tebe6502/Mad-Pascal/tree/master/samples/a8/compression/upkr)
+* [ZX0](https://github.com/einar-saukas/ZX0) -> [unit](https://github.com/tebe6502/Mad-Pascal/blob/master/lib/zx0.pas), [sample](https://github.com/tebe6502/Mad-Pascal/tree/master/samples/a8/compression/zx0)
+* [ZX2](https://github.com/dmsc/zx02) -> [unit](https://github.com/tebe6502/Mad-Pascal/blob/master/lib/zx2.pas), [sample](https://github.com/tebe6502/Mad-Pascal/tree/master/samples/a8/compression/zx2)
+* [ZX5](https://github.com/einar-saukas/ZX5) -> [unit](https://github.com/tebe6502/Mad-Pascal/blob/master/lib/zx5.pas), [sample](https://github.com/tebe6502/Mad-Pascal/tree/master/samples/a8/compression/zx5)
+
 
 ## Benchmarks
 
@@ -235,6 +267,7 @@ This text-mode windowing library has window controls and modern gadgets (widgets
 
 ## YouTube
 
+* [WUDSN IDE Tutorial](https://youtu.be/36MFqY55yR0?list=PLD57AEE018938BA5E)
 * [Arcadia](https://youtu.be/cJXRhfvKeH4)
 * [Flob](https://youtu.be/sH4mg0DtWTM)
 * [ProHiBan (Sokoban)](https://youtu.be/4VDKaIR_moY)

@@ -86,14 +86,14 @@ begin
        end;
 
 
-    if mvy_im(i) and (pos(' :bp+1', listing[i]) > 0) and				// mvy #   :bp+1			; 0
+    if mvy_im(i) and bp_1(i) and							// mvy #   :bp+1			; 0
        ldy_im(i+1) and 									// ldy #				; 1
        lda_a(i+2) and									// lda					; 2
        sta_bp_y(i+3) then 								// sta (:bp),y				; 3
       begin
 	p := GetWORD(i+1, i);
 
-	listing[i+3] := #9'sta $' + IntToHex(p, 4);
+	listing[i+3] := #9'sta ' + Hex(p, 4);
 
 	listing[i]   := '';
 	listing[i+1] := '';
@@ -102,14 +102,14 @@ begin
       end;
 
 
-    if mvy_im(i) and (pos(' :bp+1', listing[i]) > 0) and				// mvy #   :bp+1			; 0
+    if mvy_im(i) and bp_1(i) and							// mvy #   :bp+1			; 0
        ldy(i+1) and (ldy_im(i+1) = false) and						// ldy					; 1
        lda_a(i+2) and									// lda					; 2
        sta_bp_y(i+3) then 								// sta (:bp),y				; 3
       begin
         p:=GetBYTE(i);
 
-	listing[i+3] := #9'sta $' + IntToHex(p, 2) + '00,y';
+	listing[i+3] := #9'sta ' + Hex(p, 2) + '00,y';
 
 	listing[i] := '';
 
@@ -125,7 +125,7 @@ begin
       begin
 	p := GetWORD(i+2, i);
 
-	listing[i+4] := #9'sta $' + IntToHex(p, 4);
+	listing[i+4] := #9'sta ' + Hex(p, 4);
 
 	listing[i]   := '';
 	listing[i+1] := '';
@@ -142,7 +142,7 @@ begin
       begin
 	p := GetWORD(i+2, i);
 
-	listing[i+3] := #9'sta $' + IntToHex(p, 4);
+	listing[i+3] := #9'sta ' + Hex(p, 4);
 
 	listing[i]   := '';
 	listing[i+1] := '';
@@ -164,11 +164,11 @@ begin
 	listing[i+1] := '';
 
 	if (p = 0) and (ldy_stack(i+2) = false) then begin
-	 listing[i+4] := #9'sta ' + copy(listing[i+2], 6, 256);
+	 listing[i+4] := #9'sta ' + GetARG(i+2);
 
 	 listing[i+2] := '';
 	end else
-	 listing[i+4] := #9'sta $' + IntToHex(p, 2) + '00,y';
+	 listing[i+4] := #9'sta ' + Hex(p, 2) + '00,y';
 
 	exit(false);
       end;
@@ -182,11 +182,11 @@ begin
         p:=GetBYTE(i);
 
 	if (p = 0) and (ldy_stack(i+2) = false) then begin
-	 listing[i+3] := #9'sta ' + copy(listing[i+2], 6, 256);
+	 listing[i+3] := #9'sta ' + GetARG(i+2);
 
 	 listing[i+2] := '';
 	end else
- 	 listing[i+3] := #9'sta $' + IntToHex(p, 2) + '00,y';
+ 	 listing[i+3] := #9'sta ' + Hex(p, 2) + '00,y';
 
 	listing[i] := '';
 	listing[i+1] := '';
@@ -210,8 +210,8 @@ begin
       begin
         p:=GetBYTE(i+2);
 
-	listing[i+7] := #9'ldy ' + copy(listing[i], 6, 256);
-	listing[i+8] := #9'sta $' + IntToHex(p, 2) + '00,y';
+	listing[i+7] := #9'ldy ' + GetARG(i);
+	listing[i+8] := #9'sta ' + Hex(p, 2) + '00,y';
 
 	listing[i] := '';
 	listing[i+1] := '';
@@ -236,8 +236,8 @@ begin
       begin
         p:=GetBYTE(i+2);
 
-	listing[i+6] := #9'ldy ' + copy(listing[i], 6, 256);
-	listing[i+7] := #9'sta $' + IntToHex(p, 2) + '00,y';
+	listing[i+6] := #9'ldy ' + GetARG(i);
+	listing[i+7] := #9'sta ' + Hex(p, 2) + '00,y';
 
 	listing[i] := '';
 	listing[i+1] := '';
@@ -260,8 +260,8 @@ begin
       begin
         p:=GetBYTE(i+2);
 
-	listing[i+4] := #9'ldy ' + copy(listing[i], 6, 256);
-	listing[i+5] := #9'lda $' + IntToHex(p, 2) + '00,y';
+	listing[i+4] := #9'ldy ' + GetARG(i);
+	listing[i+5] := #9'lda ' + Hex(p, 2) + '00,y';
 
 	listing[i] := '';
 	listing[i+1] := '';
@@ -290,7 +290,7 @@ begin
 	listing[i+3] := '';
 	listing[i+4] := '';
 
-	listing[i+6] := #9'sta $' + IntToHex(p, 4) + ',y';
+	listing[i+6] := #9'sta ' + Hex(p, 4) + ',y';
 
 	exit(false);
       end;

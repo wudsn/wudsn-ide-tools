@@ -12,7 +12,7 @@ begin
       jne_l(2) then									// jne l_xxxx		; 2
     begin
      TemporaryBuf[1] := TemporaryBuf[0];
-     TemporaryBuf[0] := #9'jmp ' + copy(TemporaryBuf[2], 6, 256);
+     TemporaryBuf[0] := #9'jmp ' + GetARG(2);
 
      TemporaryBuf[2] := TemporaryBuf[1];
      TemporaryBuf[1] := TemporaryBuf[0];
@@ -23,10 +23,10 @@ begin
    if lab_l(1) and									//l_xxxx		; 1
       IFTMP(2) and									// lda IFTMP_xxxx	; 2
       (TemporaryBuf[3] = #9'beq *+5') and						// beq *+5		; 3
-      jmp(4) then									// jmp l_xxxx		; 4
+      jmp_l(4) then									// jmp l_xxxx		; 4
     begin
      TemporaryBuf[2] := TemporaryBuf[1];
-     TemporaryBuf[1] := #9'jmp ' + copy(TemporaryBuf[4], 6, 256);
+     TemporaryBuf[1] := #9'jmp ' + GetARG(4);
 
      TemporaryBuf[3] := TemporaryBuf[2];
      TemporaryBuf[2] := TemporaryBuf[1];

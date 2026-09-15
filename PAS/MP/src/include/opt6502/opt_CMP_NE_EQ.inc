@@ -1,5 +1,5 @@
 
-function opt_NE_EQ(i: integer): Boolean;
+function opt_CMP_NE_EQ(i: integer): Boolean;
 var p: integer;
 begin
 
@@ -21,7 +21,7 @@ begin
        (tya(i+7) or sty(i+7)) then								// tya|sty		; 7
      if argMatch(i, i+3) then
       begin
-       listing[i+2] := #9'cmp ' + copy(listing[i+2], 6, 256);
+       listing[i+2] := #9'cmp ' + GetARG(i+2);
 
        listing[i] := '';
 
@@ -62,7 +62,7 @@ begin
       begin
        listing[i+2] := '';
        listing[i+3] := '';
-       listing[i+4] := #9'ora ' + copy(listing[i+4], 6, 256);
+       listing[i+4] := #9'ora ' + GetARG(i+4);
        listing[i+5] := '';
        listing[i+6] := '';
 
@@ -81,7 +81,7 @@ begin
       begin
 
        if beq(i+2) then
-        listing[i+6] := #9'jeq ' + copy(listing[i+6], 6, 256);
+        listing[i+6] := #9'jeq ' + GetARG(i+6);
 
        listing[i+2] := '';
        listing[i+3] := '';
@@ -125,39 +125,6 @@ begin
        exit(false);
       end;
 
-{ !!! nie moze decydowac na podstawie tylko starszego bajtu
-
-    if (SKIP(i-1) = false) and
-       lda(i) and										// lda W+1		; 0	WORD =
-       cmp(i+1) and										// cmp 			; 1
-       bne(i+2) and										// bne @+		; 2
-       lda(i+3) and										// lda W		; 3
-       cmp(i+4) and										// cmp			; 4
-       lab_a(i+5) and										//@			; 5
-       beq(i+6) and										// beq @+		; 6
-       dey(i+7) and										// dey			; 7
-       lab_a(i+8) and										//@			; 8
-       tya(i+9) and										// tya			; 9
-       jne(i+10) then										// jne l_		; 10
-      begin
-       if cmp_im_0(i+1) then listing[i+1] := '';
-       if cmp_im_0(i+4) then listing[i+4] := '';
-
-       listing[i+2] := #9'jeq ' + copy(listing[i+10], 6, 256);
-
-       listing[i+10] := #9'jeq ' + copy(listing[i+10], 6, 256);
-
-       listing[i+6] := '';
-       listing[i+7] := '';
-       listing[i+8] := '';
-       listing[i+9] := '';
-
-       for p:=i-1 downto 0 do
-	 if ldy_1(p) then begin listing[p]:=''; Break end;
-
-       exit(false);
-      end;
-}
 
     if ldy(i) and										// ldy 			; 0	opt_095	| WORD <> 0 ; WORD = 0
        lda_bp2_y(i+1) and									// lda (:bp2),y		; 1
@@ -230,7 +197,7 @@ begin
 	listing[i+2] := '';
        end else begin
 	listing[i] := listing[i+1];
-	listing[i+1] := #9'cmp ' + copy(listing[i+2], 6, 256);
+	listing[i+1] := #9'cmp ' + GetARG(i+2);
 	listing[i+2] := '';
        end;
 
@@ -278,13 +245,13 @@ begin
 	listing[i+12] := '';
 	listing[i+13] := '';
 	listing[i+14] := listing[i+1];
-	listing[i+15] := #9'ora ' + copy(listing[i+4], 6, 256);
+	listing[i+15] := #9'ora ' + GetARG(i+4);
        end else begin
         listing[i+10] := listing[i+1];
-        listing[i+11] := #9'cmp ' + copy(listing[i+2], 6, 256);
+        listing[i+11] := #9'cmp ' + GetARG(i+2);
 	listing[i+12] := #9'bne @+';
-	listing[i+13] := #9'lda ' + copy(listing[i+4], 6, 256);
-	listing[i+14] := #9'cmp ' + copy(listing[i+5], 6, 256);
+	listing[i+13] := #9'lda ' + GetARG(i+4);
+	listing[i+14] := #9'cmp ' + GetARG(i+5);
 	listing[i+15] := '@';
        end;
 
@@ -339,9 +306,9 @@ begin
 
        if sub_im_0(i+2) and cmp_im_0(i+5) and cmp_im_0(i+8) and cmp_im_0(i+11) then begin
 	listing[i] := listing[i+1];
-	listing[i+1] := #9'ora ' + copy(listing[i+4], 6, 256);
-	listing[i+2] := #9'ora ' + copy(listing[i+7], 6, 256);
-	listing[i+3] := #9'ora ' + copy(listing[i+10], 6, 256);
+	listing[i+1] := #9'ora ' + GetARG(i+4);
+	listing[i+2] := #9'ora ' + GetARG(i+7);
+	listing[i+3] := #9'ora ' + GetARG(i+10);
 	listing[i+4] := '';
 	listing[i+5] := '';
 	listing[i+6] := '';
@@ -352,16 +319,16 @@ begin
 	listing[i+11] := '';
        end else begin
 	listing[i] := listing[i+1];
-	listing[i+1] := #9'cmp ' + copy(listing[i+2], 6, 256);
+	listing[i+1] := #9'cmp ' + GetARG(i+2);
 	listing[i+2] := #9'bne @+';
-	listing[i+3] := #9'lda ' + copy(listing[i+4], 6, 256);
-	listing[i+4] := #9'cmp ' + copy(listing[i+5], 6, 256);
+	listing[i+3] := #9'lda ' + GetARG(i+4);
+	listing[i+4] := #9'cmp ' + GetARG(i+5);
 	listing[i+5] := #9'bne @+';
-	listing[i+6] := #9'lda ' + copy(listing[i+7], 6, 256);
-	listing[i+7] := #9'cmp ' + copy(listing[i+8], 6, 256);
+	listing[i+6] := #9'lda ' + GetARG(i+7);
+	listing[i+7] := #9'cmp ' + GetARG(i+8);
 	listing[i+8] := #9'bne @+';
-	listing[i+9] := #9'lda ' + copy(listing[i+10], 6, 256);
-	listing[i+10] := #9'cmp ' + copy(listing[i+11], 6, 256);
+	listing[i+9] := #9'lda ' + GetARG(i+10);
+	listing[i+10] := #9'cmp ' + GetARG(i+11);
 	listing[i+11] := '@';
        end;
 

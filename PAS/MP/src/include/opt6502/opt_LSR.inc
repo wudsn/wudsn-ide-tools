@@ -52,7 +52,7 @@ begin
 
        	if lsr_stack(i+6) and							/// lsr :STACKORIGIN+STACKWIDTH		; 6
            ror_stack(i+7) and							/// ror :STACKORIGIN			; 7
-           lsr_stack(i+8) and							// lsr :STACKORIGIN+STACKWIDTH		; 8
+           lsr_stack(i+8) and							/// lsr :STACKORIGIN+STACKWIDTH		; 8
            ror_stack(i+9) and							/// ror :STACKORIGIN			; 9
 	   lda_stack(i+10) then							/// lda :STACKORIGIN			; 10
          if argMatch(i+9, i+10) then
@@ -140,7 +140,7 @@ begin
 	   begin
             p:=GetBYTE(i);
 
-	    listing[i] := #9'ldy #$' + IntToHex(byte(p) + 1, 2);
+	    listing[i] := #9'ldy #' + Hex(byte(p) + 1, 2);
 
 	    listing[i+2] := listing[i+5];
 	    listing[i+3] := #9'dey';
@@ -169,7 +169,7 @@ begin
 	   begin
             p:=GetBYTE(i);
 
-	    listing[i] := #9'ldy #$' + IntToHex(byte(p) + 1, 2);
+	    listing[i] := #9'ldy #' + Hex(byte(p) + 1, 2);
 
 	    listing[i+2] := listing[i+5];
 	    listing[i+3] := #9'dey';
@@ -194,7 +194,7 @@ begin
 	   begin
             p:=GetBYTE(i);
 
-	    listing[i] := #9'ldy #$' + IntToHex(byte(p) + 1, 2);
+	    listing[i] := #9'ldy #' + Hex(byte(p) + 1, 2);
 
 	    listing[i+2] := listing[i+5];
 	    listing[i+3] := #9'dey';
@@ -215,7 +215,7 @@ begin
 	   begin
             p:=GetBYTE(i);
 
-	    listing[i] := #9'ldy #$' + IntToHex(byte(p) + 1, 2);
+	    listing[i] := #9'ldy #' + Hex(byte(p) + 1, 2);
 
 	    listing[i+2] := listing[i+5];
 	    listing[i+3] := #9'dey';
@@ -266,11 +266,11 @@ begin
 	argMatch(i+5, i+16) and
 	argMatch(i+11, i+18) then
      begin
-	listing[i+3] := #9'ror ' + copy(listing[i], 6, 256);
+	listing[i+3] := #9'ror ' + GetARG(i);
 
-	listing[i]   := #9'lsr ' + copy(listing[i+6], 6, 256);
-	listing[i+1] := #9'ror ' + copy(listing[i+4], 6, 256);
-	listing[i+2] := #9'ror ' + copy(listing[i+2], 6, 256);
+	listing[i]   := #9'lsr ' + GetARG(i+6);
+	listing[i+1] := #9'ror ' + GetARG(i+4);
+	listing[i+2] := #9'ror ' + GetARG(i+2);
 
 	listing[i+4] := '';
 	listing[i+5] := '';
@@ -325,11 +325,11 @@ begin
 	argMatch(i+7, i+18) then
      begin
 
-	listing[i+3] := #9'ror ' + copy(listing[i], 6, 256);
+	listing[i+3] := #9'ror ' + GetARG(i);
 
-	listing[i]   := #9'lsr ' + copy(listing[i+6], 6, 256);
-	listing[i+1] := #9'ror ' + copy(listing[i+4], 6, 256);
-	listing[i+2] := #9'ror ' + copy(listing[i+2], 6, 256);
+	listing[i]   := #9'lsr ' + GetARG(i+6);
+	listing[i+1] := #9'ror ' + GetARG(i+4);
+	listing[i+2] := #9'ror ' + GetARG(i+2);
 
 	listing[i+4] := '';
 	listing[i+5] := '';
@@ -350,6 +350,175 @@ begin
 
 	exit(false);
      end;
+
+
+    if ror_stack(i+11) and									// ror :STACKORIGIN			; 11
+
+       lda_val(i) and										// lda W				; 0	~:STACKORIGIN
+       sta_stack(i+1) and									// sta :STACKORIGIN			; 1
+       lda_val(i+2) and										// lda W+1				; 2	~:STACKORIGIN
+       sta_stack(i+3) and									// sta :STACKORIGIN+STACKWIDTH		; 3
+       lda_val(i+4) and										// lda W+2				; 4	~:STACKORIGIN
+       sta_stack(i+5) and									// sta :STACKORIGIN+STACKWIDTH*2	; 5
+       lda_val(i+6) and										// lda W+3				; 6	~:STACKORIGIN
+       sta_stack(i+7) and									// sta :STACKORIGIN+STACKWIDTH*3	; 7
+       lsr_stack(i+8) and									// lsr :STACKORIGIN+STACKWIDTH*3	; 8
+       ror_stack(i+9) and									// ror :STACKORIGIN+STACKWIDTH*2	; 9
+       ror_stack(i+10) and									// ror :STACKORIGIN+STACKWIDTH		; 10
+//       ror_stack(i+11) and									// ror :STACKORIGIN			; 11
+       lda_stack(i+12) and									// lda :STACKORIGIN			; 12
+       (add_sub(i+13) or and_ora_eor(i+13)) and							// add|sub|and|ora|eor			; 13
+       sta(i+14) and										// sta W				; 14
+       lda_stack(i+15) and									// lda :STACKORIGIN+STACKWIDTH		; 15
+       (adc_sbc(i+16) or and_ora_eor(i+16)) and							// adc|sbc|and|ora|eor			; 16
+       sta(i+17) and										// sta W+1				; 17
+       lda_stack(i+18) and									// lda :STACKORIGIN+STACKWIDTH*2	; 18
+       (adc_sbc(i+19) or and_ora_eor(i+19)) and							// adc|sbc|and|ora|eor			; 19
+       sta(i+20) and										// sta W+2				; 20
+       lda_stack(i+21) and									// lda :STACKORIGIN+STACKWIDTH*3	; 21
+       (adc_sbc(i+22) or and_ora_eor(i+22)) and							// adc|sbc|and|ora|eor			; 22
+       sta(i+23) then										// sta W+3				; 23
+     if argMatch(i, i+14) and
+	argMatch(i+1, i+12) and
+	argMatch(i+2, i+17) and
+	argMatch(i+3, i+15) and
+	argMatch(i+4, i+20) and
+	argMatch(i+5, i+18) and
+	argMatch(i+6, i+23) and
+	argMatch(i+7, i+21) then
+     begin
+
+	listing[i+3] := #9'ror ' + GetARG(i);
+
+	listing[i]   := #9'lsr ' + GetARG(i+6);
+	listing[i+1] := #9'ror ' + GetARG(i+4);
+	listing[i+2] := #9'ror ' + GetARG(i+2);
+
+	listing[i+4] := '';
+	listing[i+5] := '';
+	listing[i+6] := '';
+	listing[i+7] := '';
+	listing[i+8] := '';
+	listing[i+9] := '';
+	listing[i+10] := '';
+	listing[i+11] := '';
+
+	listing[i+12] := #9'lda ' + GetARG(i+14);
+
+	listing[i+15] := #9'lda ' + GetARG(i+17);
+
+	listing[i+18] := #9'lda ' + GetARG(i+20);
+
+	listing[i+21] := #9'lda ' + GetARG(i+23);
+
+	exit(false);
+     end;
+
+
+// -----------------------------------------------------------------------------
+
+
+    if (l = i + 10) and
+       lsr_stack(i) and									// lsr :STACKORIGIN+STACKWIDTH*3	; 0
+       ror_stack(i+1) and								// ror :STACKORIGIN+STACKWIDTH*2	; 1
+       ror_stack(i+2) and								// ror :STACKORIGIN+STACKWIDTH		; 2
+       ror_stack(i+3) and								// ror :STACKORIGIN			; 3
+       lda_stack(i+4) and								// lda :STACKORIGIN			; 4
+       (and_ora_eor_val(i+5) or add_sub_val(i+5)) and					// and|ora|eor|add|sub			; 5
+       sta_a(i+6) and									// sta					; 6
+       lda_stack(i+7) and								// lda :STACKORIGIN+STACKWIDTH		; 7
+       (and_ora_eor_val(i+8) or adc_sbc_val(i+8)) and					// and|ora|eor|adc|sbc			; 8
+       sta_a(i+9) then									// sta					; 9
+     if argMatch(i+3, i+4) and
+        argMatch(i+2, i+7) then
+     begin
+	
+	p:=i;
+	while (p > 3) and 
+	      (listing[i] = listing[p-4]) and 
+	      (listing[i+1] = listing[p-3]) and 
+	      (listing[i+2] = listing[p-2]) and 
+	      (listing[i+3] = listing[p-1]) do
+	begin
+	  
+	  listing[p-4] := #9'lsr #$00';
+
+ 	  dec(p, 4);
+	end;
+
+	listing[i] := #9'lsr #$00';
+
+	exit(false);
+     end;
+
+
+    if (l = i + 9) and
+       lsr_stack(i) and									// lsr :STACKORIGIN+STACKWIDTH*3	; 0
+       ror_stack(i+1) and								// ror :STACKORIGIN+STACKWIDTH*2	; 1
+       ror_stack(i+2) and								// ror :STACKORIGIN+STACKWIDTH		; 2
+       ror_stack(i+3) and								// ror :STACKORIGIN			; 3
+       lda_stack(i+4) and								// lda :STACKORIGIN			; 4
+       (and_ora_eor_val(i+5) or add_sub_val(i+5)) and					// and|ora|eor|add|sub			; 5
+       sta_a(i+6) and									// sta					; 6
+       lda_stack(i+7) and								// lda :STACKORIGIN+STACKWIDTH		; 7
+       sta_a(i+8) then									// sta					; 8
+     if argMatch(i+3, i+4) and
+        argMatch(i+2, i+7) then
+     begin
+	
+	p:=i;
+	while (p > 3) and 
+	      (listing[i] = listing[p-4]) and 
+	      (listing[i+1] = listing[p-3]) and 
+	      (listing[i+2] = listing[p-2]) and 
+	      (listing[i+3] = listing[p-1]) do
+	begin
+	  
+	  listing[p-4] := #9'lsr #$00';
+
+ 	  dec(p, 4);
+	end;
+
+	listing[i] := #9'lsr #$00';
+
+	exit(false);
+     end;
+
+
+    if (l = i + 9) and
+       lsr_stack(i) and									// lsr :STACKORIGIN+STACKWIDTH*3	; 0
+       ror_stack(i+1) and								// ror :STACKORIGIN+STACKWIDTH*2	; 1
+       ror_stack(i+2) and								// ror :STACKORIGIN+STACKWIDTH		; 2
+       ror_stack(i+3) and								// ror :STACKORIGIN			; 3
+       lda_stack(i+4) and								// lda :STACKORIGIN			; 4
+       sta_a(i+5) and									// sta					; 5
+       lda_stack(i+6) and								// lda :STACKORIGIN+STACKWIDTH		; 6
+       (and_ora_eor_val(i+7) or add_sub_val(i+7)) and					// and|ora|eor|add|sub			; 7
+       sta_a(i+8) then									// sta					; 8
+     if argMatch(i+3, i+4) and
+        argMatch(i+2, i+6) then
+     begin
+	
+	p:=i;
+	while (p > 3) and 
+	      (listing[i] = listing[p-4]) and 
+	      (listing[i+1] = listing[p-3]) and 
+	      (listing[i+2] = listing[p-2]) and 
+	      (listing[i+3] = listing[p-1]) do
+	begin
+	  
+	  listing[p-4] := #9'lsr #$00';
+
+ 	  dec(p, 4);
+	end;
+
+	listing[i] := #9'lsr #$00';
+
+	exit(false);
+     end;
+
+
+// -----------------------------------------------------------------------------
 
 
     if ror_stack(i+8) and									// ror :STACKORIGIN+STACKWIDTH		; 8
@@ -402,7 +571,7 @@ begin
 
        sta_stack(i) and										// sta :STACKORIGIN			; 0
        lda_im_0(i+1) and									// lda #$00				; 1
-       (adc_im_0(i+2) or sbc_im_0(i+2)) and							// adc|sbc #$00				; 2
+       adc_sbc_im_0(i+2) and									// adc|sbc #$00				; 2
        lsr_a(i+3) and										// lsr @				; 3
 //       ror_stack(i+4) and									// ror :STACKORIGIN			; 4
        lda_stack(i+5) and									// lda :STACKORIGIN			; 5
@@ -412,7 +581,7 @@ begin
      begin
       listing[i] := listing[i+6];
 
-      listing[i+4] := #9'ror ' + copy(listing[i+6], 6, 256);
+      listing[i+4] := #9'ror ' + GetARG(i+6);
       listing[i+5] := '';
       listing[i+6] := '';
 
@@ -424,10 +593,10 @@ begin
 
        sta_stack(i) and										// sta :STACKORIGIN			; 0
        lda_im_0(i+1) and									// lda #$00				; 1
-       (adc_im_0(i+2) or sbc_im_0(i+2)) and							// adc|sbc #$00				; 2
+       adc_sbc_im_0(i+2) and									// adc|sbc #$00				; 2
        sta_stack(i+3) and									// sta :STACKORIGIN+STACKWIDTH		; 3
        lda_im_0(i+4) and									// lda #$00				; 4
-       (adc_im_0(i+5) or sbc_im_0(i+5)) and							// adc|sbc #$00				; 5
+       adc_sbc_im_0(i+5) and									// adc|sbc #$00				; 5
        lsr_a(i+6) and										// lsr @				; 6
        ror_stack(i+7) and									// ror :STACKORIGIN+STACKWIDTH		; 7
 //       ror_stack(i+8) and									// ror :STACKORIGIN			; 8
@@ -449,9 +618,11 @@ begin
      end;
 
 
-    if lda_a(i) and										// lda					; 0
+    if ror_stack(i+2) and									// ror :STACKORIGIN+STACKWIDTH		; 2     
+
+       lda_a(i) and										// lda					; 0
        lsr_stack(i+1) and									// lsr :STACKORIGIN			; 1
-       ror_stack(i+2) and									// ror :STACKORIGIN+STACKWIDTH		; 2
+//       ror_stack(i+2) and									// ror :STACKORIGIN+STACKWIDTH		; 2
        lda_a(i+3) then										// lda					; 3
      begin
 	listing[i] := '';
@@ -460,10 +631,12 @@ begin
      end;
 
 
-    if lda_a(i) and										// lda					; 0
+    if lsr_stack(i+3) and									// lsr :STACKORIGIN			; 3
+
+       lda_a(i) and										// lda					; 0
        lsr_stack(i+1) and									// lsr :STACKORIGIN			; 1
-       ror_stack(i+2) and									// ror :STACKORIGIN+STACKWIDTH		; 2
-       lsr_stack(i+3) then									// lsr :STACKORIGIN			; 3
+       ror_stack(i+2) then									// ror :STACKORIGIN+STACKWIDTH		; 2
+//       lsr_stack(i+3) then									// lsr :STACKORIGIN			; 3
      begin
 	listing[i] := '';
 
@@ -471,11 +644,27 @@ begin
      end;
 
 
-    if lda(i) and 										// lda					; 0
+    if lsr_stack(i+4) and									// lsr :STACKORIGIN+STACKWIDTH*2	; 4
+
+       lda_a(i) and										// lda					; 0
+       lsr_stack(i+1) and									// lsr :STACKORIGIN+STACKWIDTH*2	; 1
+       ror_stack(i+2) and									// ror :STACKORIGIN+STACKWIDTH		; 2
+       ror_stack(i+3) then									// ror :STACKORIGIN			; 3
+//       lsr_stack(i+4) then									// lsr :STACKORIGIN+STACKWIDTH*2	; 4
+     begin
+	listing[i] := '';
+
+	exit(false);
+     end;
+
+
+    if ror_stack(i+4) and									// ror :STACKORIGIN			; 4
+
+       lda(i) and 										// lda					; 0
        adc_sbc(i+1) and										// adc|sbc				; 1
        lsr_stack(i+2) and									// lsr :STACKORIGIN+STACKWIDTH*2	; 2
        ror_stack(i+3) and									// ror :STACKORIGIN+STACKWIDTH		; 3
-       ror_stack(i+4) and									// ror :STACKORIGIN			; 4
+//       ror_stack(i+4) and									// ror :STACKORIGIN			; 4
        lda_stack(i+5) then									// lda :STACKORIGIN			; 5
      if argMatch(i+4, i+5) then
      begin
@@ -486,10 +675,12 @@ begin
      end;
 
 
-    if sta_stack(i) and 									// sta :STACKORIGIN			; 0
+    if ror_stack(i+3) and									// ror :STACKORIGIN			; 3
+
+       sta_stack(i) and 									// sta :STACKORIGIN			; 0
        lsr_stack(i+1) and									// lsr :STACKORIGIN+STACKWIDTH*2	; 1
        ror_stack(i+2) and									// ror :STACKORIGIN+STACKWIDTH		; 2
-       ror_stack(i+3) and									// ror :STACKORIGIN			; 3
+//       ror_stack(i+3) and									// ror :STACKORIGIN			; 3
        lda_stack(i+4) then									// lda :STACKORIGIN			; 4
      if argMatch(i, i+3) and
         argMatch(i+3, i+4) then
@@ -503,10 +694,12 @@ begin
      end;
 
 
-    if lsr_a(i) and		 								// lsr @				; 0
+    if ror_stack(i+3) and									// ror :STACKORIGIN+STACKWIDTH*1	; 3
+    
+       lsr_a(i) and		 								// lsr @				; 0
        ror_stack(i+1) and									// ror :STACKORIGIN+STACKWIDTH*3	; 1
        ror_stack(i+2) and									// ror :STACKORIGIN+STACKWIDTH*2	; 2
-       ror_stack(i+3) and									// ror :STACKORIGIN+STACKWIDTH*1	; 3
+//       ror_stack(i+3) and									// ror :STACKORIGIN+STACKWIDTH*1	; 3
        sta_im_0(i+4) then									// sta #$00				; 4
      begin
 
@@ -522,7 +715,7 @@ begin
 	dec(p);
 	while p>=0 do begin
 	 listing[i-p*4] := '';
-	 listing[i+1-p*4] := #9'lsr ' + copy(listing[i+1-p*4], 6, 256) ;
+	 listing[i+1-p*4] := #9'lsr ' + GetARG(i+1-p*4);
 	 dec(p);
 	end;
 
@@ -531,9 +724,11 @@ begin
      end;
 
 
-    if lsr_a(i) and		 								// lsr @				; 0
+    if ror_stack(i+2) and									// ror :STACKORIGIN+STACKWIDTH*2	; 2
+    
+       lsr_a(i) and		 								// lsr @				; 0
        ror_stack(i+1) and									// ror :STACKORIGIN+STACKWIDTH*3	; 1
-       ror_stack(i+2) and									// ror :STACKORIGIN+STACKWIDTH*2	; 2
+//       ror_stack(i+2) and									// ror :STACKORIGIN+STACKWIDTH*2	; 2
        sta_im_0(i+3) then									// sta #$00				; 3
      begin
 
@@ -549,7 +744,7 @@ begin
 	dec(p);
 	while p>=0 do begin
 	 listing[i-p*3] := '';
-	 listing[i+1-p*3] := #9'lsr ' + copy(listing[i+1-p*3], 6, 256) ;
+	 listing[i+1-p*3] := #9'lsr ' + GetARG(i+1-p*3);
 	 dec(p);
 	end;
 
@@ -574,7 +769,7 @@ begin
 	dec(p);
 	while p>=0 do begin
 	 listing[i-p*2] := '';
-	 listing[i+1-p*2] := #9'lsr ' + copy(listing[i+1-p*2], 6, 256) ;
+	 listing[i+1-p*2] := #9'lsr ' + GetARG(i+1-p*2);
 	 dec(p);
 	end;
 
@@ -600,7 +795,7 @@ begin
 	listing[i+1]:='';
 	listing[i+2]:='';
 
-	listing[i+3] := #9'lsr ' + copy(listing[i+3], 6, 256);
+	listing[i+3] := #9'lsr ' + GetARG(i+3);
 
 	exit(false);
      end;
@@ -628,7 +823,7 @@ begin
 	listing[i+3]:='';
 	listing[i+4]:='';
 
-	listing[i+5] := #9'lsr ' + copy(listing[i+5], 6, 256);
+	listing[i+5] := #9'lsr ' + GetARG(i+5);
 
 	exit(false);
      end;
@@ -675,8 +870,8 @@ begin
 	argMatch(i+2, i+5) and
 	argMatch(i+3, i+6) then
      begin
-	listing[i]   := #9'lsr ' + copy(listing[i], 6, 256);
-	listing[i+1] := #9'ror ' + copy(listing[i+2], 6, 256);
+	listing[i]   := #9'lsr ' + GetARG(i);
+	listing[i+1] := #9'ror ' + GetARG(i+2);
 	listing[i+2] := '';
 	listing[i+3] := '';
 	listing[i+4] := '';
@@ -715,7 +910,7 @@ begin
 	listing[i+8] := '';
 	listing[i+9] := '';
 
-	listing[i+10] := #9'lsr ' + copy(listing[i+10], 6, 256);
+	listing[i+10] := #9'lsr ' + GetARG(i+10);
 
 	exit(false);
      end;
@@ -747,8 +942,8 @@ begin
 
 	listing[i+5] := listing[i+14];
 
-	listing[i+9]  := #9'ror ' + copy(listing[i+14], 6, 256);
-	listing[i+10] := #9'ror ' + copy(listing[i+12], 6, 256);
+	listing[i+9]  := #9'ror ' + GetARG(i+14);
+	listing[i+10] := #9'ror ' + GetARG(i+12);
 
 	listing[i+11] := '';
 	listing[i+12] := '';
@@ -789,19 +984,21 @@ begin
      end;
 
 
-    if lda_im_0(i) and										// lda #$00				; 0
-       (pos('sta :STACKORIGIN+STACKWIDTH*2', listing[i+1]) > 0) and				// sta :STACKORIGIN+STACKWIDTH*2	; 1
+    if ror_stack(i+5) and									// ror :STACKORIGIN			; 5
+    
+       lda_im_0(i) and										// lda #$00				; 0
+       sta_stack_2x(i+1) and									// sta :STACKORIGIN+STACKWIDTH*2	; 1
        lsr_a(i+2) and										// lsr @				; 2
-       (pos('ror :STACKORIGIN+STACKWIDTH*2', listing[i+3]) > 0) and				// ror :STACKORIGIN+STACKWIDTH*2	; 3
+       ror_stack_2x(i+3) and									// ror :STACKORIGIN+STACKWIDTH*2	; 3
        ror_stack(i+4) and									// ror :STACKORIGIN+STACKWIDTH		; 4
-       ror_stack(i+5) and									// ror :STACKORIGIN			; 5
+//       ror_stack(i+5) and									// ror :STACKORIGIN			; 5
        sta(i+6) then										// sta					; 6
      if argMatch(i+1, i+3) then
      begin
-	listing[i]   := #9'lsr ' + copy(listing[i+4], 6, 256);
+	listing[i]   := #9'lsr ' + GetARG(i+4);
 	listing[i+1] := listing[i+5];
 	listing[i+2] := #9'lda #$00';
-	listing[i+3] := #9'sta ' + copy(listing[i+3], 6, 256);
+	listing[i+3] := #9'sta ' + GetARG(i+3);
 	listing[i+4] := #9'lda #$00';
 	listing[i+5] := listing[i+6];
 	listing[i+6] := '';
@@ -810,18 +1007,20 @@ begin
      end;
 
 
-    if lda_im_0(i) and										// lda #$00				; 0
-       (pos('sta :STACKORIGIN+STACKWIDTH*2', listing[i+1]) > 0) and				// sta :STACKORIGIN+STACKWIDTH*2	; 1
-       (pos('lsr :STACKORIGIN+STACKWIDTH*2', listing[i+2]) > 0) and				// lsr :STACKORIGIN+STACKWIDTH*2	; 2
-       ror_stack(i+3) and									// ror :STACKORIGIN+STACKWIDTH		; 3
-       ror_stack(i+4) then									// ror :STACKORIGIN			; 4
+    if ror_stack(i+4) and									// ror :STACKORIGIN			; 4
+    
+       lda_im_0(i) and										// lda #$00				; 0
+       sta_stack_2x(i+1) and									// sta :STACKORIGIN+STACKWIDTH*2	; 1
+       lsr_stack_2x(i+2) and									// lsr :STACKORIGIN+STACKWIDTH*2	; 2
+       ror_stack(i+3) then									// ror :STACKORIGIN+STACKWIDTH		; 3
+//       ror_stack(i+4) then									// ror :STACKORIGIN			; 4
      if argMatch(i+1, i+2) then
      begin
-	listing[i]   := #9'lsr ' + copy(listing[i+3], 6, 256);
+	listing[i]   := #9'lsr ' + GetARG(i+3);
 	listing[i+1] := listing[i+4];
 
 	listing[i+3] := #9'lda #$00';
-	listing[i+4] := #9'sta ' + copy(listing[i+2], 6, 256);
+	listing[i+4] := #9'sta ' + GetARG(i+2);
 
 	listing[i+2] := '';
 
@@ -829,29 +1028,29 @@ begin
      end;
 
 
-    if (pos('lsr :STACKORIGIN+STACKWIDTH*2', listing[i]) > 0) and				// lsr :STACKORIGIN+STACKWIDTH*2	; 0
-       (pos('ror :STACKORIGIN+STACKWIDTH', listing[i+1]) > 0 ) and				// ror :STACKORIGIN+STACKWIDTH		; 1
+    if lsr_stack_2x(i) and									// lsr :STACKORIGIN+STACKWIDTH*2	; 0
+       ror_stack_1x(i+1) and									// ror :STACKORIGIN+STACKWIDTH		; 1
        ror_a(i+2) and										// ror @				; 2
        ora(i+3) and										// ora					; 3
        sta(i+4) and										// sta 					; 4
        (lda_a(i+5) = false) then								//~lda 					; 5
      begin
         listing[i]   := '';
-	listing[i+1] := #9'lsr ' + copy(listing[i+1], 6, 256);
+	listing[i+1] := #9'lsr ' + GetARG(i+1);
 
 	exit(false);
      end;
 
 
-    if (pos('lsr :STACKORIGIN+STACKWIDTH*2', listing[i]) > 0) and				// lsr :STACKORIGIN+STACKWIDTH*2	; 0
-       (pos('ror :STACKORIGIN+STACKWIDTH', listing[i+1]) > 0 ) and				// ror :STACKORIGIN+STACKWIDTH		; 1
+    if lsr_stack_2x(i) and									// lsr :STACKORIGIN+STACKWIDTH*2	; 0
+       ror_stack_1x(i+1) and									// ror :STACKORIGIN+STACKWIDTH		; 1
        ror_a(i+2) and										// ror @				; 2
-       (pos('lsr :STACKORIGIN+STACKWIDTH', listing[i+3]) > 0 ) and				// lsr :STACKORIGIN+STACKWIDTH		; 3
+       lsr_stack_1x(i+3) and									// lsr :STACKORIGIN+STACKWIDTH		; 3
        ror_a(i+4) then										// ror @				; 4
      if argMatch(i+1, i+3) then
      begin
         listing[i]   := '';
-	listing[i+1] := #9'lsr ' + copy(listing[i+1], 6, 256);
+	listing[i+1] := #9'lsr ' + GetARG(i+1);
 
 	exit(false);
      end;
@@ -862,7 +1061,7 @@ begin
        sta_a(i+2) then										// sta TEMP				; 2
      if argMatch(i, i+2) then
      begin
-	listing[i] := #9'lsr ' + copy(listing[i], 6, 256);
+	listing[i] := #9'lsr ' + GetARG(i);
 
 	listing[i+1] := '';
 	listing[i+2] := '';
@@ -894,6 +1093,9 @@ begin
      end;
 
 
+// -----------------------------------------------------------------------------
+
+
     if dey(i+8) and										// dey					; 8
 
        lda_a(i) and										// lda B+1				; 0
@@ -915,7 +1117,7 @@ begin
 	argMatch(i, i+13) and
 	argMatch(i+2, i+11) then
      begin
-	listing[i+6]  := #9'lsr ' + copy(listing[i], 6, 256);
+	listing[i+6]  := #9'lsr ' + GetARG(i);
 
 	listing[i]   := '';
 	listing[i+1] := '';
@@ -964,9 +1166,9 @@ begin
 	argMatch(i+4, i+19) and
 	argMatch(i+6, i+17) then
      begin
-	listing[i+10]  := #9'lsr ' + copy(listing[i], 6, 256);
-	listing[i+11]  := #9'ror ' + copy(listing[i+2], 6, 256);
-	listing[i+12]  := #9'ror ' + copy(listing[i+4], 6, 256);
+	listing[i+10]  := #9'lsr ' + GetARG(i);
+	listing[i+11]  := #9'ror ' + GetARG(i+2);
+	listing[i+12]  := #9'ror ' + GetARG(i+4);
 
 	listing[i]   := '';
 	listing[i+1] := '';
@@ -990,13 +1192,13 @@ begin
 
        sta_stack(i) and										// sta :STACKORIGIN			; 0
        lda_stack(i+1) and									// lda :STACKORIGIN+STACKWIDTH		; 1
-       (adc_im_0(i+2) or sbc_im_0(i+2)) and							// adc|sbc #$00				; 2
+       adc_sbc_im_0(i+2) and									// adc|sbc #$00				; 2
        sta_stack(i+3) and									// sta :STACKORIGIN+STACKWIDTH		; 3
        lda_stack(i+4) and									// lda :STACKORIGIN+STACKWIDTH*2	; 4
-       (adc_im_0(i+5) or sbc_im_0(i+5)) and							// adc|sbc #$00				; 5
+       adc_sbc_im_0(i+5) and									// adc|sbc #$00				; 5
        sta_stack(i+6) and									// sta :STACKORIGIN+STACKWIDTH*2	; 6
        lda_stack(i+7) and									// lda :STACKORIGIN+STACKWIDTH*3	; 7
-       (adc_im_0(i+8) or sbc_im_0(i+8)) and							// adc|sbc #$00				; 8
+       adc_sbc_im_0(i+8) and									// adc|sbc #$00				; 8
        sta_stack(i+9) and									// sta :STACKORIGIN+STACKWIDTH*3	; 9
        lda(i+10) and										// lda					; 10
 //       ldy_stack(i+11) and									// ldy :STACKORIGIN			; 11

@@ -8,20 +8,12 @@
        (sta_val(i+3) or (ldy(i+3) and sta_adr(i+4))) then					// sta|ldy				; 3
      begin   											//    |sta adr.				; 4
 
-      tmp := copy(listing[i+2], 6, 256);
-      yes := true;
 
-      for p:=i-1 downto 1 do
-       if ora_stack(p) or
-          (sty_stack(p) and lab_a(p-1) and lda(p+1) and and_stack(p+2)) or
-          (sty_stack(p) and lab_a(p-1) and lda_stack(p+1)) or
-          (sty_stack(p) and lab_a(p-1) and ldy_1(p+1) and lda_stack(p+2) and argMatch(p, p+2)) or
-          (sty_stack(p) and lab_a(p-1) and (argMatch(p, i+2) = false)) or
-          (tya(p) and (lab_a(p-1) = false) and (and_stack(p+1) = false)) then begin yes:=false; Break end;
+      if test_ORA(i) then begin
 
-      if yes then begin
+       tmp := GetARG(i+2);
 
-       for p:=i-1 downto 0 do begin
+       for p := i-1 downto 0 do begin
 
 	if ldy_1(p) then listing[p] := '';					// ldy #1
 
@@ -31,7 +23,7 @@
 	   (listing[p+1] = listing[i+2]) and					// and :STACKORIGIN	; 1
 	   (listing[p+2] = #9'sta ' + tmp) then					// sta :STACKORIGIN	; 2
 	 begin
-	   listing[p+1]   := #9'jeq l_' + IntToHex(CodeSize, 4) + 's';
+	   listing[p+1] := #9'jeq l_' + IntToHex(CodeSize, 4) + 's';
 	   listing[p+2] := '';
 	 end;
 
@@ -46,7 +38,7 @@
 	   listing[p+2] := '';
 	   listing[p+3] := '';
 	  end else begin
-	   listing[p+1] := #9'lda ' + copy(listing[p+2], 6, 256);
+	   listing[p+1] := #9'lda ' + GetARG(p+2);
 	   listing[p+2] := #9'jeq l_' + IntToHex(CodeSize, 4) + 's';
 	   listing[p+3] := '';
 	  end;
@@ -60,8 +52,11 @@
 
        end;
 
-       listing[i+1] := #9'lda:sne #$01';
-       listing[i+2] := 'l_' + IntToHex(CodeSize, 4) + 's'#9'lda #$00';
+       Expand(i+1, 1);
+
+       listing[i+1] := #9'lda #$01';
+       listing[i+2] := #9'sne';
+       listing[i+3] := 'l_' + IntToHex(CodeSize, 4) + 's'#9'lda #$00';
 
        Result:=false; Break;
       end;

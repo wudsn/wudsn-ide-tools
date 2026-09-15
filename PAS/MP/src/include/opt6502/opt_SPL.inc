@@ -1,7 +1,6 @@
 
 function opt_SPL(i: integer): Boolean;
 var p: integer;
-var err: integer;
 begin
 
     Result := true;
@@ -18,7 +17,7 @@ begin
 //       spl(i+2) and										// spl					; 2
        dey(i+3) then										// dey					; 3
      begin
-	val(copy(listing[i+1], 7, 256), p, err);
+	p := GetBYTE(i+1);
 
 	listing[i+2] := '';
 	listing[i+3] := '';
@@ -140,11 +139,11 @@ begin
 	listing[i]   := #9'lda #$00';
 	listing[i+1] := listing[i+4];
 	listing[i+2] := #9'lda #$00';
-	listing[i+3] := #9'sta ' + copy(listing[i+5], 6, 256);
+	listing[i+3] := #9'sta ' + GetARG(i+5);
 	listing[i+4] := #9'lda #$00';
-	listing[i+5] := #9'sta ' + copy(listing[i+6], 6, 256);
+	listing[i+5] := #9'sta ' + GetARG(i+6);
 	listing[i+6] := #9'lda #$00';
-	listing[i+7] := #9'sta ' + copy(listing[i+7], 6, 256);
+	listing[i+7] := #9'sta ' + GetARG(i+7);
 
 	exit(false);
      end;
@@ -164,9 +163,9 @@ begin
 	listing[i]   := #9'lda #$00';
 	listing[i+1] := listing[i+4];
 	listing[i+2] := #9'lda #$00';
-	listing[i+3] := #9'sta ' + copy(listing[i+5], 6, 256);
+	listing[i+3] := #9'sta ' + GetARG(i+5);
 	listing[i+4] := #9'lda #$00';
-	listing[i+5] := #9'sta ' + copy(listing[i+6], 6, 256);
+	listing[i+5] := #9'sta ' + GetARG(i+6);
 	listing[i+6] := '';
 
 	exit(false);
@@ -209,7 +208,7 @@ begin
      if argMatch(i+4, i+8) and
         argMatch(i+5, i+9) then
        begin
-	listing[i+5] := #9'sta ' + copy(listing[i+5], 6, 256);
+	listing[i+5] := #9'sta ' + GetARG(i+5);
 
 	listing[i+8] := '';
 	listing[i+9] := '';
@@ -335,7 +334,7 @@ begin
 	(argMatch(i, i+2) = false) then
        begin
 	listing[i+5] := listing[i+6];
-	listing[i+6] := #9'sty ' + copy(listing[i+8], 6, 256);
+	listing[i+6] := #9'sty ' + GetARG(i+8);
 	listing[i+7] := '';
 	listing[i+8] := '';
 
@@ -361,9 +360,9 @@ begin
        begin
 
 	if add_stack(i+11) then
-	 listing[i+11] := #9'add ' + copy(listing[i], 6, 256)
+	 listing[i+11] := #9'add ' + GetARG(i)
 	else
-	 listing[i+11] := #9'sub ' + copy(listing[i], 6, 256);
+	 listing[i+11] := #9'sub ' + GetARG(i);
 
 	listing[i]   := '';
 	listing[i+1] := '';
@@ -387,9 +386,9 @@ begin
        begin
 
         if add(i+7) then
-	 listing[i+7] := #9'add ' + copy(listing[i], 6, 256)
+	 listing[i+7] := #9'add ' + GetARG(i)
 	else
-	 listing[i+7] := #9'sub ' + copy(listing[i], 6, 256);
+	 listing[i+7] := #9'sub ' + GetARG(i);
 
 	listing[i]   := '';
 	listing[i+1] := '';
@@ -535,14 +534,14 @@ begin
        begin
 
 	if add_stack(i+8) then
-	 listing[i+8] := #9'add ' + copy(listing[i], 6, 256)
+	 listing[i+8] := #9'add ' + GetARG(i)
 	else
-	 listing[i+8] := #9'sub ' + copy(listing[i], 6, 256);
+	 listing[i+8] := #9'sub ' + GetARG(i);
 
 	if adc_stack(i+11) then
-	 listing[i+11] := #9'adc ' + copy(listing[i+2], 6, 256)
+	 listing[i+11] := #9'adc ' + GetARG(i+2)
 	else
-	 listing[i+11] := #9'sbc ' + copy(listing[i+2], 6, 256);
+	 listing[i+11] := #9'sbc ' + GetARG(i+2);
 
 	listing[i]   := '';
 	listing[i+1] := '';
@@ -732,7 +731,7 @@ begin
        begin
 	listing[i+4] := '';
 
-	listing[i+8] := #9'adc ' + copy(listing[i+7], 6, 256);
+	listing[i+8] := #9'adc ' + GetARG(i+7);
 	listing[i+7] := #9'tya';
 
 	exit(false);
@@ -750,8 +749,8 @@ begin
       listing[i+7] := listing[i+6];
       listing[i+6] := listing[i+5];
 
-      listing[i+4] := #9'sty ' + copy(listing[i+8], 6, 256);
-      listing[i+5] := #9'sty ' + copy(listing[i+9], 6, 256);
+      listing[i+4] := #9'sty ' + GetARG(i+8);
+      listing[i+5] := #9'sty ' + GetARG(i+9);
 
       listing[i+8] := '';
       listing[i+9] := '';
@@ -767,7 +766,7 @@ begin
        (sta_a(i+8) = false) then								//~sta					; 8
      if argMatch(i+4, i+6) then
        begin
-	listing[i+4] := #9'sty ' + copy(listing[i+7], 6, 256);
+	listing[i+4] := #9'sty ' + GetARG(i+7);
 
 	listing[i+6] := '';
 	listing[i+7] := '';
@@ -800,7 +799,7 @@ begin
        begin
         listing[i+4] := listing[i+5];
 	listing[i+5] := #9'tya';
-	listing[i+6] := #9'add ' + copy(listing[i+6], 6, 256);
+	listing[i+6] := #9'add ' + GetARG(i+6);
 	listing[i+7] := '';
 
 	exit(false);

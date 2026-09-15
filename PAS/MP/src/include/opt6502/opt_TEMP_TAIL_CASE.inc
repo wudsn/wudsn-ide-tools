@@ -14,13 +14,13 @@ begin
    i := 100;
    p := 0;
 
-   if (pos(#9'jmp a_', TemporaryBuf[i]) > 0) then			// jmp a_xxxx
+   if (pos(#9'jmp a_', TemporaryBuf[i]) > 0) then	// jmp a_xxxx
     begin
 
       if lab_s(i+1) then TemporaryBuf[i+1]:= '~';
 
       tmp:=TemporaryBuf[i];				// jmp a_xxxx
-      lab:=copy(tmp, 6, 256);				// a_xxxx
+      lab:=GetARG(i);					// a_xxxx
 
       yes:=false;
 

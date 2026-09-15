@@ -18,6 +18,7 @@ InitGraph
 Line
 MoveTo
 LineTo
+LineRel
 MoveTo
 PutPixel
 SetBkColor
@@ -46,6 +47,7 @@ FloodFill
 FloodFillH
 MoveRel
 NewBuffer
+OutTextXY
 PieSlice
 Rectangle
 SetArcCoords
@@ -155,7 +157,7 @@ var
 	LastArcCoords: TLastArcCoords;
 
 
-{$i '../src/targets/graphh.inc'}
+{$i './targets/graphh.inc'}
 
 
 	procedure Arc(X, Y, StAngle, EndAngle, Radius: Word);
@@ -185,6 +187,7 @@ var
 	procedure Line(x1, y1, x2, y2: real); overload;
 	procedure MoveRel(Dx, Dy: smallint);
 	procedure MoveTo(x, y: smallint); assembler;
+	procedure OutTextXY(x,y: smallint; s: string);
 	procedure PieSlice(X, Y, StAngle, EndAngle, Radius: Word);
 	procedure Rectangle(x1, y1, x2, y2: Smallint); overload;
 	procedure Rectangle(Rect: TRect); overload;
@@ -198,9 +201,13 @@ var
 	procedure fLine(x0, y0, x1, y1: smallint);
 	procedure HLine(x1,x2, y: smallint);
 	procedure LineTo(x, y: smallint);
+	procedure LineRel(dx, dy: smallint);
 	procedure PutPixel(x,y: smallint); assembler; overload;
 	procedure PutPixel(x,y: smallint; color: byte); overload;
 	function Scanline(y: smallint): PByte;
+
+	procedure SetFillStyle(Pattern: byte; Color: byte);
+	procedure SetLineStyle(LineStyle: byte; Pattern: byte; Thickness: byte);
 
 
 implementation
@@ -209,6 +216,18 @@ var
 	Scanline_Width: byte;
 
 	CurrentX, CurrentY: word;
+
+
+procedure SetFillStyle(Pattern: byte; Color: byte);
+begin
+
+end;
+
+
+procedure SetLineStyle(LineStyle: byte; Pattern: byte; Thickness: byte);
+begin
+
+end;
 
 
 function Scanline(y: smallint): PByte;
@@ -237,7 +256,7 @@ begin
 end;
 
 
-{$i '../src/targets/graph.inc'}
+{$i './targets/graph.inc'}
 
 
 procedure MoveTo(x, y: smallint); assembler;
@@ -280,7 +299,7 @@ _2
 	scs
 	dey
 	sta x
-	sty x+1	
+	sty x+1
 _3
 	mwa x CurrentX
 	mwa y CurrentY

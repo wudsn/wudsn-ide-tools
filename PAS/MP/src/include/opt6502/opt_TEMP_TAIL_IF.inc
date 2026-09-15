@@ -28,11 +28,11 @@ begin
        lab_l(ofs+20) and								//l_xxxx		; 20
        IFTMP(ofs+21) and								// lda IFTMP_xxxx	; 21
        (TemporaryBuf[ofs+22] = #9'beq *+5') and						// beq *+5		; 22
-       jmp(ofs+23)									// jmp l_xxxx		; 23
+       jmp_l(ofs+23)									// jmp l_xxxx		; 23
        ) then
     begin
 
-      lab:=copy(TemporaryBuf[ofs+23], 6, 256);			// l_xxxx
+      lab:=GetARG(ofs+23);					// l_xxxx
 
       yes:=false;
 

@@ -1,6 +1,110 @@
+17.05.2026
+- bugfixes and optimizations
+
+06.05.2026
+- bugfixes in mix real types variables and constant expressions
+
+03.05.2026
+- unit TMC
+- new RESOURCE: TMC, TMCPLAY
+
+01.05.2026
+- SYSTEM: GetMem(pointer, size) removed as potentially dangerous; GetMem(size) is the most reliable
+
+25.04.2026
+- fix type punning
+
+20.04.2026
+- opt_TEMP_FOR_REGY, excluding the 'ldy #' register from the FOR loop
+
+19.04.2026
+- new unit SNAPPY
+- fix FASTMATH sqrt16
+
+14.03.2026
+- const [striped] array
+
+12.03.2026
+- mul9, mul48
+- PChar(string)
+
+02.03.2026
+- optimizations
+
+27.02.2026
+- bugfixes and optimizations
+
+16.02.2026
+- VBXE: TextOut
+
+21.12.2025
+- added FPC version output in diag file
+
+06.12.2025
+- amendments in FASTGRAPH, GRAPH
+
+02.11.2025
+- optimization of cmd_listing.inc (JAC!)
+
+01.11.2025
+- fixed RECORD, ^RECORD allocation in procedure/function for recursion operation
+
+29.10.2025
+- dedicated unit Compiler
+
+21.10.2025
+- include/opt6502 optimization
+
+07.10.2025
+- add type SUBRANGETYPE (low..high)
+
+06.10.2025
+- fix CASE FUNCTION:ENUM
+- fix ENUM SUCC/PRED; (ENUM = ENUM)
+
+29.09.2025
+- bugfixes and optimizations
+
+19.09.2025
+- 'RTI'/'RTS' FORWARD Procedure/Function
+
+16.09.2025
+- bugfixes and optimizations (opt_ADR.pas) -> array 2D
+- RecordSize (ENUM size)
+
+15.09.2025
+- bugfixes  (Parser.pas -> RecordSize)
+
+13.09.2025
+- bugfixes and optimizations
+
+04.09.2025
+- optimizations
+
+30.08.2025
+- added procedure/function parameter conversion INTEGER -> REAL
+- faster version of 'FUNCTION SQRT(REAL): REAL' (unit SYSTEM)
+
+27.08.2025
+- bugfixes and optimizations
+
+24.08.2025
+- new unit SAM
+- new unit PACKFIRE
+
+22.08.2025
+- poprawione parsowanie wartości rzeczywistych, akceptuje dodatkowe znaki 'E', '-', np. 6.1858296469E-02
+
+21.08.2025
+- optimizations @cmpCHAR2STRING, @cmpSTRING2CHAR
+
+18.08.2025
+- added resources MD1, MD1PLAY
+- new unit MD1
+
 16.08.2025
-- poprawione przekazywanie typu ENUM w procedurze/funkcji
-- dodana obsługa instrukcji WITH
+- improved ENUM type passing in procedures/functions
+- added support for instruction WITH
 
 09.08.2025
 - optimizations opt_TAY, opt_EOR
@@ -16,16 +120,16 @@
 - nowy unit GIF, odczytuje obrazki max 336x240 GIF87, GIF89, wymaga VBXE
 
 26.07.2025
-- optymalizacje
+- optimizations
 - poprawione definiowane ObjectVariable
 
 24.07.2025
 - opt_IMUL_CL dodana optymalizacja dla mnożenia *6
-- nowy unit SHA256
+- new unit SHA256
 
 14.07.2025
-- nowy unit AES
-- nowy unit BFONT (CHR Borland)
+- new unit AES
+- new unit BFONT (CHR Borland)
 - poprawiony błąd uniemożliwiający działanie LENGHT dla USERTYPE
 - dodane rzutowanie tablicy tablicą (AES)
 - poprawiony test limitu 256 bajtów na rekord, poprzednio zgłaszał błąd przy 255 bajtów
