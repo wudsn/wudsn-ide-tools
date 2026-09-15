@@ -1,5 +1,10 @@
 #!/bin/bash
 
+#-------------------------------------------------------------------------
+# Run in Cygwin.
+#-------------------------------------------------------------------------
+
+
 export OS="Windows"
 export EXT="exe"
 
@@ -22,6 +27,7 @@ cd ../..
 
 #-------------------------------------------------------------------------
 # Create ASM6.
+# https://github.com/freem/asm6f
 #-------------------------------------------------------------------------
 
 cd ASM6
@@ -43,18 +49,18 @@ mkdir bin
 cd src
 echo Creating DASM - $OS 32-bit version
 export CC="gcc -m32"
-make
+make -j
 mv dasm.exe   ../bin/dasm.$EXT
 mv ftohex.exe ../bin/ftohex.$EXT
 
 # Rename bin to exclude it from clean.
 mv bin bin.bak
-make clean
+make  -j clean
 mv bin.bak bin
 cd ..
 
 cd test
-make clean
+make -j clean
 cd ..
 
 cd ..
@@ -78,7 +84,7 @@ cd ..
 cd TASS/src
 
 echo Creating TASS - $OS 64-bit version
-make -f Makefile.win
+make -j -f Makefile.win
 cp 64tass.exe ../
 cd ../..
 
