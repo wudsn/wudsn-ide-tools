@@ -1,3 +1,6 @@
+@rem Mad-Pascal.bat script
+@rem Set MP_FOLDER before calling the script, to use a different MP version.
+
 @echo off
 setlocal
 
@@ -18,9 +21,11 @@ if "%WUDSN_TOOLS_FOLDER%"=="" (
   set WUDSN_TOOLS_FOLDER=%WUDSN_FOLDER%\Tools
 )
 
-set MP_FOLDER=%WUDSN_TOOLS_FOLDER%\PAS\MP
+if "%MP_FOLDER%"=="" = (
+  set MP_FOLDER=%WUDSN_TOOLS_FOLDER%\PAS\MP
+)
 set MADS_FOLDER=%WUDSN_TOOLS_FOLDER%\ASM\MADS
-set PATH=%MP_FOLDER%\bin\windows;%MADS_FOLDER%\bin\windows_x86_64;%PATH%
+set PATH=%MP_FOLDER%\bin\windows_x86_64;%MP_FOLDER%\bin\windows;%MADS_FOLDER%\bin\windows_x86_64;%PATH%
 
 set INPUT_FOLDER=%~dp1
 cd /D %INPUT_FOLDER%
@@ -56,7 +61,6 @@ if ERRORLEVEL 1 (
 )
 
 start %OUTPUT_FILE%
-pause
 goto :eof
 
 :end
@@ -75,6 +79,3 @@ ECHO.%SOURCE_STRING%| FIND /I "%SEARCH_STRING%">Nul && (
  rem
 )
 goto :eof
-
-
-
